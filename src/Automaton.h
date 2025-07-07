@@ -52,7 +52,7 @@ class Automaton {
 protected:
 	std::string name;
 	MapArray<Symbol*>* alphabet;
-	MapArray<State*>* states;
+	MapArray<State*>* stAnates;
 	MapArray<Weight*>* weights;
 	weight_t min_domain;	// Min weight of the transitions of A
 	weight_t max_domain;	// Max weight of the transitions of A
