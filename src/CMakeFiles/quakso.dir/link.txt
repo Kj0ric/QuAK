@@ -1,0 +1,1 @@
+/opt/homebrew/bin/g++-15 -fms-extensions -g -arch arm64 -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX14.4.sdk -dynamiclib -Wl,-headerpad_max_install_names -o libquak.dylib -install_name @rpath/libquak.dylib CMakeFiles/quakso.dir/sharedlib.cpp.o  libquak.a

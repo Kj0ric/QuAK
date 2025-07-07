@@ -9,8 +9,11 @@
 #include "Automaton.h"
 #include "Monitor.h"
 
+#include "test_readDomain.cpp"
+
 int main() {
-    debug_test3();
+    //debug_test3();
+    testReadDomain();
 
     return 0;
 }

@@ -16,9 +16,10 @@ class SCC_Dag {
 public:
 	State* origin;
 	SetStd<SCC_Dag*>* nexts;
+
 	SCC_Dag() : origin(nullptr), nexts(new SetStd<SCC_Dag*>) {};
-	void addNext (SCC_Dag* next) { this->nexts->insert(next); };
 	~SCC_Dag() { delete nexts; }
+	void addNext (SCC_Dag* next) { this->nexts->insert(next); };
 	std::string toString (std::string offset) const {
 		std::string s = "\n";
 		s.append(offset);
@@ -28,7 +29,6 @@ public:
 		return s;
 	};
 };
-
 
 
 Automaton::~Automaton () {
@@ -56,14 +56,6 @@ Automaton::~Automaton () {
 	}
 	delete[] this->SCCs;
 }
-
-
-
-
-
-
-
-
 // -------------------------------- Constructors -------------------------------- //
 
 
@@ -89,13 +81,14 @@ Automaton::Automaton (
 	compute_SCC();
 }
 
+// Verifies that each state is not already owned by another automaton
+// Assigns ownership to each state
 void Automaton::appropriateStates() {
   for (auto *state : *states) {
     assert(state->automaton == nullptr);
     state->automaton = this;
   }
 }
-
 
 void Automaton::build(std::string newname, Parser* parser, MapStd<std::string, Symbol*> sync_register){
 	this->name = newname;
@@ -405,7 +398,7 @@ Automaton* Automaton::copy_trim_complete(const Automaton* A, value_function_t f)
 
 // -------------------------------- SCCs -------------------------------- //
 
-
+// Build DAGs (SCC_Dag object) 
 void compute_SCC_dag (State* state, int* spot, int* low, bool* stackMem, SCC_Dag** SCCs) {
 	if (stackMem[state->getId()] == true) return;
 	stackMem[state->getId()] = true;
@@ -461,14 +454,15 @@ void compute_SCC_tag (State* state, int* tag, int* time, int* spot, int* low, Se
 }
 
 
+// Compute Strongly Connected Components using Tarjan's algorithm
 void Automaton::compute_SCC (void) {
 	unsigned int size = this->states->size();
-	int* spot = new int[size];
-	int* low = new int[size];
+	int* spot = new int[size];	// Array to keep discovery time for each state
+	int* low = new int[size];	// Array to keep lowest reachable discovery time for each state
 	bool* stackMem = new bool[size];
 	int time = 0;
 	int tag = 0;
-	SetList<State*> stack;
+	SetList<State*> stack;	// DFS stack
 
 	for (unsigned int state_id = 0; state_id < size; ++state_id) {
 		spot[state_id] = -1;
@@ -488,13 +482,6 @@ void Automaton::compute_SCC (void) {
 	delete [] low;
 	delete [] stackMem;
 }
-
-
-
-
-
-
-
 
 // -------------------------------- Getters -------------------------------- //
 

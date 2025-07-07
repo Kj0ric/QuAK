@@ -15,14 +15,13 @@ public:
 	Word ();
 	Word (Symbol* symbol);
 	Word (Word* word, Symbol* symbol);
-	Word(const Word& other);
+	Word(const Word& other);	// Copy constructor
 	size_t getLength ();
 	Symbol* at (unsigned int i);
 	std::string toString();
 	void push_back(Symbol* symbol);
 	void pop_back();
 	Word& operator=(const Word& other);
-
 };
 
 #endif /* WORD_H_ */

@@ -19,13 +19,14 @@ Monitor::Monitor(const Automaton* A, value_function_t f)
 }
 
 MonitorImpl *Monitor::createMonitor(const Automaton *A, value_function_t f) {
+  // Harun
   switch(f) {
     case Avg: return new MonitorAvg(A);
+  default:
+    assert(false && "Unhandled monitor type");
+    abort();
+    return nullptr;
   }
-
-  assert(false && "Unhandled monitor type");
-  abort();
-  return nullptr;
 }
 
 void Monitor::initializeSymbols() {

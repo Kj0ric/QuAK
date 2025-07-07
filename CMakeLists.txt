@@ -1,4 +1,6 @@
 cmake_minimum_required(VERSION 3.9)
+set(CMAKE_C_COMPILER "/opt/homebrew/bin/gcc-15")
+set(CMAKE_CXX_COMPILER "/opt/homebrew/bin/g++-15")
 project(QuAK)
 
 OPTION(ENABLE_SCC_SEARCH_OPT "Enable SCC search optimization in FORKLIFT" ON)

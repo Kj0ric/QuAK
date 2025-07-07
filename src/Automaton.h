@@ -12,8 +12,7 @@
 #include "Word.h"
 
 
-class SCC_Dag;
-
+class SCC_Dag; // Implementation in Automaton.cpp
 
 typedef enum {
 	Inf,
@@ -34,7 +33,7 @@ typedef enum {
 	Times
 } aggregator_t;
 
-struct UltimatelyPeriodicWord {
+struct UltimatelyPeriodicWord { // same as "lasso" word
     Word* prefix{nullptr};
     Word* cycle{nullptr};
 	
@@ -55,11 +54,11 @@ protected:
 	MapArray<Symbol*>* alphabet;
 	MapArray<State*>* states;
 	MapArray<Weight*>* weights;
-	weight_t min_domain;
-	weight_t max_domain;
-	State* initial;
-	unsigned int nb_SCCs;
-	SCC_Dag** SCCs;
+	weight_t min_domain;	// Min weight of the transitions of A
+	weight_t max_domain;	// Max weight of the transitions of A
+	State* initial;			// Initial state
+	unsigned int nb_SCCs;	// ?
+	SCC_Dag** SCCs;			// ?
 
 private:
 	void build(std::string newname, Parser* parser, MapStd<std::string, Symbol*> sync_register);

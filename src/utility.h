@@ -8,19 +8,27 @@
 
 namespace {
 
-#ifdef __linux__
-static inline void _fail(const char *file, int line, const char *func, const char* text) __attribute__((noreturn));
+//#ifdef __linux__
+//static inline void _fail(const char *file, int line, const char *func, const char* text) __attribute__((noreturn));
+//#else
+//__declspec(noreturn)	// Microsoft specific compiler extension 
+//#endif
+
+#ifdef _MSC_VER	
+	#define NORETURN __declspec(noreturn)
 #else
-__declspec(noreturn)
+	#define NORETURN [[noreturn]]	// Harun: For MacOS compatibility
 #endif
-static inline void _fail(const char *file, int line, const char *func, const char* text) {
-	fprintf(stderr, "Failure: %s\n", text);
-	fprintf(stderr, "File: %s\n", file);
-	fprintf(stderr, "Line: %d\n", line);
-	fprintf(stderr, "Function: %s\n", func );
-	fflush(stderr);
-	exit(EXIT_FAILURE);
-}
+
+	NORETURN	
+	static inline void _fail(const char *file, int line, const char *func, const char* text) {
+		fprintf(stderr, "Failure: %s\n", text);
+		fprintf(stderr, "File: %s\n", file);
+		fprintf(stderr, "Line: %d\n", line);
+		fprintf(stderr, "Function: %s\n", func );
+		fflush(stderr);
+		exit(EXIT_FAILURE);
+	}
 
 } // anon. namespace
 

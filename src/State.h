@@ -13,7 +13,7 @@ class State{
 private:
 	const unsigned int my_id;
 	std::string name;
-  Automaton *automaton{nullptr};
+  	Automaton *automaton{nullptr};	// States have an owner automaton 
 	int my_scc;
 	weight_t min_weight;
 	weight_t max_weight;

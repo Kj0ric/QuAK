@@ -12,12 +12,13 @@ class Parser {
 public:
 	std::string initial = "";
 	bool domain_defined = false;
-	weight_t min_domain = 0;
-	weight_t max_domain = 0;
+	weight_t min_domain = 0;	// Min weight of the transitions of A
+	weight_t max_domain = 0;	// Max weight of the transitions of A
 	SetStd<std::string> states;
 	SetStd<std::string> alphabet;
 	SetSorted<weight_t> weights;
 	SetStd<std::pair<std::pair<std::string, weight_t>,std::pair<std::string, std::string>>> edges;
+	
 	Parser(weight_t min_domain, weight_t max_domain);
 	Parser (std::string filename);
 	Parser (std::string filename, MapStd<std::string, Symbol*>* symbol_register);

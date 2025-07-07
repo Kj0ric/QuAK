@@ -227,7 +227,6 @@ bool inclusion (const Automaton* A, const Automaton* B, UltimatelyPeriodicWord**
 }
 
 
-
 void debug_test2() {
 	// Automaton* toto;
 	// Automaton* titi;
@@ -474,8 +473,6 @@ void debug_test2() {
 	//  printf("--------------------------------------------\n");
 	//  printf("--------------------------------------------\n");
 }
-
-
 
 
 void debug_test() {

@@ -1,0 +1,1 @@
+/opt/homebrew/bin/g++-15 -fms-extensions -g -arch arm64 -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX14.4.sdk -Wl,-search_paths_first -Wl,-headerpad_max_install_names "CMakeFiles/test-self-inclusion-rand-limsup-2state.dir/test-self-inclusion-rand.cpp.o" -o test-self-inclusion-rand-limsup-2state  ../src/libquak.a

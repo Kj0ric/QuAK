@@ -1,0 +1,4 @@
+30 -- 100 # this is a comment
+20 -- 100 # this is a comment
+10 -- 200 # this is a comment
+a : 20, s1 -> s2
