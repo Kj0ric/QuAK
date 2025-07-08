@@ -2,10 +2,27 @@
 .project
 .cproject
 .settings
-.vscode
-*.o
-*.exe
 *.out
 
-# Addition
-/build/
+# Build directories
+/build
+/cmake-build-*/
+CMakeFiles/
+src/CMakeFiles/
+
+CMakeCache.txt
+cmake_install.cmake
+
+# Compiled binaries and libraries
+*.o
+*.a
+*.so
+*.dylib
+*.exe
+
+# MacOS
+.DS_Store
+
+# IDE files
+.vscode/
+.idea/

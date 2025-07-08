@@ -9,11 +9,12 @@
 #include "Automaton.h"
 #include "Monitor.h"
 
-#include "test_readDomain.cpp"
+#include "functionality_tests.cpp"
 
-int main() {
+int main(int argc, char* argv[]) {
     //debug_test3();
-    testReadDomain();
+    std::string filename = argv[1];
 
+    testSilent(filename);
     return 0;
 }
