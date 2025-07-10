@@ -16,6 +16,7 @@ public:
 	Word (Symbol* symbol);
 	Word (Word* word, Symbol* symbol);
 	Word(const Word& other);	// Copy constructor
+
 	size_t getLength ();
 	Symbol* at (unsigned int i);
 	std::string toString();

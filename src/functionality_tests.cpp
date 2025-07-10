@@ -20,3 +20,9 @@ void testSilent(std::string filename) {
     Parser* parser = new Parser(filename);
     std::cout << "Parsed initial state: " << parser->initial << std::endl;
 }
+
+
+// Simple non-nested automata test to test readNonNestedFile() in Parser.cpp
+void testNonNestedRead() {
+
+}

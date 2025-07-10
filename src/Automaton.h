@@ -23,6 +23,7 @@ typedef enum {
 	LimSupAvg,
     // only for monitoring
     Avg,
+	Sum,	// Harun
 } value_function_t;
 
 typedef enum {
@@ -47,12 +48,11 @@ struct UltimatelyPeriodicWord { // same as "lasso" word
 	}
 };
 
-
 class Automaton {
 protected:
 	std::string name;
 	MapArray<Symbol*>* alphabet;
-	MapArray<State*>* stAnates;
+	MapArray<State*>* states;
 	MapArray<Weight*>* weights;
 	weight_t min_domain;	// Min weight of the transitions of A
 	weight_t max_domain;	// Max weight of the transitions of A
@@ -124,7 +124,7 @@ protected:
 
 public:
 	~Automaton ();
-	Automaton(std::string filename, Automaton* other = nullptr);
+	Automaton(std::string filename, Automaton* other = nullptr);	// Creates an automaton out of a file
 	Automaton(std::string filename, value_function_t f, Automaton* other = nullptr);
 	static Automaton* from_file_sync_alphabet(std::string filename, Automaton* other = nullptr);
 	static Automaton* safetyClosure(Automaton* A, value_function_t value_function);

@@ -33,7 +33,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_subdirectory(src)
 
-add_executable(quakbin src/quak-main.cpp)
+add_executable(quakbin src/quak-main.cpp
+		src/NestedAutomaton.h)
 target_include_directories(quakbin PRIVATE ${SRCDIR})
 target_link_libraries(quakbin PUBLIC quak quak-private)
 

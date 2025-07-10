@@ -1,17 +1,116 @@
+#define PARSER_VERBOSE
+
 #include <sstream>
 #include <cstring> // errno
 #include "utility.h"
 #include "Parser.h"
 
+
 std::string name = "";
 int line_counter = 0;
 
+/* PARSER CLASS HELPERS */
+unsigned int Parser::getChildCount() const {
+	return child_parsers.size();
+}
+
+Parser* Parser::getChildParser(unsigned int index) const {
+	if (index >= child_parsers.size()) return nullptr;
+	return child_parsers[index];
+}
+
+void Parser::switchToParentSection() {
+	current_parser = this;		// Parent data goes in the main parser
+	this->in_parent_section = true;
+}
+
+void Parser::switchToChildSection(unsigned int index) {
+
+
+}
+
+/* FREE FUNCTIONS for parsing */
 void abort(std::string message) {
 	std::cerr << "@Error: parsing " << message.c_str() << std::endl;
 	std::cerr << "File: " << name.c_str() << std::endl;
 	std::cerr << "Line: " << line_counter << std::endl;
 	fflush(stdout);fflush(stderr);
 	exit(EXIT_FAILURE);
+}
+
+// Detect if the file being read is for nested automaton
+bool detectNestedAutomaton(std::ifstream& file) {
+	std::string line;
+	while (std::getline(file, line)) {
+		// Strip comments
+		size_t comment_pos = line.find("#");
+		if (comment_pos != std::string::npos) {
+			line = line.substr(0, comment_pos);
+		}
+
+		if (line.empty()) continue;
+
+		if (line.find("@PARENT") != std::string::npos) {
+			return true;
+		}
+		// If encounter a transition before section header
+		if (line.find("->") != std::string::npos || line.find("--") != std::string::npos) {
+			return false;
+		}
+	}
+	return false;
+}
+
+std::string readLine (std::string line, Parser* parser) {
+	if (line.empty()) return "";
+
+	size_t index = line.find("--");
+	// If there is no "--" then it's a edge representation
+	if (index == std::string::npos){
+		return readEdge(line, parser);
+	}
+	// Else it's a domain range representation
+	else {
+		// Remove '--'
+		line[index] = ' '; line[index+1] = ' ';
+		readDomain(line, parser);
+		return "";
+	}
+}
+
+void readNonNestedFile(std::ifstream& file, Parser* parser) {
+	if (file.is_open() == false) {
+		std::cerr << "@Error: opening file " << name << std::endl;
+		std::cerr << "Message: " << strerror(errno) << std::endl;
+		fflush(stdout);fflush(stderr);
+		exit(EXIT_FAILURE);
+	}
+	std::string line;
+	
+	// Read the first transition (edge line) to get the initial state
+	while (parser->initial == "" && getline(file, line)) {
+		line_counter++;
+		parser->initial = readLine(line, parser);
+	}
+
+	// Read the rest and update the Parser object
+	while (getline(file, line)) { 
+		line_counter++;
+		readLine(line, parser);
+	}
+
+	if (parser->initial == "") abort("automaton without transitions");	// Means no edge line parsed
+	
+	// Compare domain declarations and actual weights used in transitions to decide on domain ranges
+	if (parser->domain_defined == true) {
+		parser->min_domain = std::min(parser->min_domain, parser->weights.getMin());
+		parser->max_domain = std::max(parser->max_domain, parser->weights.getMax());
+	}
+	else {
+		parser->min_domain = parser->weights.getMin();
+		parser->max_domain = parser->weights.getMax();
+	}
+	file.close();
 }
 
 // Parses a single line from the automata representation
@@ -144,23 +243,6 @@ void readDomain (std::string line, Parser* parser) {
 	}
 }
 
-std::string readLine (std::string line, Parser* parser) {
-	if (line.empty()) return "";
-
-	size_t index = line.find("--");
-	// If there is no "--" then it's a edge representation
-	if (index == std::string::npos){
-		return readEdge(line, parser);
-	}
-	// Else it's a domain range representation
-	else {
-		// Remove '--'
-		line[index] = ' '; line[index+1] = ' ';
-		readDomain(line, parser);
-		return "";
-	}
-}
-
 void readFile (std::string filename, Parser* parser) {
 	name = filename;
 	line_counter = 0;
@@ -173,35 +255,58 @@ void readFile (std::string filename, Parser* parser) {
 		exit(EXIT_FAILURE);
 	}
 
-	std::string line;
+	// Pre-scan file to detect if it's a nested automaton
+	bool is_nested = detectNestedAutomaton(file);
 	
-	// Read the first transition (edge line) to get the initial state
-	while (parser->initial == "" && getline(file, line)) {
-		line_counter++;
-		parser->initial = readLine(line, parser);
-	}
+	// Reset file to beginning
+	file.clear();
+	file.seekg(0, std::ios::beg);
+	line_counter = 0;
 
-	// Read the rest and update the Parser object
-	while (getline(file, line)) { 
-		line_counter++;
-		readLine(line, parser);
+	if (is_nested) {
+		//readNestedFile(file, parser);
+	} else {
+		parser_verbose("The file is for a non-nested automaton.\n");
+		readNonNestedFile(file, parser);
 	}
-
-	if (parser->initial == "") abort("automaton without transitions");	// Means no edge line parsed
 	
-	// Compare domain declarations and actual weights used in transitions to decide on domain ranges
-	if (parser->domain_defined == true) {
-		parser->min_domain = std::min(parser->min_domain, parser->weights.getMin());
-		parser->max_domain = std::max(parser->max_domain, parser->weights.getMax());
-	}
-	else {
-		parser->min_domain = parser->weights.getMin();
-		parser->max_domain = parser->weights.getMax();
-	}
 	file.close();
 }
 
+void readNestedFile(std::ifstream& file, Parser* parser) {
+	std::string line;
 
+	while(std::getline(file, line)) {
+		line_counter++;
+
+		if (line.empty()) continue;
+		
+		// Delete comments
+		size_t index = line.find('#');
+		if (index != std::string::npos) {
+			auto i = index;
+			while (i < line.length()) {
+				line[i++] = ' ';
+			}
+		}
+
+		// Trim whitespace
+        line.erase(0, line.find_first_not_of(" \t"));
+        line.erase(line.find_last_not_of(" \t") + 1);
+
+		// if (line.empty()) continue;
+
+		// TODO: Detect "@PARENT" and then store ParentAutomaton information somehow
+		// Check for section headers
+		if (line.find("@PARENT") != std::string::npos) {
+			//switchToParentSection
+		}
+		// TODO: Detect "@CHILD N" and then store ChildAutomaton information somehow
+
+	}
+}
+
+/* PARSER CONSTRUCTORS */
 // If weight domain range is predefined
 Parser::Parser(weight_t min_domain, weight_t max_domain) :
 		domain_defined(true),
@@ -227,4 +332,3 @@ Parser::Parser(std::string path, MapStd<std::string, Symbol*>* symbol_register) 
 Parser::~Parser() {
 	delete_verbose("@Detail: 4 SetStd will be deleted (parser)\n");
 }
-

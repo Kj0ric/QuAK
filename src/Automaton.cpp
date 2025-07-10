@@ -12,6 +12,7 @@
 #include "utility.h"
 #include "FORKLIFT/inclusion.h"
 
+// Represent Strongly Connected Compononets of the automaton as DAGs
 class SCC_Dag {
 public:
 	State* origin;
@@ -29,7 +30,6 @@ public:
 		return s;
 	};
 };
-
 
 Automaton::~Automaton () {
 	for (unsigned int state_id = 0; state_id < states->size(); ++state_id) {
@@ -57,8 +57,6 @@ Automaton::~Automaton () {
 	delete[] this->SCCs;
 }
 // -------------------------------- Constructors -------------------------------- //
-
-
 Automaton::Automaton (
 		std::string name,
 		MapArray<Symbol*>* alphabet,
@@ -77,7 +75,7 @@ Automaton::Automaton (
 		initial(initial)
 {
   // assert(isComplete() && "The automaton is not complete.");
-  appropriateStates();
+	appropriateStates();
 	compute_SCC();
 }
 
@@ -90,6 +88,7 @@ void Automaton::appropriateStates() {
   }
 }
 
+// Build an automaton instance using data from a Parser object
 void Automaton::build(std::string newname, Parser* parser, MapStd<std::string, Symbol*> sync_register){
 	this->name = newname;
 
@@ -101,6 +100,7 @@ void Automaton::build(std::string newname, Parser* parser, MapStd<std::string, S
 	MapStd<std::string, State*> state_register;
 	MapStd<std::string, Symbol*> symbol_register;
 
+	// Set domain bounds from parser
 	this->min_domain = parser->min_domain;
 	this->max_domain = parser->max_domain;
 
@@ -108,13 +108,14 @@ void Automaton::build(std::string newname, Parser* parser, MapStd<std::string, S
 	this->alphabet = new MapArray<Symbol*>(parser->alphabet.size());
 	this->states = new MapArray<State*>(parser->states.size());
 
+	// Create Weight objects from parser's weight values
 	for (weight_t value : parser->weights) {
 		Weight* weight = new Weight(value);
 		this->weights->insert(weight->getId(), weight);
 		weight_register.insert(weight->getValue(), weight);
 	}
 
-
+	// Create State objects from parser's state names
 	for (const std::string &statename : parser->states) {
 		State* state = new State(statename, this->alphabet->size(), this->min_domain, this->max_domain);
 		this->states->insert(state->getId(), state);
@@ -122,6 +123,7 @@ void Automaton::build(std::string newname, Parser* parser, MapStd<std::string, S
 	}
 	this->initial = state_register.at(parser->initial);
 
+	// Creates Symbol objects from parser's alphabet
 	for (const std::string &symbolname : parser->alphabet) {
 		Symbol * symbol;
 		if (sync_register.contains(symbolname))
@@ -132,6 +134,7 @@ void Automaton::build(std::string newname, Parser* parser, MapStd<std::string, S
 		symbol_register.insert(symbol->getName(), symbol);
 	}
 
+	// Creates Edge objects from parser's edge tuples
 	for (const auto &tuple : parser->edges) {
 		Symbol* symbol = symbol_register.at(tuple.first.first);
 		Weight* weight = weight_register.at(tuple.first.second);
@@ -143,9 +146,9 @@ void Automaton::build(std::string newname, Parser* parser, MapStd<std::string, S
 	}
 
   	appropriateStates();
-
 	compute_SCC();
 
+	// Recursively trim the automaton:
 	// if there are unreachable states, construct a new automaton ignoring those states
 	unsigned int reachable = 0;
 	for (unsigned int state_id = 0; state_id < this->states->size(); ++state_id) {
@@ -207,12 +210,11 @@ Parser Automaton::parse_trim() {
 }
 
 
-
-
 Automaton::Automaton(std::string newname, Parser* parser, MapStd<std::string, Symbol*> sync_register) {
 	build(newname, parser, sync_register);
 }
 
+// Creates an automaton (out of "filename") that shares the alphabet of "other"
 Automaton::Automaton(std::string filename, Automaton* other) {
 	MapStd<std::string, Symbol*> sync_register;
 	if (other != nullptr) {
@@ -455,6 +457,7 @@ void compute_SCC_tag (State* state, int* tag, int* time, int* spot, int* low, Se
 
 
 // Compute Strongly Connected Components using Tarjan's algorithm
+// Update this->nb_SCCs and this->SCCs
 void Automaton::compute_SCC (void) {
 	unsigned int size = this->states->size();
 	int* spot = new int[size];	// Array to keep discovery time for each state
@@ -484,7 +487,6 @@ void Automaton::compute_SCC (void) {
 }
 
 // -------------------------------- Getters -------------------------------- //
-
 weight_t Automaton::getTopValue (value_function_t f, UltimatelyPeriodicWord** witness) const {
 	weight_t *top_values = new weight_t[this->nb_SCCs];
 	weight_t top = compute_Top(f, top_values, witness);
@@ -512,8 +514,6 @@ State* Automaton::getInitial () const { return initial; }
 const std::string &Automaton::getName() const { return this->name; }
 unsigned int Automaton::getAlphabetSize() const { return alphabet->size(); }
 
-
-
 void Automaton::invert_weights() {
 	for (unsigned int weight_id = 0; weight_id < this->weights->size(); ++weight_id) {
 		weight_t value = this->weights->at(weight_id)->getValue();
@@ -533,16 +533,7 @@ void Automaton::invert_weights() {
 	this->setMinDomain(-temp);
 }
 
-
-
-
-
-
-
 // -------------------------------- Tranformations -------------------------------- //
-
-
-
 Automaton* Automaton::constantAutomaton (const Automaton* A, weight_t x) {
 	State::RESET();
 	Symbol::RESET();
@@ -572,8 +563,6 @@ Automaton* Automaton::constantAutomaton (const Automaton* A, weight_t x) {
 
 	return new Automaton(newname, newalphabet, newstates, newweights, x, x, newinitial);
 }
-
-
 
 Automaton* Automaton::booleanize(const Automaton* A, weight_t x) {
 	State::RESET();
@@ -614,8 +603,6 @@ Automaton* Automaton::booleanize(const Automaton* A, weight_t x) {
 
 	return new Automaton(newname, newalphabet, newstates, newweights, 0, 1, newinitial);
 }
-
-
 
 Automaton* Automaton::safetyClosure(Automaton* A, value_function_t f) {
 	if (f == Sup) {

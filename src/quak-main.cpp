@@ -13,8 +13,10 @@
 
 int main(int argc, char* argv[]) {
     //debug_test3();
-    std::string filename = argv[1];
+    std::string filepath = argv[1];
 
-    testSilent(filename);
+    Automaton* A = new Automaton(filepath);
+    A->print();
+    
     return 0;
 }
