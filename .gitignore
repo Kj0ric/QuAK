@@ -9,16 +9,24 @@
 /cmake-build-*/
 CMakeFiles/
 /src/CMakeFiles/
-
 CMakeCache.txt
 cmake_install.cmake
+CTestTestfile.cmake
+Makefile
 
 # Compiled binaries and libraries
 *.o
 *.a
 *.so
+*.out
 *.dylib
 *.exe
+quak-main
+
+# Ignore executables in tests/ (but not source)
+tests/test-*
+!tests/*.cpp
+!tests/*.h
 
 # MacOS
 .DS_Store
