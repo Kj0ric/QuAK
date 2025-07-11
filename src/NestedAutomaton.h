@@ -12,17 +12,18 @@
 #include "Word.h"
 #include "Automaton.h"
 
-// Represent Finite-word Quantitative Automata
+// A child automaton is a Finite-word Quantitative Automata
 class ChildAutomaton {
 private:
 	// final states
 	std::string name_;
+	State* initial_;	// Multiple initial states in non-deterministic automata ??
 	MapArray<Symbol*>* alphabet_;
 	MapArray<State*>* states_;
 	MapArray<Weight*>* weights_;
-	State* initial_;	// Multiple initial states in non-deterministic automata ??
+
 	MapArray<State*>* final_states_;
-	value_function_t finval_function_;	// Fixed value function for the automaton
+	//value_function_t finval_function_;	// Fixed value function for the automaton
 	// TODO: SCC-related fields
 	// TODO: Decide if domain ranges are needed
 
@@ -30,8 +31,6 @@ private:
 	void build(std::string newname, Parser* parser, MapStd<std::string, Symbol*> sync_register);
 
 public:
-
-
 	// Constructors
 	ChildAutomaton(std::string newname, Parser* parser, MapStd<std::string, Symbol*> sync_register);
 	ChildAutomaton(
@@ -56,14 +55,14 @@ public:
 class NestedAutomaton {
 private:
 	std::string name_;
+	State* initial_;
+	Automaton* parent_automaton_;					// Parent Automaton
 	MapArray<Symbol*>* alphabet_;
 	MapArray<State*>* states_;
-	Automaton* parent_automaton_;					// Parent Automaton
-	MapArray<ChildAutomaton*>* child_automata_list;	// list of Child Automata
-	State* initial;
-	
-public:
+	MapArray<ChildAutomaton*>* child_automata_list_;	// list of Child Automata, instead of weights
+	// TODO: Decide if domain ranges are needed
 
+public:
 	// Decision problems
 	bool isNonEmpty(value_function_t f, weight_t x, UltimatelyPeriodicWord** witness = nullptr);
 	bool isUniversal(value_function_t f, weight_t x, UltimatelyPeriodicWord** witness = nullptr);

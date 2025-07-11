@@ -24,7 +24,6 @@ public:
 };
 
 
-
 template <typename T_element> class SetStd {
 private:
 	std::set<T_element> all;
@@ -35,14 +34,14 @@ public:
 	bool contains (T_element element) { return all.count(element) > 0; };
 
 	std::string toString (std::string (*f) (T_element element)) const {
-    std::string s = "";
-    for (T_element e : this->all){
-    	s.append("\n\t\t");
-    	s.append(f(e));
-    }
+		std::string s = "";
+		for (T_element e : this->all){
+			s.append("\n\t\t");
+			s.append(f(e));
+		}
     
-    return s;
-  }
+    	return s;
+	}	
 
 	unsigned int size() const { return this->all.size(); }
 	void clear () { all.clear(); };
@@ -50,7 +49,6 @@ public:
 	auto begin() -> auto { return all.begin();};
 	auto end() -> auto { return all.end();};
 };
-
 
 
 template <typename T_element> class SetList {

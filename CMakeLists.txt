@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.9)
 set(CMAKE_C_COMPILER "/opt/homebrew/bin/gcc-15")
 set(CMAKE_CXX_COMPILER "/opt/homebrew/bin/g++-15")
 project(QuAK)
+set(CMAKE_BUILD_TYPE Debug)
 
 OPTION(ENABLE_SCC_SEARCH_OPT "Enable SCC search optimization in FORKLIFT" ON)
 OPTION(ENABLE_CONTEXT_REDUNDANCY_OPT "Enable context redundancy optimization in FORKLIFT" OFF)

@@ -23,10 +23,16 @@ Makefile
 *.exe
 quak-main
 
-# Ignore executables in tests/ (but not source)
-tests/test-*
+# Ignore executables in tests/ and /experiments (but not source)
+/tests/
+/experiments/
+/src/tests/
 !tests/*.cpp
 !tests/*.h
+!tests/*.py
+!experiments/*.cpp
+!experiments/*.h
+!experiments/*.py
 
 # MacOS
 .DS_Store

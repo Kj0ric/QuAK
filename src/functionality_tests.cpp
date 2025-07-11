@@ -1,6 +1,7 @@
 #include <iostream>
 #include <string>
 #include "Parser.h"
+#include "Automaton.h"
 
 void testReadDomain() {
     std::string filename = "../samples/tests/testH1.txt";
@@ -23,6 +24,12 @@ void testSilent(std::string filename) {
 
 
 // Simple non-nested automata test to test readNonNestedFile() in Parser.cpp
-void testNonNestedRead() {
+void testNonNestedRead(const std::string filepath) {
+    Automaton* A = new Automaton(filepath);
+    A->print();
+}
 
+void testNestedRead(std::string filepath) {
+    Parser* parser = new Parser(filepath);
+    parser->print(std::cout);
 }

@@ -1,5 +1,0 @@
-/Users/h4kcrun/Repos/QuAK/src/CMakeFiles/quak.dir
-/Users/h4kcrun/Repos/QuAK/src/CMakeFiles/quak-private.dir
-/Users/h4kcrun/Repos/QuAK/src/CMakeFiles/quakso.dir
-/Users/h4kcrun/Repos/QuAK/src/CMakeFiles/edit_cache.dir
-/Users/h4kcrun/Repos/QuAK/src/CMakeFiles/rebuild_cache.dir

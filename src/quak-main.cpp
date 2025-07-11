@@ -12,11 +12,7 @@
 #include "functionality_tests.cpp"
 
 int main(int argc, char* argv[]) {
-    //debug_test3();
     std::string filepath = argv[1];
-
-    Automaton* A = new Automaton(filepath);
-    A->print();
-    
+    testNestedRead(filepath);
     return 0;
 }

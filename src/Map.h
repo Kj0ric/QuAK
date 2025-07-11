@@ -55,49 +55,50 @@ public:
 
 
 
+// Fixed sized container that functions as a lookup table
+// Hence it allows for O(1) access
 template <typename T_value>
 class MapArray {
 private:
 	T_value* all = nullptr;
 	const unsigned int capacity{0};
-public:
 
+public:
 	MapArray(unsigned int capacity) : capacity(capacity) {
-    if (capacity > 0) {
-    	this->all = new T_value[capacity];
-    	memset(all, 0, capacity * sizeof(T_value));
-    }
-  }
+		if (capacity > 0) {
+			this->all = new T_value[capacity];
+	 		memset(all, 0, capacity * sizeof(T_value));
+		}
+	}
 
 	~MapArray() {
-	  delete[] this->all;
-  }
+		delete[] this->all;
+	}
 
 	void insert(unsigned int key, T_value value) {
-    assert(key < capacity && "OOB");
-    all[key] = value;
-  }
+		assert(key < capacity && "OOB");
+		all[key] = value;
+	}
 
 	unsigned int size () const { return capacity; }
 
 	T_value at (unsigned int key) const {
-    assert(key < capacity && "OOB");
-    return all[key];
-  }
+		assert(key < capacity && "OOB");
+		return all[key];
+	}
 
 	std::string toString(std::string (*f_value) (T_value value)) const {
-    std::string s = "";
-    for (unsigned int i = 0; i < this->capacity; i++){
-    	s.append("\n\t\t");
-    	// s.append(std::to_string(i));
-    	s.append(std::to_string(this->all[i]->getId()));
-    	s.append(" -> ");
-    	s.append(f_value(this->all[i]));
-    }
-    return s;
-  }
-
-    class MapArrayIterator {
+	    std::string s = "";
+	    for (unsigned int i = 0; i < this->capacity; i++){
+    		s.append("\n\t\t");
+    		// s.append(std::to_string(i));
+    		s.append(std::to_string(this->all[i]->getId()));
+    		s.append(" -> ");
+    		s.append(f_value(this->all[i]));
+	    }
+	    return s;
+	}
+	class MapArrayIterator {
         unsigned int pos{0};
         MapArray *array;
 

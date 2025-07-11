@@ -1,4 +1,3 @@
-
 #ifndef AUTOMATON_H_
 #define AUTOMATON_H_
 
@@ -10,7 +9,6 @@
 #include "State.h"
 #include "Symbol.h"
 #include "Word.h"
-
 
 class SCC_Dag; // Implementation in Automaton.cpp
 

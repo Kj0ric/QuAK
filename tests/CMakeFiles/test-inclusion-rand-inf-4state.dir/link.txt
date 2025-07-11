@@ -1,1 +1,0 @@
-/opt/homebrew/bin/g++-15 -fms-extensions -g -arch arm64 -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX14.4.sdk -Wl,-search_paths_first -Wl,-headerpad_max_install_names "CMakeFiles/test-inclusion-rand-inf-4state.dir/test-inclusion-rand.cpp.o" -o test-inclusion-rand-inf-4state  ../src/libquak.a

@@ -13,7 +13,7 @@ public:
   using T = float;
 
 private:
-  static constexpr T EPSILON = WEIGHT_EQ_EPSILON;
+  static constexpr T EPSILON = 10e-5f;
 
   T value{0};
 
