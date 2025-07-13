@@ -1,5 +1,5 @@
 #ifndef NESTED_AUTOMATON_H_
-#define MESTED_AUTOMATON_H_
+#define NESTED_AUTOMATON_H_
 
 #include <string>
 #include <memory>
@@ -13,61 +13,49 @@
 #include "Automaton.h"
 
 // A child automaton is a Finite-word Quantitative Automata
-class ChildAutomaton {
+class ChildAutomaton : public Automaton {
 private:
-	// final states
-	std::string name_;
-	State* initial_;	// Multiple initial states in non-deterministic automata ??
-	MapArray<Symbol*>* alphabet_;
-	MapArray<State*>* states_;
-	MapArray<Weight*>* weights_;
-
-	MapArray<State*>* final_states_;
+	SetStd<State*>* final_states_;
+	
 	//value_function_t finval_function_;	// Fixed value function for the automaton
 	// TODO: SCC-related fields
 	// TODO: Decide if domain ranges are needed
 
 	/* Private methods */
-	void build(std::string newname, Parser* parser, MapStd<std::string, Symbol*> sync_register);
+	//void build(std::string newname, Parser* parser, MapStd<std::string, Symbol*> sync_register);
 
 public:
-	// Constructors
-	ChildAutomaton(std::string newname, Parser* parser, MapStd<std::string, Symbol*> sync_register);
-	ChildAutomaton(
-		std::string name,
-		MapArray<Symbol*>* alphabet,
-		MapArray<State*>* states,
-		MapArray<Weight*>* weights,
-		MapArray<State*>* final_states,
-		State* initial,
-		value_function_t
-	) : name_(name), alphabet_(alphabet), states_(states),
-		initial_(initial), final_states_(final_states) {}
+	~ChildAutomaton();	
+	ChildAutomaton(std::string name, Parser* parser, MapStd<std::string, Symbol*> sync_register);
 
-	void appropriateStates();	// Validate and assign ownership to states
+	// Accessor for final states
+    SetStd<State*>* getFinalStates() const { return final_states_; }
+
 	// TODO: Methods to print the automaton to stdout
+	void print(bool full = false, bool bv_weights = false, bool bv_only = false) const;
+	void print(std::ostream& out, bool full = false, bool bv_weights = false, bool bv_only = false) const;
 
-	bool isDeterministic() const;
-	bool isComplete() const;
-
+	// TODO: Other functions
+	bool isFinal(State* s) const { 
+		return final_states_ && final_states_->contains(s);
+	}
+ 	
 };
 
-class NestedAutomaton {
+class NestedAutomaton : public Automaton {
 private:
-	std::string name_;
-	State* initial_;
-	Automaton* parent_automaton_;					// Parent Automaton
-	MapArray<Symbol*>* alphabet_;
-	MapArray<State*>* states_;
-	MapArray<ChildAutomaton*>* child_automata_list_;	// list of Child Automata, instead of weights
+	MapArray<ChildAutomaton*>* children_;	// list of Child Automata, instead of weights
 	// TODO: Decide if domain ranges are needed
 
 public:
-	// Decision problems
-	bool isNonEmpty(value_function_t f, weight_t x, UltimatelyPeriodicWord** witness = nullptr);
-	bool isUniversal(value_function_t f, weight_t x, UltimatelyPeriodicWord** witness = nullptr);
+	~NestedAutomaton();
+	NestedAutomaton(std::string name, Parser* parser, MapStd<std::string, Symbol*> sync_register);
 
+	// TODO: Methods to print the automaton to stdout
+	void print(bool full = false, bool bv_weights = false, bool bv_only = false) const;
+	void print(std::ostream& out, bool full = false, bool bv_weights = false, bool bv_only = false) const;
 
+	// TODO: Decision problems
 };
 
 

@@ -16,7 +16,9 @@ public:
 	weight_t max_domain = 0;	// Max weight of the transitions of A
 	// Nested automata support
 	std::vector<Parser*> child_parsers;	// Not MapArray because we need dynamic growth as parsing goes on
-	unsigned int max_child_index = 0;	
+	//bool is_dummy_child = false;
+
+	unsigned int max_child_index = 0;	// Might not be necessary
 	SetStd<std::string> final_states;
 	
 	SetStd<std::string> states;
@@ -45,7 +47,6 @@ private:
 	// Nested automata support
 	Parser* current_parser = nullptr;
 	bool in_parent_section = true;
-
 };
 
 // Free function prototypes

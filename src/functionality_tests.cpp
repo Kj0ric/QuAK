@@ -2,6 +2,7 @@
 #include <string>
 #include "Parser.h"
 #include "Automaton.h"
+#include "NestedAutomaton.h"
 
 void testReadDomain() {
     std::string filename = "../samples/tests/testH1.txt";
@@ -20,6 +21,8 @@ void testReadDomain() {
 void testSilent(std::string filename) {
     Parser* parser = new Parser(filename);
     std::cout << "Parsed initial state: " << parser->initial << std::endl;
+
+    delete parser;
 }
 
 
@@ -27,9 +30,25 @@ void testSilent(std::string filename) {
 void testNonNestedRead(const std::string filepath) {
     Automaton* A = new Automaton(filepath);
     A->print();
+
+    delete A;
 }
 
 void testNestedRead(std::string filepath) {
     Parser* parser = new Parser(filepath);
     parser->print(std::cout);
+
+    delete parser;
+}
+
+
+void testNestedConstruction(const std::string& filepath) {
+    Parser* parser = new Parser(filepath);
+    parser->print(std::cout);
+    NestedAutomaton* nested = new NestedAutomaton("nested1", parser, MapStd<std::string, Symbol*>());
+    std::cout << "NestedAutomaton constructed from " << filepath << ":\n";
+    nested->print(); 
+
+    delete nested;
+    delete parser;
 }

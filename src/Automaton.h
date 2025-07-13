@@ -58,10 +58,12 @@ protected:
 	unsigned int nb_SCCs;	// ?
 	SCC_Dag** SCCs;			// ?
 
+	Automaton(std::string newname, Parser* parser, MapStd<std::string, Symbol*> sync_register);
+
 private:
 	void build(std::string newname, Parser* parser, MapStd<std::string, Symbol*> sync_register);
 	Parser parse_trim();
-	Automaton(std::string newname, Parser* parser, MapStd<std::string, Symbol*> sync_register);
+	
 	Automaton(
 			std::string name,
 			MapArray<Symbol*>* alphabet,
@@ -161,8 +163,8 @@ public:
     ///  - `bv_weights` print the weights also as bitvectors (unsigned int) type instead of as a floating-point type.
     ///  - `bv_only` print only weights as bitvectors (otherwise they are printed also as a floating-point number).
     ///     Overrides `full` if given.
-	void print(bool full = false, bool bv_weights = false, bool bv_only = false) const;
-	void print(std::ostream& out, bool full = false, bool bv_weights = false, bool bv_only = false) const;
+	virtual void print(bool full = false, bool bv_weights = false, bool bv_only = false) const;
+	virtual void print(std::ostream& out, bool full = false, bool bv_weights = false, bool bv_only = false) const;
 	void write(std::ostream& out) const;
 
 	const std::string &getName() const;

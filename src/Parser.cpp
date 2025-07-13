@@ -1,9 +1,10 @@
-#define PARSER_VERBOSE
+//#define PARSER_VERBOSE
 
 #include <sstream>
 #include <cstring> // errno
 #include "utility.h"
 #include "Parser.h"
+#include "State.h"
 
 std::string name = "";
 int line_counter = 0;
@@ -48,7 +49,6 @@ Parser::Parser(std::string path, MapStd<std::string, Symbol*>* symbol_register) 
 Parser::~Parser() {
 	delete_verbose("@Detail: 4 SetStd will be deleted (parser)\n");
 }
-/* ------------ CONSTRUCTORS & Destructor ----------- */
 
 
 /* ------------ Main parsing functions ----------- */
@@ -171,26 +171,49 @@ void readNestedFile(std::ifstream& file, Parser* parser) {
 			if (child_token != "@CHILD" || iss.fail() || child_index < 0) {
 				abort("Invalid @CHILD section header " + line);
 			}
+
 			// If no syntax errors then proceed
-			//child_indices.insert(child_index);
 			parser->switchToChildSection(child_index);
 
-			// Read next line to parse the final states
+			if (child_token == "@CHILD" && child_index == 0) {
+				// The line is "@CHILD 0". Set the corresponding child parser flag
+				//parser->child_parsers[child_index]->is_dummy_child = true;
+
+				/* BUILD the dummy child automaton */
+				Parser* dummy_parser = parser->getCurrentParser();
+				// Set up a single state
+				std::string dummy_state = "dummy";
+				dummy_parser->states.clear();
+				dummy_parser->states.insert(dummy_state);
+
+				// Set initial and final state
+				dummy_parser->initial = dummy_state;
+				dummy_parser->final_states.clear();
+				dummy_parser->final_states.insert(dummy_state);
+
+				// No transitions
+				dummy_parser->edges.clear();
+
+				// Alpahbet and weights can be empty or inherited
+				dummy_parser->alphabet.clear();
+				dummy_parser->weights.clear();
+
+				continue;
+			}
+
+			// If it's not @CHILD 0 then Read next line to parse the final states
 			readFinalStates(file, parser, line_counter);
-			
 			expect_first_child_edge = true;
 			continue;
 		}
 
 		if (parser->inParent()) {
-			// TODO: Check for indices in parent transitions n >= 0
 			if (expect_first_parent_edge) {
 				// Parse initial state
 				std::string from_state = readEdge(line,parser);
 				parser->getCurrentParser()->initial = from_state;
 				expect_first_parent_edge = false;
 			} else {
-				// TODO: Extract index from edge line
 				readEdge(line, parser);
 			}
 		} else {
@@ -204,13 +227,37 @@ void readNestedFile(std::ifstream& file, Parser* parser) {
 			}
 		}
 	}
+	
+	// Assert the Nested automaton must have a weight and weight values start at 0 or 1
+	if (!parser->weights.size()) {
+		abort("No weights found in parent transitions.");
+	}
+	auto it = parser->weights.begin();
+	int min_weight = it->to_float();
+	if (min_weight != 0 && min_weight != 1) {
+		abort("Weights must start at 0 or 1.");
+	}
+	
+	// Assert weight-children_index correspondence and consecutive weight values
+	int prev = min_weight;
+	++it;
+	for (; it != parser->weights.end(); ++it) {
+		int curr = it->to_float();
+		if (curr != prev + 1) {
+			abort("Weights must be consecutive integers with no gaps");
+		}
+		if (curr >= static_cast<int>(parser->child_parsers.size()) || parser->child_parsers[curr] == nullptr) {
+			abort("Weight value does not correspond to a valid child automaton index: " + std::to_string(curr));
+		}
+		prev = curr; // Update prev
+	}
 
 	// Check if all parent indices are matched with child indices
-	for (unsigned int i = 0; i <= parser->max_child_index; i++ ) {
-		if (parser->child_parsers.size() <= i || parser->child_parsers[i] == nullptr){
-			abort("Missing @CHILD section for index N = " + std::to_string(i));
-		}
-	}
+	//for (unsigned int i = 0; i <= parser->max_child_index; i++ ) {
+	//	if (parser->child_parsers.size() <= i || parser->child_parsers[i] == nullptr){
+	//		abort("Missing @CHILD section for index N = " + std::to_string(i));
+	//	}
+	//}
 }
 
 std::string readLine (std::string line, Parser* parser) {
@@ -388,7 +435,7 @@ void readDomain (std::string line, Parser* parser) {
 		parser->domain_defined = true;
 	}
 }
-/* ------------ Main parsing functions ----------- */
+
 
 
 /* ------------ HELPERS ----------- */
@@ -459,6 +506,13 @@ void Parser::print(std::ostream& os) {
         for (size_t i = 0; i < child_parsers.size(); ++i) {
             if (child_parsers[i]) {
                 os << "Child " << i << ":\n";
+				
+				// Print final states for child automata
+				os << "Final states: ";
+				for (auto fit = child_parsers[i]->final_states.begin(); fit != child_parsers[i]->final_states.end(); ++fit) {
+					os << *fit << " ";
+				}
+				os << std::endl;
                 child_parsers[i]->print(os);
             }
 		}	

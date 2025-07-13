@@ -8,11 +8,13 @@
 #include "FORKLIFT/inclusion.h"
 #include "Automaton.h"
 #include "Monitor.h"
+#include "NestedAutomaton.h"
 
 #include "functionality_tests.cpp"
 
 int main(int argc, char* argv[]) {
     std::string filepath = argv[1];
-    testNestedRead(filepath);
+    testNestedConstruction(filepath);
+
     return 0;
 }

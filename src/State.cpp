@@ -80,7 +80,6 @@ weight_t State::getMinWeightValue() const {
 	return this->min_weight;
 }
 
-
 unsigned int State::getId() const {
 	return this->my_id;
 }

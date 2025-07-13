@@ -1,5 +1,6 @@
 add_library(quak STATIC
 	    Automaton.cpp
+		NestedAutomaton.cpp
 	    Edge.cpp
 	    Map.cpp
 	    Set.cpp

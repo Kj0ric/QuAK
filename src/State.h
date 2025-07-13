@@ -8,19 +8,24 @@
 #include "Edge.h"
 
 class Automaton;
+class ChildAutomaton;
+class NestedAutomaton;
 
 class State{
 private:
 	const unsigned int my_id;
 	std::string name;
   	Automaton *automaton{nullptr};	// States have an owner automaton 
-	int my_scc;						// An ID for the SCC that this state belongs
+	int my_scc;						    // An ID for the SCC that this state belongs
 	weight_t min_weight;
 	weight_t max_weight;
 	MapArray<SetStd<Edge*>*>* successors;
 	MapArray<SetStd<Edge*>*>* predecessors;
 
-  friend class Automaton;
+  // Friendship is not inherited
+	friend class Automaton;	
+  	friend class ChildAutomaton;
+  	friend class NestedAutomaton;
 
 public:
 	static void RESET();

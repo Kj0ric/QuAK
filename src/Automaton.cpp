@@ -57,6 +57,12 @@ Automaton::~Automaton () {
 	delete[] this->SCCs;
 }
 // -------------------------------- Constructors -------------------------------- //
+// To construct from parsed data (file)
+Automaton::Automaton(std::string newname, Parser* parser, MapStd<std::string, Symbol*> sync_register) {
+	build(newname, parser, sync_register);
+}
+
+// To construct from direct data, when all components are already there
 Automaton::Automaton (
 		std::string name,
 		MapArray<Symbol*>* alphabet,
@@ -121,8 +127,11 @@ void Automaton::build(std::string newname, Parser* parser, MapStd<std::string, S
 		this->states->insert(state->getId(), state);
 		state_register.insert(state->getName(), state);
 	}
+	
+	//if (parser->is_dummy_child == false) {
 	this->initial = state_register.at(parser->initial);
-
+	//}
+	
 	// Creates Symbol objects from parser's alphabet
 	for (const std::string &symbolname : parser->alphabet) {
 		Symbol * symbol;
@@ -207,11 +216,6 @@ Parser Automaton::parse_trim() {
     }
     parser.initial = this->getInitial()->getName();
     return parser;
-}
-
-
-Automaton::Automaton(std::string newname, Parser* parser, MapStd<std::string, Symbol*> sync_register) {
-	build(newname, parser, sync_register);
 }
 
 // Creates an automaton (out of "filename") that shares the alphabet of "other"
@@ -419,8 +423,6 @@ void compute_SCC_dag (State* state, int* spot, int* low, bool* stackMem, SCC_Dag
 		}
 	}
 }
-
-
 
 void compute_SCC_tag (State* state, int* tag, int* time, int* spot, int* low, SetList<State*>* stack, bool* stackMem) {
 	spot[state->getId()] = *time;

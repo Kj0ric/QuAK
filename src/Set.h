@@ -16,6 +16,7 @@ private:
 public:
 	void insert(T_element element) { this->all.insert(element); }
 	auto size() const { return this->all.size(); }
+	void clear () { all.clear(); };		// Add this for dummy child automaton parsing
 
 	auto begin() -> auto {return all.begin();};
 	auto end() -> auto {return all.end();};
@@ -31,7 +32,7 @@ private:
 public:
 	void insert(T_element element) { this->all.insert(element); }
 	void erase(T_element element) {  this->all.erase(element); }
-	bool contains (T_element element) { return all.count(element) > 0; };
+	bool contains (T_element element) const { return all.count(element) > 0; };
 
 	std::string toString (std::string (*f) (T_element element)) const {
 		std::string s = "";
