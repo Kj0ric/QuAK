@@ -45,7 +45,7 @@ public:
 
 private:
 	// Nested automata support
-	Parser* current_parser = nullptr;
+	Parser* current_parser = this;
 	bool in_parent_section = true;
 };
 

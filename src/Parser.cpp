@@ -17,7 +17,7 @@ Parser::Parser() {
 	min_domain = 0;
 	max_domain = 0;
 	max_child_index = 0;
-	current_parser = nullptr;
+	current_parser = this;
 	in_parent_section = true;
 	// Sets and vectors are default-initialized
 }
@@ -362,6 +362,20 @@ std::string readEdge (std::string line, Parser* parser) {
 	if (string_to_weight.eof() == false)
         abort("invalid weight: " + weightname);
 	parser_verbose("Parser: Weight = '%s'\n", std::to_string(weight).c_str());
+
+	/* To represent silent transitions (empty weights interpreted as silent)
+	else {
+	    string_to_weight >> weight;
+    }
+	if (string_to_weight.eof() == false) {
+		weight = SILENT;
+		parser_verbose("Parser: WARNING -- invalid weight, interpreting as silent transition");
+	}
+	else {
+		parser_verbose("Parser: Weight = '%s'\n", std::to_string(weight).c_str());
+	}
+	parser->weights.insert(weight);
+	*/
 
 	std::string fromname;
 	buffer >> fromname;

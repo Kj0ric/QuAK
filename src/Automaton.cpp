@@ -606,6 +606,199 @@ Automaton* Automaton::booleanize(const Automaton* A, weight_t x) {
 	return new Automaton(newname, newalphabet, newstates, newweights, 0, 1, newinitial);
 }
 
+/* ---------------------------------- SIL --------------------------------- */
+/*
+// replacement is the silent transition weight value
+Automaton* Automaton::removeSilentTransitionsHelperStandard(const Automaton* A, weight_t replacement) {
+	State::RESET();
+	Symbol::RESET();
+	Weight::RESET();
+
+	std::string newname = "NonSilent(" + A->getName() + ")";
+
+	// We cannot change the weight list of A. Hence we need to copy all unchanged fields to the new automaton.
+	MapArray<Symbol*>* newalphabet = new MapArray<Symbol*>(A->alphabet->size());
+	for (unsigned int symbol_id = 0; symbol_id < A->alphabet->size(); ++symbol_id) {
+		newalphabet->insert(symbol_id, new Symbol(A->alphabet->at(symbol_id)));
+	}
+
+	MapArray<State*>* newstates = new MapArray<State*>(A->states->size());
+	for (unsigned int state_id = 0; state_id < A->states->size(); ++state_id) {
+		newstates->insert(state_id, new State(A->states->at(state_id)));
+	}
+	State* newinitial = newstates->at(A->initial->getId());
+
+	MapArray<Weight*>* newweights = new MapArray<Weight*>(A->weights->size());
+	weight_t newmin_domain = A->max_domain;
+	weight_t newmax_domain = A->min_domain;
+	for (unsigned int weight_id = 0; weight_id < A->weights->size(); ++weight_id) {
+		
+		if (A->weights->at(weight_id)->getValue() == SILENT) {
+			// Replace the weights with float value SILENT with new Weights objects that represent silent
+			Weight* rep = new Weight(replacement);
+			newweights->insert(weight_id, rep);
+		}
+		else{
+			newweights->insert(weight_id, new Weight(weight_id));
+		}
+		// Update new min and max domains
+		if (newmin_domain > newweights->at(weight_id)->getValue()) {
+			newmin_domain = newweights->at(weight_id)->getValue();
+		}
+		if (newmax_domain < newweights->at(weight_id)->getValue()) {
+			newmax_domain = newweights->at(weight_id)->getValue();
+		}
+	}
+
+
+	for (unsigned int state_id = 0; state_id < A->states->size(); ++state_id) {
+		for (Symbol* symbol : *(A->states->at(state_id)->getAlphabet())) {
+			for (Edge* edge : *(A->states->at(state_id)->getSuccessors(symbol->getId()))) {
+				Weight* weight = newweights->at(edge->getWeight()->getId());	// newweights are used => weights used in state information are silent weight objects
+				State* from = newstates->at(edge->getFrom()->getId());
+				State* to = newstates->at(edge->getTo()->getId());
+				Edge* newedge = new Edge(newalphabet->at(symbol->getId()), weight, from, to);
+				newstates->at(state_id)->addSuccessor(newedge);
+				newstates->at(edge->getTo()->getId())->addPredecessor(newedge);
+			}
+		}
+	}
+
+	return new Automaton(newname, newalphabet, newstates, newweights, newmin_domain, newmax_domain, newinitial);
+}
+*/
+
+
+/* Automaton* Automaton::removeSilentTransitionsHelperLimitAverage(const Automaton* A) {
+	//  --------  A_fix : compress every ε* ­ a ­ ε* pattern  --------
+	State::RESET();
+	Symbol::RESET();
+	Weight::RESET();
+
+	// -------- 1. copy alphabet & states ----------------------------
+	MapArray<Symbol*>* newalphabet = new MapArray<Symbol*>(A->alphabet->size());
+	for (unsigned int sid = 0; sid < A->alphabet->size(); ++sid)
+		newalphabet->insert(sid, new Symbol(A->alphabet->at(sid)));
+
+	MapArray<State*>* newstates = new MapArray<State*>(A->states->size());
+	for (unsigned int stid = 0; stid < A->states->size(); ++stid)
+		newstates->insert(stid, new State(A->states->at(stid)));
+	State* newinitial = newstates->at(A->initial->getId());
+
+	// -------- 2. ε-closure -------------------
+	const unsigned int n = A->states->size();
+	std::vector< SetStd<State*> > silentSucc(n);
+
+	for (unsigned int i = 0; i < n; ++i) {
+		State* root = A->states->at(i);
+		silentSucc[i].insert(root);
+
+		std::stack<State*> st;
+		st.push(root);
+		while (!st.empty()) {
+			State* u = st.top(); st.pop();
+			for (Symbol* sym : *(u->getAlphabet())) {
+				for (Edge* e : *(u->getSuccessors(sym->getId()))) {
+					if (e->getWeight()->getValue() != SILENT) continue;
+					State* v = e->getTo();
+					if (!silentSucc[i].contains(v)) {
+						silentSucc[i].insert(v);
+						st.push(v);
+					}
+				}
+			}
+		}
+	}
+
+	// -------- 3. gather best compressed edges ----------------------
+	std::map< std::tuple<unsigned,int,unsigned>, weight_t > best;      // (p,a,r) ↦ min weight NOT MIN BUT MAX
+	SetSorted<weight_t>                weight_vals;
+
+	for (unsigned int pId = 0; pId < n; ++pId) {
+		for (State* s : silentSucc[pId]) {
+			for (Symbol* sym : *(s->getAlphabet())) {
+				for (Edge* e : *(s->getSuccessors(sym->getId()))) {
+					if (e->getWeight()->getValue() == SILENT) continue;
+					weight_t w = e->getWeight()->getValue();
+					State* t = e->getTo();
+					for (State* r : silentSucc[t->getId()]) {
+						auto key = std::make_tuple(pId, sym->getId(), r->getId());
+						auto it  = best.find(key);
+						if (it == best.end() || w > it->second) best[key] = w;
+					}
+				}
+			}
+		}
+	}
+
+	for (const auto &kv : best) weight_vals.insert(kv.second);
+
+	// -------- 4. materialise the new weight objects ----------------
+	MapArray<Weight*>* newweights = new MapArray<Weight*>(weight_vals.size());
+	MapStd<weight_t, Weight*> wreg;
+	for (weight_t v : weight_vals) {
+		Weight* w = new Weight(v);
+		newweights->insert(w->getId(), w);
+		wreg.insert(v, w);
+	}
+
+	// -------- 5. create the compressed transition relation ---------
+	for (const auto &kv : best) {
+		unsigned pId, symId, rId;
+		std::tie(pId, symId, rId) = kv.first;
+		Symbol* sym  = newalphabet->at(symId);
+		State*  from = newstates->at(pId);
+		State*  to   = newstates->at(rId);
+		Weight* w    = wreg.at(kv.second);
+
+		Edge* e = new Edge(sym, w, from, to);
+		from->addSuccessor(e);
+		to->addPredecessor(e);
+	}
+
+	// -------- 6. wrap-up ------------------------------------------
+	std::string newname = "A_fix(" + A->getName() + ")";
+	return new Automaton(
+		newname, newalphabet, newstates, newweights,
+		A->min_domain, A->max_domain, newinitial
+	);
+}
+
+Automaton* Automaton::removeSilentTransitions(const Automaton* A, value_function_t f) {
+	if (f == Inf || f == LimInf) {
+		// return removeSilentTransitionsHelperStandard(A, A->getMaxDomain());
+		const weight_t minus_inf = std::numeric_limits<float>::lowest();
+		weight_t first  = minus_inf;
+		weight_t second = minus_inf;
+
+		for (Weight *w : *A->getWeights()) {
+			const weight_t v = w->getValue();
+			if (v > first) {
+				second = first;
+				first  = v;
+			} else if (v > second && v < first) {
+				second = v;
+			}
+		}
+
+		if (second == minus_inf) {
+			QUAK_FAIL("Automaton has fewer than two distinct weights");
+		}
+
+		return removeSilentTransitionsHelperStandard(A, second);
+	}
+	else if (f == Sup || f == LimSup) {
+		return removeSilentTransitionsHelperStandard(A, A->getMinDomain());
+	}
+	else if (f == LimInfAvg || f == LimSupAvg) {
+		return removeSilentTransitionsHelperLimitAverage(A);
+	}
+	else {
+		QUAK_FAIL("invalid value function");
+	}
+}
+*/
+
 Automaton* Automaton::safetyClosure(Automaton* A, value_function_t f) {
 	if (f == Sup) {
 		std::unique_ptr<Automaton> AA = std::unique_ptr<Automaton>(Automaton::toLimSup(A, f));
@@ -664,7 +857,6 @@ Automaton* Automaton::safetyClosure(Automaton* A, value_function_t f) {
     delete top_values;
 	return new Automaton(newname, newalphabet, newstates, newweights, newmin_domain, newmax_domain, newinitial);
 }
-
 
 
 Automaton* Automaton::livenessComponent_deterministic (const Automaton* A, value_function_t f) {

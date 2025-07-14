@@ -1,6 +1,7 @@
 
 #ifndef WEIGHT_H_
 #define WEIGHT_H_
+#define WEIGHT_EQ_EPSILON 10e-5f
 
 #include <string>
 #include <cmath>
@@ -13,7 +14,8 @@ public:
   using T = float;
 
 private:
-  static constexpr T EPSILON = 10e-5f;
+  // static constexpr T EPSILON = 10e-5f;
+  static constexpr T EPSILON = WEIGHT_EQ_EPSILON;
 
   T value{0};
 

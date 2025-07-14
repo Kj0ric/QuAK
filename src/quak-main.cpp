@@ -14,7 +14,8 @@
 
 int main(int argc, char* argv[]) {
     std::string filepath = argv[1];
-    testNestedConstruction(filepath);
+    
+    testNonNestedRead(filepath);
 
     return 0;
 }

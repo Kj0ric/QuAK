@@ -41,7 +41,6 @@ void testNestedRead(std::string filepath) {
     delete parser;
 }
 
-
 void testNestedConstruction(const std::string& filepath) {
     Parser* parser = new Parser(filepath);
     parser->print(std::cout);
