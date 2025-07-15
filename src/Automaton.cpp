@@ -634,12 +634,12 @@ Automaton* Automaton::removeSilentTransitionsHelperStandard(const Automaton* A, 
 	for (unsigned int weight_id = 0; weight_id < A->weights->size(); ++weight_id) {
 		
 		if (A->weights->at(weight_id)->getValue() == SILENT) {
-			// Replace the weights with float value SILENT with new Weights objects that represent silent
-			Weight* rep = new Weight(replacement);
-			newweights->insert(weight_id, rep);
+    		// Replace the weights with float value SILENT with new Weights objects that represent silent
+    		Weight* rep = new Weight(replacement);
+    		newweights->insert(weight_id, rep);
 		}
 		else{
-			newweights->insert(weight_id, new Weight(weight_id));
+    		newweights->insert(weight_id, new Weight(A->weights->at(weight_id)->getValue())); // If not silent, keep the weight value
 		}
 		// Update new min and max domains
 		if (newmin_domain > newweights->at(weight_id)->getValue()) {

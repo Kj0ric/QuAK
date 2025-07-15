@@ -43,11 +43,21 @@ void testNestedRead(std::string filepath) {
 
 void testNestedConstruction(const std::string& filepath) {
     Parser* parser = new Parser(filepath);
-    parser->print(std::cout);
+    //parser->print(std::cout);
     NestedAutomaton* nested = new NestedAutomaton("nested1", parser, MapStd<std::string, Symbol*>());
     std::cout << "NestedAutomaton constructed from " << filepath << ":\n";
     nested->print(); 
 
     delete nested;
     delete parser;
+}
+
+void testSilentTransformationNonNested(const std::string& filepath) {
+    Automaton* sil_A = new Automaton(filepath);
+    std::cout << "NonNested silent Automaton constructed from " << filepath << ":\n";
+    sil_A->print();
+
+    Automaton* nonSil_A = Automaton::removeSilentTransitions(sil_A, Sup);    // Static member function
+    std::cout << "NonNested nonSilent Automaton transformed" << ":\n";
+    nonSil_A->print();
 }

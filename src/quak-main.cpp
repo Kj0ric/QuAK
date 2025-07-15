@@ -15,7 +15,7 @@
 int main(int argc, char* argv[]) {
     std::string filepath = argv[1];
     
-    testNestedRead(filepath);
+    testSilentTransformationNonNested(filepath);
 
     return 0;
 }
