@@ -228,30 +228,35 @@ void readNestedFile(std::ifstream& file, Parser* parser) {
 		}
 	}
 	
-	// Assert the Nested automaton must have a weight and weight values start at 0 or 1
+	// Assert the Nested automaton must have a weight and weight values start at 0 or 1 (ignoring silent transitions)
 	if (!parser->weights.size()) {
 		abort("No weights found in parent transitions.");
 	}
-	auto it = parser->weights.begin();
-	int min_weight = it->to_float();
+
+	// Collect all non-silent weights into a vector
+	std::vector<weight_t> non_silent_weights;
+	for (auto it = parser->weights.begin(); it != parser->weights.end(); ++it) {
+		if (*it == SILENT) continue;
+		non_silent_weights.push_back(*it);
+	}	// Since parser->weights is already a sorted set, non_silent_weights vector is also sorted
+
+	int min_weight = non_silent_weights.front().to_float();
 	if (min_weight != 0 && min_weight != 1) {
-		abort("Weights must start at 0 or 1.");
+    	abort("Weights must start at 0 or 1.");
 	}
 	
 	// Assert weight-children_index correspondence and consecutive weight values
 	int prev = min_weight;
-	++it;
-	for (; it != parser->weights.end(); ++it) {
-		int curr = it->to_float();
+	for (size_t i = 1; i < non_silent_weights.size(); ++i) {
+    	int curr = non_silent_weights[i].to_float();
 		if (curr != prev + 1) {
 			abort("Weights must be consecutive integers with no gaps");
 		}
 		if (curr >= static_cast<int>(parser->child_parsers.size()) || parser->child_parsers[curr] == nullptr) {
 			abort("Weight value does not correspond to a valid child automaton index: " + std::to_string(curr));
 		}
-		prev = curr; // Update prev
+		prev = curr;
 	}
-
 	// Check if all parent indices are matched with child indices
 	//for (unsigned int i = 0; i <= parser->max_child_index; i++ ) {
 	//	if (parser->child_parsers.size() <= i || parser->child_parsers[i] == nullptr){
@@ -358,24 +363,17 @@ std::string readEdge (std::string line, Parser* parser) {
     } else {
 	    string_to_weight >> weight;
     }
-	parser->getCurrentParser()->weights.insert(weight);
-	if (string_to_weight.eof() == false)
-        abort("invalid weight: " + weightname);
-	parser_verbose("Parser: Weight = '%s'\n", std::to_string(weight).c_str());
-
-	/* To represent silent transitions (empty weights interpreted as silent)
-	else {
-	    string_to_weight >> weight;
-    }
+	
+	// If weight cannot be read as weight_t object, then it is interpreted with a SILENT value
 	if (string_to_weight.eof() == false) {
+		// i.e. means weightname string couldn't be read as a weight_t object
 		weight = SILENT;
 		parser_verbose("Parser: WARNING -- invalid weight, interpreting as silent transition");
 	}
 	else {
 		parser_verbose("Parser: Weight = '%s'\n", std::to_string(weight).c_str());
 	}
-	parser->weights.insert(weight);
-	*/
+	parser->getCurrentParser()->weights.insert(weight);
 
 	std::string fromname;
 	buffer >> fromname;
@@ -496,8 +494,8 @@ Parser* Parser::getCurrentParser() const {
 
 /* ------------ DEBUG ----------- */
 void Parser::print(std::ostream& os) {
-	os << "Initial state: " << initial << std::endl;
-	os << "No final states for the Parent autmaton.";
+	os << "Initial state: " << initial;
+	//os << "No final states for the Parent autmaton.";
 	//for (auto it = final_states.begin(); it != final_states.end(); ++it) {os << *it << " ";}
 
 	os << std::endl << "States: ";
@@ -511,15 +509,15 @@ void Parser::print(std::ostream& os) {
 
 	os << std::endl << "Edges: ";
 	for (auto it = edges.begin(); it != edges.end(); ++it) {
-		os << "  " << it->second.first << " -- " << it->first.first << " : " << it->first.second << " --> " << it->second.second << std::endl;
+		os << "  " << it->second.first << " -- " << it->first.first << " : " << it->first.second << " --> " << it->second.second;
 	}
 
-	//os << std::endl;
+	os << std::endl;
 	if (!child_parsers.empty()) {
-        os << "Child parsers:\n";
+        os << std::endl << "---CHILD PARSERS---:\n";
         for (size_t i = 0; i < child_parsers.size(); ++i) {
             if (child_parsers[i]) {
-                os << "Child " << i << ":\n";
+                os << std::endl << "-Child " << i << "-:\n";
 				
 				// Print final states for child automata
 				os << "Final states: ";

@@ -5,7 +5,7 @@
 #include <iomanip>
 #include <limits>
 #include <algorithm>
-
+#include <stack>
 #include "Automaton.h"
 #include "Parser.h"
 #include "Edge.h"
@@ -607,7 +607,7 @@ Automaton* Automaton::booleanize(const Automaton* A, weight_t x) {
 }
 
 /* ---------------------------------- SIL --------------------------------- */
-/*
+// Copy A, replace all weights with value SILENT by a new Weight object with replacement value
 // replacement is the silent transition weight value
 Automaton* Automaton::removeSilentTransitionsHelperStandard(const Automaton* A, weight_t replacement) {
 	State::RESET();
@@ -650,7 +650,6 @@ Automaton* Automaton::removeSilentTransitionsHelperStandard(const Automaton* A, 
 		}
 	}
 
-
 	for (unsigned int state_id = 0; state_id < A->states->size(); ++state_id) {
 		for (Symbol* symbol : *(A->states->at(state_id)->getAlphabet())) {
 			for (Edge* edge : *(A->states->at(state_id)->getSuccessors(symbol->getId()))) {
@@ -666,10 +665,9 @@ Automaton* Automaton::removeSilentTransitionsHelperStandard(const Automaton* A, 
 
 	return new Automaton(newname, newalphabet, newstates, newweights, newmin_domain, newmax_domain, newinitial);
 }
-*/
 
 
-/* Automaton* Automaton::removeSilentTransitionsHelperLimitAverage(const Automaton* A) {
+Automaton* Automaton::removeSilentTransitionsHelperLimitAverage(const Automaton* A) {
 	//  --------  A_fix : compress every ε* ­ a ­ ε* pattern  --------
 	State::RESET();
 	Symbol::RESET();
@@ -797,7 +795,6 @@ Automaton* Automaton::removeSilentTransitions(const Automaton* A, value_function
 		QUAK_FAIL("invalid value function");
 	}
 }
-*/
 
 Automaton* Automaton::safetyClosure(Automaton* A, value_function_t f) {
 	if (f == Sup) {

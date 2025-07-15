@@ -15,7 +15,7 @@
 int main(int argc, char* argv[]) {
     std::string filepath = argv[1];
     
-    testNonNestedRead(filepath);
+    testNestedRead(filepath);
 
     return 0;
 }

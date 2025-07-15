@@ -95,5 +95,6 @@ public:
 	std::string toString() const;
 };
 
+extern weight_t SILENT;
 
 #endif /* WEIGHT_H_ */

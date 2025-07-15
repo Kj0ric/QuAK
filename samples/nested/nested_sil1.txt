@@ -1,0 +1,16 @@
+@PARENT
+a : SILENT, q0 -> q0
+b : 1, q0 -> q1
+a : 2, q1 -> q1
+
+@CHILD 0
+
+@CHILD 1
+final: q_f
+a : SILENT, q_a -> q_a
+b : 0, q_a -> q_f
+
+@CHILD 2
+final: q_f
+b : 1, q_b -> q_b
+a : 0, q_b -> q_f

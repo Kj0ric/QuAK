@@ -115,6 +115,10 @@ private:
 	static Automaton* determinizeInf (const Automaton* A);
 	bool isLimAvgConstant(UltimatelyPeriodicWord** witness = nullptr) const;
 
+	// Silent transitions
+	static Automaton* removeSilentTransitionsHelperStandard(const Automaton* A, weight_t replacement);
+	static Automaton* removeSilentTransitionsHelperLimitAverage(const Automaton* A);
+
 protected:
 	Automaton(const Automaton* A, value_function_t f);
 	weight_t compute_Top (value_function_t f, weight_t* top_values, UltimatelyPeriodicWord** witness = nullptr) const;
@@ -133,6 +137,8 @@ public:
 	static Automaton* livenessComponent(const Automaton* A, value_function_t type);
 	static Automaton* toLimSup (const Automaton* A, value_function_t f);
 	static Automaton* product(const Automaton* A, aggregator_t aggregator, const Automaton* B);
+
+	static Automaton* removeSilentTransitions(const Automaton* A, value_function_t f);
 
   // Generate a random automaton
   static Automaton *randomAutomaton(const std::string& name,

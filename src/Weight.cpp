@@ -3,6 +3,8 @@
 #include "Weight.h"
 #include "utility.h"
 
+weight_t SILENT = std::numeric_limits<float>::max();
+
 
 std::ostream& operator<<(std::ostream &os, weight_t x) {
   os << x.value;
@@ -58,4 +60,3 @@ uint32_t weight_t::to_bv() const {
 weight_t weight_t::from_bv(uint32_t val) {
     return weight_t(*static_cast<const float *>(static_cast<const void *>(&val)));
 }
-
