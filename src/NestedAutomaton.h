@@ -19,14 +19,11 @@ private:
 	
 	//value_function_t finval_function_;	// Fixed value function for the automaton
 	// TODO: SCC-related fields
-	// TODO: Decide if domain ranges are needed
-
-	/* Private methods */
-	//void build(std::string newname, Parser* parser, MapStd<std::string, Symbol*> sync_register);
 
 public:
 	~ChildAutomaton();	
 	ChildAutomaton(std::string name, Parser* parser, MapStd<std::string, Symbol*> sync_register);
+	ChildAutomaton(const ChildAutomaton& other);	// Copy constructor
 
 	// Accessor for final states
     SetStd<State*>* getFinalStates() const { return final_states_; }
@@ -45,13 +42,17 @@ public:
 class NestedAutomaton : public Automaton {
 private:
 	MapArray<ChildAutomaton*>* children_;	// list of Child Automata, instead of weights
+	NestedAutomaton(const Automaton* parent, MapArray<ChildAutomaton*>* children);	// Helper constructor for removeSilentTransitions
+
 	// TODO: Decide if domain ranges are needed
 
 public:
 	~NestedAutomaton();
 	NestedAutomaton(std::string name, Parser* parser, MapStd<std::string, Symbol*> sync_register);
+	NestedAutomaton(std::string filename, Automaton* other = nullptr);
+	
+	static NestedAutomaton* removeSilentTransitions(const NestedAutomaton* A, value_function_t f);
 
-	// TODO: Methods to print the automaton to stdout
 	void print(bool full = false, bool bv_weights = false, bool bv_only = false) const;
 	void print(std::ostream& out, bool full = false, bool bv_weights = false, bool bv_only = false) const;
 

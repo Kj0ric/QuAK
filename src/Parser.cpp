@@ -257,12 +257,36 @@ void readNestedFile(std::ifstream& file, Parser* parser) {
 		}
 		prev = curr;
 	}
+	
 	// Check if all parent indices are matched with child indices
 	//for (unsigned int i = 0; i <= parser->max_child_index; i++ ) {
 	//	if (parser->child_parsers.size() <= i || parser->child_parsers[i] == nullptr){
 	//		abort("Missing @CHILD section for index N = " + std::to_string(i));
 	//	}
 	//}
+
+	// Calculate domain ranges for each CHILD
+	for (Parser* child : parser->child_parsers) {
+		if (child && child->weights.size() > 0) {
+			if (child->domain_defined) {
+				child->min_domain = std::min(child->min_domain, child->weights.getMin());
+				child->max_domain = std::max(child->max_domain, child->weights.getMax());
+			} else {
+				child->min_domain = child->weights.getMin();
+				child->max_domain = child->weights.getMax();
+			}
+		}
+	}
+
+	// Calculate domain ranges for the PARENT automaton
+    if (parser->domain_defined == true) {
+        parser->min_domain = std::min(parser->min_domain, parser->weights.getMin());
+        parser->max_domain = std::max(parser->max_domain, parser->weights.getMax());
+    }
+    else {
+        parser->min_domain = parser->weights.getMin();
+        parser->max_domain = parser->weights.getMax();
+    }
 }
 
 std::string readLine (std::string line, Parser* parser) {
@@ -506,6 +530,8 @@ void Parser::print(std::ostream& os) {
 
 	os << std::endl << "Weights: ";
 	for (auto it = weights.begin(); it != weights.end(); ++it) {os << *it << " ";}
+
+	os << std::endl << "MIN: " << min_domain << " and MAX: " << max_domain;
 
 	os << std::endl << "Edges: ";
 	for (auto it = edges.begin(); it != edges.end(); ++it) {

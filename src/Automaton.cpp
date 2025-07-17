@@ -85,6 +85,65 @@ Automaton::Automaton (
 	compute_SCC();
 }
 
+// Copy constructor
+Automaton::Automaton(const Automaton& other) :
+	name(other.name),
+	min_domain(other.min_domain),
+	max_domain(other.max_domain),
+	nb_SCCs(0),
+	SCCs(nullptr)
+{
+	State::RESET();
+	Symbol::RESET();
+	Weight::RESET();
+
+	// Copy alphabet
+	alphabet = new MapArray<Symbol*>(other.alphabet->size());
+	for (size_t i = 0; i < other.alphabet->size(); ++i) {
+		alphabet->insert(i, new Symbol(other.alphabet->at(i)));
+	}
+
+	// Copy weights
+	weights = new MapArray<Weight*>(other.weights->size());
+	for (size_t i = 0; i < other.weights->size(); ++i) {
+		weights->insert(i, new Weight(other.weights->at(i)));
+	}
+
+	// Copy states
+	states = new MapArray<State*>(other.states->size());
+	for (size_t i = 0; i < other.states->size(); ++i) {
+		states->insert(i, new State(other.states->at(i)));
+	}
+
+	// Set initial state
+	initial = states->at(other.initial->getId());
+
+	// Copy edges
+	for (unsigned int state_id = 0; state_id < other.states->size(); ++state_id) {
+		State* original_state = other.states->at(state_id);
+		State* new_state = states->at(state_id);
+
+		for (Symbol* original_symbol : *(original_state->getAlphabet())) {
+			for (Edge* original_edge : *(original_state->getSuccessors(original_symbol->getId()))) {
+				Symbol* new_symbol = alphabet->at(original_edge->getSymbol()->getId());
+				Weight* new_weight = weights->at(original_edge->getWeight()->getId());
+				State* new_from = states->at(original_edge->getFrom()->getId());
+				State* new_to = states->at(original_edge->getTo()->getId());
+
+				// Create new edge
+				Edge* new_edge = new Edge(new_symbol, new_weight, new_from, new_to);
+				new_from->addSuccessor(new_edge);
+				new_to->addPredecessor(new_edge);
+			}
+		}
+	}
+
+	// Set ownership and compute SCCs
+	appropriateStates();
+	compute_SCC();
+}
+
+
 // Verifies that each state is not already owned by another automaton
 // Assigns ownership to each state
 void Automaton::appropriateStates() {
@@ -764,7 +823,28 @@ Automaton* Automaton::removeSilentTransitionsHelperLimitAverage(const Automaton*
 
 Automaton* Automaton::removeSilentTransitions(const Automaton* A, value_function_t f) {
 	if (f == Inf || f == LimInf) {
-		// return removeSilentTransitionsHelperStandard(A, A->getMaxDomain());
+		// idea: Replace all SILENT values with MAXIMAL weight value appears in the run
+		// "return removeSilentTransitionsHelperStandard(A, A->getMaxDomain());" doesn't work.
+		// because SILENT is defined as the max float value. getMaxDomain() would give us that value instead of the max non-SILENT value.
+
+		// Manually find the maximum value other than SILENT value
+		weight_t max_so_far = std::numeric_limits<float>::lowest();
+		const weight_t minus_inf = std::numeric_limits<float>::lowest();
+
+		for (Weight* w : *A->getWeights()) {
+			const weight_t v = w->getValue();
+			if (v != SILENT) {
+				if (v > max_so_far) {
+					max_so_far = v;
+				}
+			}
+		}
+
+		if (max_so_far == minus_inf) {
+			QUAK_FAIL("Automaton has fewer than two distinct weights");
+		}
+
+		/*
 		const weight_t minus_inf = std::numeric_limits<float>::lowest();
 		weight_t first  = minus_inf;
 		weight_t second = minus_inf;
@@ -782,10 +862,12 @@ Automaton* Automaton::removeSilentTransitions(const Automaton* A, value_function
 		if (second == minus_inf) {
 			QUAK_FAIL("Automaton has fewer than two distinct weights");
 		}
+		*/
 
-		return removeSilentTransitionsHelperStandard(A, second);
+		return removeSilentTransitionsHelperStandard(A, max_so_far);
 	}
 	else if (f == Sup || f == LimSup) {
+		// idea: Replace all SILENT values with MINIMAL weight value appears in the run
 		return removeSilentTransitionsHelperStandard(A, A->getMinDomain());
 	}
 	else if (f == LimInfAvg || f == LimSupAvg) {

@@ -14,9 +14,8 @@ public:
 	bool domain_defined = false;
 	weight_t min_domain = 0;	// Min weight of the transitions of A
 	weight_t max_domain = 0;	// Max weight of the transitions of A
-	// Nested automata support
+	
 	std::vector<Parser*> child_parsers;	// Not MapArray because we need dynamic growth as parsing goes on
-	//bool is_dummy_child = false;
 
 	unsigned int max_child_index = 0;	// Might not be necessary
 	SetStd<std::string> final_states;

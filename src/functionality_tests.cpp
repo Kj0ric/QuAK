@@ -25,7 +25,6 @@ void testSilent(std::string filename) {
     delete parser;
 }
 
-
 // Simple non-nested automata test to test readNonNestedFile() in Parser.cpp
 void testNonNestedRead(const std::string filepath) {
     Automaton* A = new Automaton(filepath);
@@ -43,7 +42,7 @@ void testNestedRead(std::string filepath) {
 
 void testNestedConstruction(const std::string& filepath) {
     Parser* parser = new Parser(filepath);
-    //parser->print(std::cout);
+    parser->print(std::cout);
     NestedAutomaton* nested = new NestedAutomaton("nested1", parser, MapStd<std::string, Symbol*>());
     std::cout << "NestedAutomaton constructed from " << filepath << ":\n";
     nested->print(); 
@@ -57,7 +56,20 @@ void testSilentTransformationNonNested(const std::string& filepath) {
     std::cout << "NonNested silent Automaton constructed from " << filepath << ":\n";
     sil_A->print();
 
-    Automaton* nonSil_A = Automaton::removeSilentTransitions(sil_A, Sup);    // Static member function
+    Automaton* nonSil_A = Automaton::removeSilentTransitions(sil_A, LimInf);    // Static member function
     std::cout << "NonNested nonSilent Automaton transformed" << ":\n";
     nonSil_A->print();
+}
+
+void testSilentTransformationNested(const std::string& filepath) {
+    NestedAutomaton* nested_sil_A = new NestedAutomaton(filepath);
+    std::cout << "Nested silent Automaton constructed from " << filepath << ":\n";
+    nested_sil_A->print();
+
+    NestedAutomaton* nested_nonSil_A = NestedAutomaton::removeSilentTransitions(nested_sil_A, Sup);    // Static member function
+    std::cout << "Nested nonSilent Automaton transformed" << ":\n";
+    nested_nonSil_A->print();
+
+    delete nested_sil_A;
+    delete nested_nonSil_A;
 }

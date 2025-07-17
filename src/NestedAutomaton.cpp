@@ -15,15 +15,12 @@
 /* ----------------------- ChildAutomaton ----------------------- */
 inline SetStd<State*> getStatesByNames(MapArray<State*>* states, const SetStd<std::string>& final_state_names);
 
-
 ChildAutomaton::~ChildAutomaton () {
     delete final_states_;
     // Automaton destructor is called automatically
 }
 
-
 /* ------- CONSTRUCTORS -------- */
-// TODO:
 ChildAutomaton::ChildAutomaton(std::string name, Parser* parser, MapStd<std::string, Symbol*> sync_register) 
     : Automaton(name, parser, sync_register){
     
@@ -55,6 +52,11 @@ ChildAutomaton::ChildAutomaton(std::string name, Parser* parser, MapStd<std::str
     final_states_ = new SetStd<State*>(getStatesByNames(states, parser->final_states));
 }
 
+// CC
+ChildAutomaton::ChildAutomaton(const ChildAutomaton& other)
+    : Automaton(other), // call base CC
+     final_states_(new SetStd<State*>(*other.final_states_)) {}
+
 /* ------- HELPERS -------- */
 void ChildAutomaton::print(bool full, bool bv_weights, bool bv_only) const {
     print(std::cout, full, bv_weights, bv_only);
@@ -64,7 +66,7 @@ void ChildAutomaton::print(std::ostream& out, bool full, bool bv_weights, bool b
     out << "Child Automaton (" << this->getName() << "):\n";
     Automaton::print(out);
 
-    out << "Final states: ";
+    out << "\tFinal states: ";
     SetStd<State*>* finals = getFinalStates();
     for (State* s : *finals) {
         out << s->getName() << " ";
@@ -99,9 +101,67 @@ NestedAutomaton::NestedAutomaton(std::string name, Parser* parser, MapStd<std::s
             children_->insert(i, child);
         }
     }
-
 }
 
+// Constructs a nested automaton from a file with the same alphabet as another automaton
+NestedAutomaton::NestedAutomaton(std::string filename, Automaton* other) 
+    : Automaton(filename, other)
+{
+    // Create a new parser from the file to get child information
+    Parser* parser = new Parser(filename);
+    
+    // Set up sync_register if other automaton is provided
+    MapStd<std::string, Symbol*> sync_register;
+    if (other != nullptr) {
+        for (unsigned int symbol_id = 0; symbol_id < other->getAlphabet()->size(); ++symbol_id) {
+            Symbol* symbol = other->getAlphabet()->at(symbol_id);
+            sync_register.insert(symbol->getName(), symbol);
+        }
+    }
+    
+    // Allocate children_ array with child parsers
+    children_ = new MapArray<ChildAutomaton*>(parser->child_parsers.size()); 
+    
+    // Initialize ChildAutomaton objects
+    for (unsigned i = 0; i < parser->child_parsers.size(); ++i) {
+        Parser* child_parser = parser->child_parsers[i];
+        if (child_parser) {
+            auto* child = new ChildAutomaton(filename + "_child" + std::to_string(i), child_parser, sync_register);
+            children_->insert(i, child);
+        }
+    }
+    
+    delete parser;
+}
+
+// Helper constructor for NestedAutomaton
+NestedAutomaton::NestedAutomaton(const Automaton* parent, MapArray<ChildAutomaton*>* children)
+    : Automaton(*parent), // Use the public copy constructor
+      children_(children) {
+    
+        this->setName(parent->getName() + "_noSilent");
+}
+
+/* ---------- REMOVING SILENT TRANSITIONS ---------- */
+NestedAutomaton* NestedAutomaton::removeSilentTransitions(const NestedAutomaton* A, value_function_t f) {
+    // 1. Transform the parent automaton using the base class method
+    Automaton* transformed_parent = Automaton::removeSilentTransitions(A, f);
+
+    // 2. Shallow copy the children array (children remain unchanged)
+    MapArray<ChildAutomaton*>* copied_children = new MapArray<ChildAutomaton*>(A->children_->size());
+    for (unsigned i = 0; i < A->children_->size(); ++i) {
+        if (A->children_->at(i)) {
+            // Use the copy constructor for ChildAutomaton
+            copied_children->insert(i, new ChildAutomaton(*A->children_->at(i)));
+        }
+    }
+
+    // 3. Create new NestedAutomaton with transformed parent and copied children
+    NestedAutomaton* result = new NestedAutomaton(transformed_parent, copied_children);
+
+    delete transformed_parent;
+    return result;
+}
     
 /* ------- HELPERS -------- */
 // Returns a set of State* from states whose names are in parser->final_states
@@ -115,7 +175,6 @@ inline SetStd<State*> getStatesByNames(MapArray<State*>* states, const SetStd<st
     }
     return result;
 }
-
 
 void NestedAutomaton::print(bool full, bool bv_weights, bool bv_only) const {
     print(std::cout, full, bv_weights, bv_only);

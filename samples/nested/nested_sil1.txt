@@ -7,7 +7,7 @@ a : 2, q1 -> q1
 
 @CHILD 1
 final: q_f
-a : SILENT, q_a -> q_a
+a : 2, q_a -> q_a
 b : 0, q_a -> q_f
 
 @CHILD 2

@@ -32,7 +32,7 @@ public:
 	static void RESET(unsigned int n);
 	~State();
 	State (std::string name, unsigned int alphabet_size, weight_t automaton_min_weight, weight_t automaton_max_weight);
-	State (State* state);
+	State (State* state); 
 
 	std::string getName() const;
 	unsigned int getId() const;

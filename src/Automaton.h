@@ -63,7 +63,7 @@ protected:
 private:
 	void build(std::string newname, Parser* parser, MapStd<std::string, Symbol*> sync_register);
 	Parser parse_trim();
-	
+
 	Automaton(
 			std::string name,
 			MapArray<Symbol*>* alphabet,
@@ -125,11 +125,15 @@ protected:
 	weight_t compute_Bottom (value_function_t f, weight_t* bot_values, UltimatelyPeriodicWord** witness = nullptr);
 	void setMaxDomain (weight_t x);
 	void setMinDomain (weight_t x);
+	
+	void setName(std::string new_name) { name = new_name; }
 
 public:
 	~Automaton ();
 	Automaton(std::string filename, Automaton* other = nullptr);	// Creates an automaton out of a file
-	Automaton(std::string filename, value_function_t f, Automaton* other = nullptr);
+	//Automaton(std::string filename, value_function_t f, Automaton* other = nullptr);
+	Automaton(const Automaton& other);	// CC
+
 	static Automaton* from_file_sync_alphabet(std::string filename, Automaton* other = nullptr);
 	static Automaton* safetyClosure(Automaton* A, value_function_t value_function);
 	static Automaton* livenessComponent_deterministic (const Automaton* A, value_function_t type);
