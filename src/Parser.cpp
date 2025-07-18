@@ -240,6 +240,10 @@ void readNestedFile(std::ifstream& file, Parser* parser) {
 		non_silent_weights.push_back(*it);
 	}	// Since parser->weights is already a sorted set, non_silent_weights vector is also sorted
 
+	if (non_silent_weights.empty()) {
+		abort("Parent automaton must have a non-SILENT weight value");
+	}
+
 	int min_weight = non_silent_weights.front().to_float();
 	if (min_weight != 0 && min_weight != 1) {
     	abort("Weights must start at 0 or 1.");

@@ -74,7 +74,6 @@ void ChildAutomaton::print(std::ostream& out, bool full, bool bv_weights, bool b
     out << std::endl;
 }
 
-
 /* ----------------------- NestedAutomaton ----------------------- */
 NestedAutomaton::~NestedAutomaton() {
     // Clean up children_ array
