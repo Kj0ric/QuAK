@@ -39,12 +39,17 @@ public:
   };
 
 	void update (T_key key, T_value value) {
-    auto iter = this->all.find(key);
-    if (iter == this->all.end())
-    	this->all.insert(std::pair<T_key, T_value>(key, value));
-    else
-    	iter->second = value;
-  }
+		auto iter = this->all.find(key);
+		if (iter == this->all.end())
+			this->all.insert(std::pair<T_key, T_value>(key, value));
+		else
+			iter->second = value;
+  	}
+
+	// Overload operator[] to mimic std::map behavior
+    T_value& operator[](const T_key& key) {
+        return all[key];
+    }
 
 	//std::string toString(std::string (*f_key) (T_key key), std::string (*f_value) (T_value value)) const;
 	void clear () { all.clear(); }

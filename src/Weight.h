@@ -85,8 +85,8 @@ private:
 	weight_t value;
 public:
 	~Weight();
-	Weight(weight_t value);
-	Weight(Weight* weight);
+	Weight(weight_t value); // constructor
+	Weight(Weight* weight); // copy constructor EXPLICIT keyword??
 	static void RESET();
 	weight_t getValue() const;
 	void setValue(weight_t value);

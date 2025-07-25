@@ -536,11 +536,19 @@ void Automaton::compute_SCC (void) {
 	compute_SCC_tag(initial, &tag, &time, spot, low, &stack, stackMem);
 	this->nb_SCCs = tag;
 
+	// -----------------------------------
+    for (unsigned int state_id = 0; state_id < this->states->size(); ++state_id) {
+        std::cout << "State " << this->states->at(state_id)->getName()
+                  << " tag: " << this->states->at(state_id)->getTag() << std::endl;
+    }
+    std::cout << "nb_SCCs: " << this->nb_SCCs << std::endl;
+    // -----------------------------------
+
 	this->SCCs = new SCC_Dag*[nb_SCCs];
 	for (unsigned int scc_id = 0; scc_id < this->nb_SCCs; ++scc_id) {
 		this->SCCs[scc_id] = new SCC_Dag();
 	}
-	compute_SCC_dag(this->initial, spot, low, stackMem, this->SCCs);
+	compute_SCC_dag(initial, spot, low, stackMem, this->SCCs);
 
 	delete [] spot;
 	delete [] low;
@@ -554,14 +562,14 @@ weight_t Automaton::getTopValue (value_function_t f, UltimatelyPeriodicWord** wi
 	/*for (unsigned int id = 0;id <this->nb_SCCs; id++) {
 		printf("top[%u] = %s\n", id, std::to_string(top_values[id]).c_str());
 	}*/
-    delete top_values;
+    delete[] top_values;
 	return top;
 }
 
 weight_t Automaton::getBottomValue (value_function_t f, UltimatelyPeriodicWord** witness) {
 	weight_t *bot_values = new weight_t[this->nb_SCCs];
 	auto bot = compute_Bottom(f, bot_values, witness);
-    delete bot_values;
+    delete[] bot_values;
     return bot;
 }
 
@@ -933,7 +941,7 @@ Automaton* Automaton::safetyClosure(Automaton* A, value_function_t f) {
 		}
 	}
 
-    delete top_values;
+    delete[] top_values;
 	return new Automaton(newname, newalphabet, newstates, newweights, newmin_domain, newmax_domain, newinitial);
 }
 
@@ -999,7 +1007,7 @@ Automaton* Automaton::livenessComponent_deterministic (const Automaton* A, value
 		}
 	}
 
-    delete top_values;
+    delete[] top_values;
 	return new Automaton(newname, newalphabet, newstates, newweights, newmin_domain, newmax_domain, newinitial);
 }
 

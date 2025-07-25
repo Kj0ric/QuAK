@@ -109,21 +109,20 @@ SetStd<Edge*>* State::getPredecessors(unsigned int symbol_id) const {
 
 
 void State::addSuccessor (Edge* edge) {
+	// Update min and max
 	this->min_weight = std::min(this->min_weight, edge->getWeight()->getValue());
 	this->max_weight = std::max(this->max_weight, edge->getWeight()->getValue());
+	// Add successor
 	this->successors->at(edge->getSymbol()->getId())->insert(edge);
 }
-
 
 void State::addPredecessor (Edge* edge) {
 	this->predecessors->at(edge->getSymbol()->getId())->insert(edge);
 }
 
-
 std::string State::State::toString(State *state) {
 	return state->toString();
 }
-
 
 std::string State::toString() const {
 	return this->name + ", scc: " + std::to_string(this->my_scc);

@@ -291,6 +291,20 @@ void readNestedFile(std::ifstream& file, Parser* parser) {
         parser->min_domain = parser->weights.getMin();
         parser->max_domain = parser->weights.getMax();
     }
+
+	// After all children have been parsed, check final states for each child
+    for (size_t i = 0; i < parser->child_parsers.size(); ++i) {
+        Parser* child = parser->child_parsers[i];
+        if (!child) continue;
+        for (const std::string& fname : child->final_states) {
+            if (!child->states.contains(fname)) {
+				QUAK_FAIL("A child automaton has a final state that is not declared as a state. Check the automaton description .txt file.\n");
+            }
+        }
+        if (child->final_states.size() == 0) {
+			QUAK_FAIL("No final states detected in a child automaton. Check the automaton description .txt file.\n");
+        }
+    }
 }
 
 std::string readLine (std::string line, Parser* parser) {
@@ -335,7 +349,6 @@ void readFinalStates(std::ifstream& file, Parser* parser, int line_counter) {
 	while (final_stream >> final_state) {
 		parser->getCurrentParser()->final_states.insert(final_state);	// Store them in SetStd<std::string> states;
 	}
-
 }
 
 // Parses a single line from the automata representation

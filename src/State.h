@@ -6,6 +6,7 @@
 #include "Set.h"
 #include "Map.h"
 #include "Edge.h"
+#include "Weight.h"
 
 class Automaton;
 class ChildAutomaton;
@@ -22,7 +23,9 @@ private:
 	MapArray<SetStd<Edge*>*>* successors;
 	MapArray<SetStd<Edge*>*>* predecessors;
 
-  // Friendship is not inherited
+	weight_t dfa_value;	// Value field for S_ij DFAs
+
+  	// Friendship is not inherited
 	friend class Automaton;	
   	friend class ChildAutomaton;
   	friend class NestedAutomaton;
@@ -53,9 +56,10 @@ public:
 	static std::string toString (State *state);
 	std::string toString() const;
 	//std::string toStringOnlyName() const; // Why not calling get Name?
+
+	// dfa_value methods
+	void setDFAValue(weight_t v) { dfa_value = v; }
+	weight_t getDFAValue() const { return dfa_value; }
 };
-
-
-
 
 #endif /* STATE_H_ */

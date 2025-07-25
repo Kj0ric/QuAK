@@ -49,6 +49,11 @@ public:
 
 	auto begin() -> auto { return all.begin();};
 	auto end() -> auto { return all.end();};
+	// Add iterator wrappers for constant iterators (supports constant loop variable)
+	auto begin() const { return all.cbegin(); }
+	auto end() const { return all.cend(); }
+
+	bool operator==(const SetStd<T_element>& other) const { return this->all == other.all; }
 };
 
 

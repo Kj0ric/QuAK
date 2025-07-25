@@ -13,6 +13,10 @@
 class SCC_Dag; // Implementation in Automaton.cpp
 
 typedef enum {
+	Max_f,
+	Min_f,
+	SumB,
+	Avg,
 	Inf,
 	Sup,
 	LimInf,
@@ -20,8 +24,6 @@ typedef enum {
 	LimInfAvg,
 	LimSupAvg,
     // only for monitoring
-    Avg,
-	Sum,	// Harun
 } value_function_t;
 
 typedef enum {
@@ -59,11 +61,6 @@ protected:
 	SCC_Dag** SCCs;			// ?
 
 	Automaton(std::string newname, Parser* parser, MapStd<std::string, Symbol*> sync_register);
-
-private:
-	void build(std::string newname, Parser* parser, MapStd<std::string, Symbol*> sync_register);
-	Parser parse_trim();
-
 	Automaton(
 			std::string name,
 			MapArray<Symbol*>* alphabet,
@@ -73,6 +70,12 @@ private:
 			weight_t max_domain,
 			State* initial
 	);
+
+private:
+	void build(std::string newname, Parser* parser, MapStd<std::string, Symbol*> sync_register);
+	Parser parse_trim();
+
+	
 	void compute_SCC (void);
 	void appropriateStates();
 	void invert_weights();

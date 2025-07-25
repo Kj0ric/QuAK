@@ -2,7 +2,10 @@
 #include <string>
 #include "Parser.h"
 #include "Automaton.h"
+#include "ChildAutomaton.h"
 #include "NestedAutomaton.h"
+#include "Weight.h"
+#include "utility.h"
 
 void testReadDomain() {
     std::string filename = "../samples/tests/testH1.txt";
@@ -72,4 +75,41 @@ void testSilentTransformationNested(const std::string& filepath) {
 
     delete nested_sil_A;
     delete nested_nonSil_A;
+}
+
+void testS_ijConstruction(
+        const std::string& filepath, 
+        std::size_t child_index, 
+        weight_t j, 
+        value_function_t g, 
+        weight_t bound = -1
+) {
+    NestedAutomaton* nested = new NestedAutomaton(filepath);
+    std::cout << "Original NestedAutomaton from " << filepath << ":\n" << std::endl;
+    nested->print();
+
+    if (nested->getChildrenSize() == 0) {
+        delete nested;
+        QUAK_FAIL("No child automata found in the nested automaton.\n");
+    }
+
+    if (child_index < 0 || child_index >= nested->getChildrenSize()) {
+        delete nested;
+        QUAK_FAIL("Invalid child automaton index.\n");
+    }
+
+    ChildAutomaton* child = nested->getChild(child_index);
+    if (!child) {
+        delete nested;
+        QUAK_FAIL("Child automaton pointer is null.\n");
+    }
+
+    std::cout << "Start determinizing..." << std::endl;
+    ChildAutomaton* S_ij = child->determiniseToS_ij(j, g, bound);
+    std::cout << "Determinized S_{" << j << "} automaton (child " << child_index << "):\n";
+    S_ij->print();
+
+    // Clean up
+    delete S_ij;
+    delete nested;
 }
