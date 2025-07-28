@@ -1,11 +1,12 @@
 #include <string>
+#include <utility>
 #include <vector>
 #include <memory>
 #include <cassert>
 #include <iomanip>
 #include <limits>
 #include <algorithm>
-#include <unordered_map>
+#include <map>
 #include <queue>
 #include <sstream>
 
@@ -64,7 +65,7 @@ struct SubsetValuePairHash{
         for (const State* s : pair.first) {
             h1 ^= std::hash<unsigned int>()(s->getId());
         }
-        std::size_t h2 = std::hash<weight_t>()(pair.second);
+        std::size_t h2 = std::hash<float>()(pair.second.to_float());
         return h1 ^(h2 << 1);
     }
 };
@@ -72,7 +73,7 @@ struct SubsetValuePairHash{
 // Solve non-determinism in S_ij transition weights with MAX value function
 weight_t aggregateWeights(MapStd<State*, std::vector<weight_t>> *weightMap) {
     weight_t result = std::numeric_limits<float>::lowest();
-    for (auto& [t, weights] : *weightMap) { // std::map stores key,value as pairs under the hood
+    for (auto& [t, weights] : *weightMap) { // MapStd stores key,value as pairs under the hood
         for (weight_t w : weights) {
             result = std::max(result, w);
         }
@@ -91,7 +92,7 @@ weight_t transitionFunction(weight_t state_value, weight_t transit_value, value_
         result = state_value + transit_value;
         if (state_value == bound || result >= bound) {
             result = bound;
-        } else if (state_value == -bound || result <= bound) {
+        } else if (state_value == -bound || result <= -bound) {
             result = -bound;
         }
         // If none satisfies above then result = state_value + transit_value
@@ -101,20 +102,27 @@ weight_t transitionFunction(weight_t state_value, weight_t transit_value, value_
 	return result;
 }
 
-// Helper: Initialize S_ij
+// Helper to compare Pairs
 using Subset = SetStd<State*>;
 using Pair = std::pair<Subset, weight_t>;
+// Helper: Initialize S_ij
 void initializeDFA(
 	MapArray<Symbol*>*& dfa_alphabet, 
 	MapArray<Weight*>*& dfa_weights, 
-	std::unordered_map<Pair, State*, SubsetValuePairHash>& state_map_DFA, 
+	MapStd<Pair, State*>& state_map_DFA, 
 	std::queue<Pair>& worklist, 
 	State* &initial_dfa, 
 	unsigned int& state_counter, 
 	const ChildAutomaton* B_i, 
 	weight_t initial_value
 ) {
-	dfa_alphabet = B_i->getAlphabet();
+    dfa_alphabet = new MapArray<Symbol*>(B_i->getAlphabet()->size());
+    for (size_t i = 0; i < B_i->getAlphabet()->size(); ++i) {
+        Symbol* orig = B_i->getAlphabet()->at(i);
+        dfa_alphabet->insert(i, new Symbol(*orig));
+    }
+
+    // Initialize weightss
 	dfa_weights = new MapArray<Weight*>(2);
 	dfa_weights->insert(0, new Weight(weight_t(0)));
 	dfa_weights->insert(1, new Weight(weight_t(1)));
@@ -128,7 +136,8 @@ void initializeDFA(
     initial_dfa = new State(ss.str(), dfa_alphabet->size(), 0, 1);
     initial_dfa->setDFAValue(initial_value);
 
-    state_map_DFA[initial_pair] = initial_dfa;  
+    state_map_DFA.insert(initial_pair, initial_dfa);
+    //state_map_DFA[initial_pair] = initial_dfa;  
     worklist.push(initial_pair);        // Push initial pair to start subset construction
 }
 
@@ -150,7 +159,7 @@ void processTransition(
 	unsigned symbol_id,
 	MapArray<Symbol*>* dfa_alphabet,
 	MapArray<Weight*>* dfa_weights,
-	std::unordered_map<Pair, State*, SubsetValuePairHash>& state_map_DFA,
+	MapStd<Pair, State*>& state_map_DFA, 
     std::queue<Pair>& worklist,
     unsigned int& state_counter,
 	weight_t j,
@@ -181,7 +190,7 @@ void processTransition(
 	Pair next_pair = {next_subset, next_value};
 
 	// If next_pair is NOT visited, create new S_ij state out of it
-	if (state_map_DFA.find(next_pair) == state_map_DFA.end()) {
+	if (state_map_DFA.contains(next_pair) != true) {
 		std::ostringstream ss;
 		ss << "d_" << state_counter++;
 
@@ -214,7 +223,7 @@ void processTransition(
 
 // Helper: Collect DFA states and final states
 void collectDFAStatesAndFinals(
-	const std::unordered_map<Pair, State*, SubsetValuePairHash>& state_map_DFA,
+	const MapStd<Pair, State*>& state_map_DFA, 
 	MapArray<State*>*& dfa_states,
 	SetStd<State*>*& dfa_final_states,
 	weight_t j,
@@ -252,12 +261,14 @@ ChildAutomaton* ChildAutomaton::determiniseToS_ij(weight_t j, value_function_t f
     // 1. Initialize
 	MapArray<Symbol*>* dfa_alphabet;
 	MapArray<Weight*>* dfa_weights;
-	std::unordered_map<Pair, State*, SubsetValuePairHash> state_map_DFA;
+	//std::map<Pair, State*, SubsetValuePairHash, SubsetValuePairEqual> state_map_DFA;
+    MapStd<Pair, State*> state_map_DFA;
+
 	std::queue<Pair> worklist;  // Queue for BFS
 	State* initial_dfa;
 	unsigned int state_counter = 0;
 	
-    weight_t initial_value;
+    weight_t initial_value = 0;
     if (finVal == Min_f) 
         { initial_value = weight_t(std::numeric_limits<float>::max()); }
     else if (finVal == Max_f) 
@@ -277,12 +288,14 @@ ChildAutomaton* ChildAutomaton::determiniseToS_ij(weight_t j, value_function_t f
 		}
 	}
 
+    
     std::cout << "All DFA states constructed:" << std::endl;
     for (const auto& [pair, state] : state_map_DFA) {
         std::cout << state->getName() << ": subset {";
         for (State* s : pair.first) std::cout << s->getName() << " ";
         std::cout << "} value: " << pair.second << std::endl;
     }
+    
     
     // 3. Collect S_ij states and final states
 	MapArray<State*>* dfa_states;

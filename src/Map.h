@@ -35,8 +35,8 @@ public:
   }
 
 	bool contains (T_key key) {
-    return all.count(key) > 0;
-  };
+    	return all.count(key) > 0;
+	};
 
 	void update (T_key key, T_value value) {
 		auto iter = this->all.find(key);
@@ -54,7 +54,9 @@ public:
 	//std::string toString(std::string (*f_key) (T_key key), std::string (*f_value) (T_value value)) const;
 	void clear () { all.clear(); }
 	auto begin() -> auto {return all.begin();};
+	auto begin() const -> auto {return all.begin();};
 	auto end() -> auto {return all.end();};
+	auto end() const -> auto {return all.end();};
 };
 
 

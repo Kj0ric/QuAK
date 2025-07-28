@@ -54,6 +54,9 @@ public:
 	auto end() const { return all.cend(); }
 
 	bool operator==(const SetStd<T_element>& other) const { return this->all == other.all; }
+	bool operator<(const SetStd<T_element>& other) const {
+		return this->all < other.all;
+	}
 };
 
 
