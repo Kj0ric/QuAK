@@ -15,7 +15,8 @@ extern void constructMonitors(
         std::vector<std::vector<ChildAutomaton*>>& monitors,
         SetStd<State*>& Q_S,
         SetStd<State*>& F_S,
-        value_function_t finVal
+        value_function_t finVal,
+        weight_t bound
     );
 
 void testReadDomain() {
@@ -219,22 +220,10 @@ void testConstructMonitors(const std::string& filepath, value_function_t finVal,
         return;
     }
     
-    // Count actual (non-dummy) children
-    size_t actual_children = 0;
-    for (size_t i = 0; i < nested->getChildrenSize(); ++i) {
-        ChildAutomaton* child = nested->getChild(i);
-        if (child && !child->getName().empty() && child->getName() != "dummy") {
-            actual_children++;
-        }
-    }
-    
-    std::cout << "Total children: " << nested->getChildrenSize() << std::endl;
-    std::cout << "Actual (non-dummy) children: " << actual_children << std::endl;
-    
-    // Step 1: Get expected return values
+    // Step 1: Compute global and per-child return values
     SetStd<weight_t> global_return_values = computeGlobalReturnValues(nested, finVal, bound);
     
-    std::cout << "Expected return values: {";
+    std::cout << "Global return values: {";
     bool first = true;
     for (weight_t val : global_return_values) {
         if (!first) std::cout << ", ";
@@ -243,83 +232,95 @@ void testConstructMonitors(const std::string& filepath, value_function_t finVal,
     }
     std::cout << "}" << std::endl;
     
+    // Compute expected monitors per child
+    std::vector<SetStd<weight_t>> child_return_values(nested->getChildrenSize());
+    size_t total_expected_monitors = 0;
+    
+    for (size_t i = 0; i < nested->getChildrenSize(); ++i) {
+        ChildAutomaton* child = nested->getChild(i);
+        if (child && child->getName() != "dummy" && !child->getName().empty()) {
+            child_return_values[i] = computeChildReturnValues(child, finVal, bound);
+            total_expected_monitors += child_return_values[i].size();
+            
+            std::cout << "Child " << i << " can return: {";
+            bool child_first = true;
+            for (weight_t val : child_return_values[i]) {
+                if (!child_first) std::cout << ", ";
+                std::cout << val;
+                child_first = false;
+            }
+            std::cout << "}" << std::endl;
+        } else {
+            std::cout << "Child " << i << " (dummy): no monitors expected" << std::endl;
+        }
+    }
+    
     // Step 2: Test constructMonitors
     std::vector<std::vector<ChildAutomaton*>> monitors;
     SetStd<State*> Q_S, F_S;
     
-    constructMonitors(nested, global_return_values, monitors, Q_S, F_S, finVal);
+    constructMonitors(nested, global_return_values, monitors, Q_S, F_S, finVal, bound);
     
-    // Step 3: Verify correct amount
-    std::cout << "\n--- Results ---" << std::endl;
-    std::cout << "monitors.size(): " << monitors.size() << std::endl;
+    // Step 3: Verify correct count
+    std::cout << "\n--- Monitor Count Verification ---" << std::endl;
     
-    bool correct_structure = true;
-    size_t total_monitors = 0;
+    bool correct_count = true;
+    size_t total_actual_monitors = 0;
     
     for (size_t i = 0; i < monitors.size(); ++i) {
         ChildAutomaton* child = nested->getChild(i);
+        bool is_dummy = !child || child->getName() == "dummy" || child->getName().empty();
         
-        // Check if this is the dummy child (index 0 or has dummy characteristics)
-        bool is_dummy = (i == 0) || (child && (child->getName().empty() || child->getName() == "dummy"));
+        size_t expected_count = is_dummy ? 0 : child_return_values[i].size();
+        size_t actual_count = monitors[i].size();
         
         std::cout << "Child " << i;
-        if (is_dummy) {
-            std::cout << " (dummy)";
-        }
-        std::cout << ": " << monitors[i].size() << " monitors";
+        if (is_dummy) std::cout << " (dummy)";
+        std::cout << ": " << actual_count << " monitors";
         
-        if (is_dummy) {
-            // Dummy child should have 0 monitors
-            if (monitors[i].size() != 0) {
-                std::cout << " ❌ (dummy child should have 0 monitors)";
-                correct_structure = false;
-            } else {
-                std::cout << " ✓ (correctly empty)";
-            }
+        if (actual_count == expected_count) {
+            std::cout << " ✓";
         } else {
-            // Real child should have monitors for each return value
-            if (monitors[i].size() != global_return_values.size()) {
-                std::cout << " ❌ (expected " << global_return_values.size() << ")";
-                correct_structure = false;
-            } else {
-                std::cout << " ✓";
-            }
-            total_monitors += monitors[i].size();
+            std::cout << " ❌ (expected " << expected_count << ")";
+            correct_count = false;
         }
         std::cout << std::endl;
+        
+        total_actual_monitors += actual_count;
     }
     
-    std::cout << "\nCorrect structure: " << (correct_structure ? "✓" : "❌") << std::endl;
-    std::cout << "Total monitors (excluding dummy): " << total_monitors << std::endl;
-    std::cout << "Expected total: " << actual_children * global_return_values.size() << std::endl;
+    std::cout << "\nTotal monitors created: " << total_actual_monitors << std::endl;
+    std::cout << "Total monitors expected: " << total_expected_monitors << std::endl;
+    std::cout << "Count verification: " << (correct_count && total_actual_monitors == total_expected_monitors ? "✓" : "❌") << std::endl;
     
-    // Step 4: Verify weights handled (skip dummy child)
-    std::cout << "\n--- Monitor Weight Verification ---" << std::endl;
-    std::vector<weight_t> return_values_vec(global_return_values.begin(), global_return_values.end());
-    std::sort(return_values_vec.begin(), return_values_vec.end());
+    // Step 4: Verify correct values (sample a few monitors)
+    std::cout << "\n--- Monitor Value Verification ---" << std::endl;
     
     for (size_t i = 0; i < monitors.size(); ++i) {
         ChildAutomaton* child = nested->getChild(i);
-        bool is_dummy = (i == 0) || (child && (child->getName().empty() || child->getName() == "dummy"));
-        
-        if (is_dummy) {
-            std::cout << "Child " << i << " (dummy): skipped" << std::endl;
+        if (!child || child->getName() == "dummy" || child->getName().empty()) {
             continue;
         }
         
         std::cout << "Child " << i << " monitors:" << std::endl;
+        
+        // Convert child return values to sorted vector for indexing
+        std::vector<weight_t> child_values_vec(child_return_values[i].begin(), child_return_values[i].end());
+        std::sort(child_values_vec.begin(), child_values_vec.end());
+        
         for (size_t j = 0; j < monitors[i].size(); ++j) {
             if (monitors[i][j]) {
-                std::string name = monitors[i][j]->getName();
-                weight_t expected_weight = return_values_vec[j];
-                std::cout << "  [" << j << "]: " << name << " (should handle weight " << expected_weight << ")" << std::endl;
+                std::string monitor_name = monitors[i][j]->getName();
+                weight_t expected_value = child_values_vec[j];
+                std::cout << "  [" << j << "]: " << monitor_name 
+                          << " (handles value " << expected_value << ")" << std::endl;
             } else {
                 std::cout << "  [" << j << "]: NULL monitor ❌" << std::endl;
             }
         }
     }
     
-    // Step 5: Quick cleanup
+    // Step 5: Cleanup
     for (size_t i = 0; i < monitors.size(); ++i) {
         for (size_t j = 0; j < monitors[i].size(); ++j) {
             delete monitors[i][j];

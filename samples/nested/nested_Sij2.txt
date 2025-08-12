@@ -3,8 +3,7 @@ a : 1, s0 -> s0
 
 @CHILD 1    
 # Child is SumB-automaton
-final: q2
-a : 0, q1 -> q1
-a : 1, q1 -> q1 
-a : 0, q1 -> q2
-a : 1, q1 -> q2
+final: q1
+a : 1, q0 -> q0
+a : 1, q0 -> q1
+a : 1, q1 -> q1

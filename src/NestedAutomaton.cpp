@@ -321,7 +321,8 @@ SetStd<weight_t> computeChildReturnValues(ChildAutomaton* child, value_function_
         std::vector<std::vector<ChildAutomaton*>>& monitors,
         SetStd<State*>& Q_S,
         SetStd<State*>& F_S,
-        value_function_t finVal
+        value_function_t finVal,
+        weight_t bound
     ) {
         size_t k = nwa->getChildrenSize();
         monitors.resize(k);
@@ -330,8 +331,12 @@ SetStd<weight_t> computeChildReturnValues(ChildAutomaton* child, value_function_
             ChildAutomaton* child = nwa->getChild(i);
             if (child == nullptr) continue;
 
-            // Create monitors for possible return values
-
+            // Create monitors for possible return values by the child i
+            SetStd<weight_t> child_values = computeChildReturnValues(child, finVal, bound);
+            for (weight_t j : child_values) {
+                monitors[i].push_back(child->determiniseToS_ij(j, finVal));
+            }
+            /*
             for (weight_t j : global_return_values) {
                 ChildAutomaton* monitor = child->determiniseToS_ij(j, finVal);
                 monitors[i].push_back(monitor);
@@ -344,6 +349,7 @@ SetStd<weight_t> computeChildReturnValues(ChildAutomaton* child, value_function_
                     F_S.insert(s);
                 }
             }
+            */  
         }
     }
 
@@ -378,13 +384,14 @@ SetStd<weight_t> computeChildReturnValues(ChildAutomaton* child, value_function_
             }
         }
     }
+    
     #if 0
     // Helper: Initialize büchi automaton components
     void initializeBuchiAutomaton(
         const NestedAutomaton* nwa,
         MapArray<Symbol*>*& new_alphabet,
         MapArray<Weight*>*& new_weights,
-        MapStd<GlobalState, State*> state_map,
+        MapStd<GlobalState, State*>& state_map,
         State*& initial_state,
         weight_t global_min,
         weight_t global_max,
@@ -400,8 +407,11 @@ SetStd<weight_t> computeChildReturnValues(ChildAutomaton* child, value_function_
             new_alphabet->insert(i, copy);
         }
 
-        // Create weights: silent + all possible guesses
+        // Initialize empty weights array
+        new_weights = new MapArray<Weight*>(0);
 
+        // Initialize state counter to name the states of Buchi
+        state_counter = 0;
         
         // Create initial Büchi state
         GlobalState init;
@@ -411,12 +421,12 @@ SetStd<weight_t> computeChildReturnValues(ChildAutomaton* child, value_function_
         init.P2 = SetStd<State*>();
 
         std::ostringstream ss;
-        ss << "q_" << state_counter++;
+        ss << "b_" << state_counter++;
         initial_state = new State(ss.str(), new_alphabet->size(), global_min, global_max);
-
 
         // Map the state to the tuple
         state_map[init] = initial_state;
+        // Add init Büchi state to start exploration
         worklist.push(init);
     }
 
@@ -432,12 +442,11 @@ SetStd<weight_t> computeChildReturnValues(ChildAutomaton* child, value_function_
         weight_t global_max,
         std::queue<GlobalState>& worklist
 
-
         // TODO:
 
     ) {
         Symbol* symbol = new_alphabet->at(symbol_id);
-        State* currrent_state = state_map[current_gs];
+        State* current_state = state_map[current_gs];
 
         for (Edge* master_edge : *(current_gs.master)->getSuccessors(symbol_id)) {
             State* q_prime = master_edge->getTo();
@@ -446,7 +455,6 @@ SetStd<weight_t> computeChildReturnValues(ChildAutomaton* child, value_function_
             SetStd<State*> P1next = stepMonitors(current_gs.P1, symbol, F_S);
             SetStd<State*> P2next = stepMonitors(current_gs.P2, symbol, F_S);
 
-            // TODO: Implement SILENT constant
             bool is_silent = (master_edge->getWeight()->getValue() == SILENT);
 
             if (is_silent) {
@@ -454,23 +462,24 @@ SetStd<weight_t> computeChildReturnValues(ChildAutomaton* child, value_function_
                 // Create new GS
                 GlobalState next_global;
                 next_global.master = q_prime;
-                next_global.last_guess = SILENT_WEIGHT;
+                next_global.last_guess = SILENT_WEIGHT; // TODO:
                 next_global.P1 = P1next;
                 next_global.P2 = P2next;
 
                 // Create new state if not seen before
                 if (state_map.contains(next_global) != true) {
                     std::ostringstream ss;
-                    ss << "q_" << state_counter++;
+                    ss << "b_" << state_counter++;
                     State* next_state = new State(ss.str(), new_alphabet->size(), global_min, global_max);
                     state_map[next_global] = next_state;
                     worklist.push(next_global);
                 }
 
-                // Add edge with SILENT weight
-                Weight* weight = SILENT_WEIGHT;
-
-
+                // Create edge with silent weight (use last_guess as weight)
+                Weight* weight = getOrCreateWeight(new_weights, current_gs.last_guess);
+                Edge* new_edge = new Edge(symbol, weight, current_state, state_map[next_global]);
+                current_state->addSuccessor([new_edge]);
+                state_map[next_global]->addPredecessor(new_edge);
 
             }
             else {
@@ -535,143 +544,5 @@ Automaton* NestedAutomaton::transformToBuchi(value_function_t finVal, weight_t b
     );
 
     return buchi;
-}// Add this to src/functionality_tests.cpp
-
-void testConstructMonitors(const std::string& filepath, value_function_t finVal, weight_t bound = -1) {
-    std::cout << "=== Testing constructMonitors Function ===" << std::endl;
-    std::cout << "File: " << filepath << std::endl;
-    std::cout << "Value function: " << (finVal == Min_f ? "Min_f" : 
-                                      finVal == Max_f ? "Max_f" : 
-                                      finVal == SumB ? "SumB" : "Unknown") << std::endl;
-    if (finVal == SumB) std::cout << "Bound: " << bound << std::endl;
-    
-    NestedAutomaton* nested = new NestedAutomaton(filepath);
-    
-    if (nested->getChildrenSize() == 0) {
-        std::cout << "No child automata found!" << std::endl;
-        delete nested;
-        return;
-    }
-    
-    std::cout << "Number of children: " << nested->getChildrenSize() << std::endl;
-    
-    // Step 1: Compute global return values
-    SetStd<weight_t> global_return_values = computeGlobalReturnValues(nested, finVal, bound);
-    
-    std::cout << "\nGlobal return values: {";
-    bool first = true;
-    for (weight_t val : global_return_values) {
-        if (!first) std::cout << ", ";
-        std::cout << val;
-        first = false;
-    }
-    std::cout << "}" << std::endl;
-    std::cout << "Total unique return values: " << global_return_values.size() << std::endl;
-    
-    // Step 2: Test constructMonitors
-    std::vector<std::vector<ChildAutomaton*>> monitors;
-    SetStd<State*> Q_S, F_S;
-    
-    std::cout << "\n--- Calling constructMonitors ---" << std::endl;
-    constructMonitors(nested, global_return_values, monitors, Q_S, F_S, finVal);
-    
-    // Step 3: Verify results
-    std::cout << "\n--- Monitor Construction Results ---" << std::endl;
-    std::cout << "monitors.size() = " << monitors.size() << " (should equal " << nested->getChildrenSize() << ")" << std::endl;
-    
-    size_t total_monitors = 0;
-    for (size_t i = 0; i < monitors.size(); ++i) {
-        std::cout << "Child " << i << " has " << monitors[i].size() << " monitors (should equal " 
-                  << global_return_values.size() << ")" << std::endl;
-        total_monitors += monitors[i].size();
-        
-        // Test each monitor for this child
-        for (size_t j = 0; j < monitors[i].size(); ++j) {
-            ChildAutomaton* monitor = monitors[i][j];
-            if (monitor) {
-                std::cout << "  Monitor[" << i << "][" << j << "]: " 
-                          << monitor->getStates()->size() << " states, "
-                          << monitor->getFinalStates()->size() << " final states" << std::endl;
-                          
-                // Verify monitor is deterministic (requirement for S_ij)
-                if (!monitor->isDeterministic()) {
-                    std::cout << "    WARNING: Monitor is not deterministic!" << std::endl;
-                }
-                
-                // Check if monitor has reasonable structure
-                if (monitor->getStates()->size() == 0) {
-                    std::cout << "    WARNING: Monitor has no states!" << std::endl;
-                }
-            } else {
-                std::cout << "  Monitor[" << i << "][" << j << "]: NULL pointer!" << std::endl;
-            }
-        }
-    }
-    
-    std::cout << "\nTotal monitors created: " << total_monitors << std::endl;
-    std::cout << "Expected total: " << nested->getChildrenSize() * global_return_values.size() << std::endl;
-    
-    // Step 4: Test Q_S and F_S collections
-    std::cout << "\n--- Global State Collections ---" << std::endl;
-    std::cout << "|Q_S| = " << Q_S.size() << " (global monitor states)" << std::endl;
-    std::cout << "|F_S| = " << F_S.size() << " (global accepting states)" << std::endl;
-    
-    // Verify F_S is subset of Q_S
-    bool f_s_subset_q_s = true;
-    for (State* s : F_S) {
-        if (!Q_S.contains(s)) {
-            f_s_subset_q_s = false;
-            break;
-        }
-    }
-    std::cout << "F_S ⊆ Q_S: " << (f_s_subset_q_s ? "✓" : "✗") << std::endl;
-    
-    // Step 5: Test state disjointness (states should have unique names)
-    std::cout << "\n--- Testing State Disjointness ---" << std::endl;
-    SetStd<std::string> state_names;
-    bool disjoint = true;
-    
-    for (State* s : Q_S) {
-        if (state_names.contains(s->getName())) {
-            std::cout << "WARNING: Duplicate state name found: " << s->getName() << std::endl;
-            disjoint = false;
-        } else {
-            state_names.insert(s->getName());
-        }
-    }
-    std::cout << "State names are unique: " << (disjoint ? "✓" : "✗") << std::endl;
-    
-    // Step 6: Sample monitor details (show first few)
-    std::cout << "\n--- Sample Monitor Details ---" << std::endl;
-    size_t samples_shown = 0;
-    const size_t max_samples = 3;
-    
-    for (size_t i = 0; i < monitors.size() && samples_shown < max_samples; ++i) {
-        if (monitors[i].size() > 0 && monitors[i][0] != nullptr) {
-            ChildAutomaton* sample_monitor = monitors[i][0];
-            std::cout << "Sample Monitor[" << i << "][0]:" << std::endl;
-            std::cout << "  Name: " << sample_monitor->getName() << std::endl;
-            std::cout << "  Alphabet size: " << sample_monitor->getAlphabetSize() << std::endl;
-            std::cout << "  States: " << sample_monitor->getStates()->size() << std::endl;
-            std::cout << "  Final states: " << sample_monitor->getFinalStates()->size() << std::endl;
-            std::cout << "  Deterministic: " << (sample_monitor->isDeterministic() ? "Yes" : "No") << std::endl;
-            samples_shown++;
-        }
-    }
-    
-    // Step 7: Cleanup verification
-    std::cout << "\n--- Memory Management Test ---" << std::endl;
-    std::cout << "Cleaning up " << total_monitors << " monitors..." << std::endl;
-    
-    // Clean up monitors
-    for (size_t i = 0; i < monitors.size(); ++i) {
-        for (size_t j = 0; j < monitors[i].size(); ++j) {
-            delete monitors[i][j];
-        }
-    }
-    std::cout << "Monitor cleanup completed." << std::endl;
-    
-    delete nested;
-    std::cout << "\n=== constructMonitors Test Completed ===" << std::endl;
 }
 #endif

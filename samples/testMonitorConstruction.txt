@@ -1,21 +1,17 @@
-# Simple master with 2 states
 @PARENT
 a : 1, q0 -> q1
 b : 2, q1 -> q0
 
-# Simple MIN automaton - returns {1, 2}
 @CHILD 1
 final: s1
 a : 1, s0 -> s1
 b : 2, s0 -> s1
 
-# Simple MAX automaton - returns {3, 4}
 @CHILD 2
 final: t1
 a : 3, t0 -> t1
 b : 4, t0 -> t1
 
-# Simple SumB automaton - returns bounded sums
 @CHILD 3
 final: r1
 a : 5, r0 -> r1
