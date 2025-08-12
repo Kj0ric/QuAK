@@ -17,6 +17,8 @@
 class NestedAutomaton : public Automaton {
 private:
 	MapArray<ChildAutomaton*>* children_;	// list of Child Automata, instead of weights
+	//size_t children_size;
+
 	NestedAutomaton(const Automaton* parent, MapArray<ChildAutomaton*>* children);	// Helper constructor for removeSilentTransitions
 
 	// TODO: Decide if domain ranges are needed
@@ -33,8 +35,9 @@ public:
 	std::size_t getChildrenSize() const;
 	ChildAutomaton* getChild(std::size_t index) const;
 
+	// Büchi transformation
+	Automaton* transformToBuchi(value_function_t finVal);
 	// TODO: Decision problems
 };
-
 
 #endif /* NESTED_AUTOMATON_H_ */

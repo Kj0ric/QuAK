@@ -1,0 +1,28 @@
+@PARENT
+# Simple master automaton that calls children
+a : 1, q0 -> q1
+b : 2, q1 -> q0
+
+@CHILD 1
+# MIN automaton - should return min of weights {0, 1, 2}
+final: s2
+a : 0, s0 -> s1
+a : 1, s1 -> s2
+b : 2, s0 -> s2
+b : 1, s1 -> s0
+
+@CHILD 2  
+# MAX automaton - should return max of weights {1, 3, 5}
+final: t1
+a : 1, t0 -> t0
+a : 3, t0 -> t1
+b : 5, t1 -> t0
+
+@CHILD 3
+# SumB automaton - should return various bounded sums
+final: r2
+a : 1, r0 -> r1
+a : 2, r1 -> r2
+b : -1, r0 -> r0
+b : 1, r1 -> r1
+a : 3, r2 -> r2

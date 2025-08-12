@@ -199,10 +199,11 @@ void processTransition(
 		state_map_DFA[next_pair] = next_state;		// Add to the map
 		worklist.push(next_pair);				// Add to the queue to explore later
 
-        // --- Add this debug print ---
+        #ifdef DEBUG
         std::cout << "Created DFA state: " << ss.str() << " for subset {";
         for (State* s : next_subset) std::cout << s->getName() << " ";
         std::cout << "} with value: " << next_value << std::endl;
+        #endif
 	}
 
 	// Set weight (1 if accepting, 0 otherwise)
@@ -215,8 +216,10 @@ void processTransition(
 	from_state->addSuccessor(edge);
 	to_state->addPredecessor(edge);
 
+    #ifdef DEBUG
     std::cout << "Edge: " << from_state->getName() << " --" << symbol->getName()
             << "/" << weight->getValue() << "--> " << to_state->getName() << std::endl;
+    #endif
 
 	delete weights_to_T;
 }
@@ -261,7 +264,6 @@ ChildAutomaton* ChildAutomaton::determiniseToS_ij(weight_t j, value_function_t f
     // 1. Initialize
 	MapArray<Symbol*>* dfa_alphabet;
 	MapArray<Weight*>* dfa_weights;
-	//std::map<Pair, State*, SubsetValuePairHash, SubsetValuePairEqual> state_map_DFA;
     MapStd<Pair, State*> state_map_DFA;
 
 	std::queue<Pair> worklist;  // Queue for BFS
@@ -287,15 +289,15 @@ ChildAutomaton* ChildAutomaton::determiniseToS_ij(weight_t j, value_function_t f
 			);
 		}
 	}
-
     
+    #ifdef DEBUG
     std::cout << "All DFA states constructed:" << std::endl;
     for (const auto& [pair, state] : state_map_DFA) {
         std::cout << state->getName() << ": subset {";
         for (State* s : pair.first) std::cout << s->getName() << " ";
         std::cout << "} value: " << pair.second << std::endl;
     }
-    
+    #endif
     
     // 3. Collect S_ij states and final states
 	MapArray<State*>* dfa_states;
@@ -317,6 +319,18 @@ ChildAutomaton* ChildAutomaton::determiniseToS_ij(weight_t j, value_function_t f
     );
 
     return s_ij;
+}
+
+/* ------------------------- Key Lemma cont'd ------------------------- */
+// Helper for taking disjoint union of states of S_ij's
+SetStd<State*> disjointUnionCloned(const std::vector<SetStd<State*>>& sets) {
+    SetStd<State*> result;
+    for (const auto& sset : sets) {
+        for (State* s : sset) {
+            result.insert(new State(*s));
+        }
+    }
+    return result;
 }
 
 /* ------------------------- Other HELPERS ------------------------- */

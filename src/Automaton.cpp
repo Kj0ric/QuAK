@@ -536,13 +536,13 @@ void Automaton::compute_SCC (void) {
 	compute_SCC_tag(initial, &tag, &time, spot, low, &stack, stackMem);
 	this->nb_SCCs = tag;
 
-	// -----------------------------------
+	/* DEBUG 
     for (unsigned int state_id = 0; state_id < this->states->size(); ++state_id) {
         std::cout << "State " << this->states->at(state_id)->getName()
                   << " tag: " << this->states->at(state_id)->getTag() << std::endl;
     }
     std::cout << "nb_SCCs: " << this->nb_SCCs << std::endl;
-    // -----------------------------------
+	*/
 
 	this->SCCs = new SCC_Dag*[nb_SCCs];
 	for (unsigned int scc_id = 0; scc_id < this->nb_SCCs; ++scc_id) {
@@ -2925,7 +2925,7 @@ void Automaton::print(std::ostream& out, bool full, bool bv_weights, bool bv_onl
                       out << std::setprecision(std::numeric_limits<weight_t::T>::max_digits10)
                                 << std::fixed;
                     }
-                    out << *edge->getWeight()->getValue();
+                    out << edge->getWeight()->getValue();	// CHANGE!!: DELETED *
                     if (bv_weights) {
                         out << " (" << "0x" << std::hex << edge->getWeight()->getValue().to_bv() << ")";
                     }

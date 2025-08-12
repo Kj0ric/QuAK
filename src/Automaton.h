@@ -75,7 +75,6 @@ private:
 	void build(std::string newname, Parser* parser, MapStd<std::string, Symbol*> sync_register);
 	Parser parse_trim();
 
-	
 	void compute_SCC (void);
 	void appropriateStates();
 	void invert_weights();
