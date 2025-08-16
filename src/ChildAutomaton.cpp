@@ -139,6 +139,12 @@ void initializeDFA(
     state_map_DFA.insert(initial_pair, initial_dfa);
     //state_map_DFA[initial_pair] = initial_dfa;  
     worklist.push(initial_pair);        // Push initial pair to start subset construction
+
+    #ifdef DEBUG
+        std::cout << "Initial DFA state: " << ss.str() << " for subset {";
+        for (State* s : initial_subset) std::cout << s->getName() << " ";
+        std::cout << "} with value: " << initial_value << std::endl;
+    #endif
 }
 
 bool hasFinalIntersection(const SetStd<State*>& subset, const SetStd<State*>* finals) {
@@ -183,6 +189,12 @@ void processTransition(
 			(*weights_to_T)[t].push_back(e->getWeight()->getValue());
 		}
 	}
+
+    // Next_subset is empty, it will never reach to an accepting state, thus DFA must die
+    if (next_subset.size() == 0) {
+        // Somehow create a sink state
+        // When an invalid input is given, in all cases must create an edge to this sink state
+    }
 
 	// Calculate new accumulated value for the next state of S_ij
 	weight_t aggregated_weight = aggregateWeights(weights_to_T);

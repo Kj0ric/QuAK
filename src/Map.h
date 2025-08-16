@@ -30,11 +30,11 @@ public:
 	  return this->all.size();
   }
 
-	T_value at (T_key key) {
+	T_value at (T_key key) const {
 	  return this->all.at(key);
   }
 
-	bool contains (T_key key) {
+	bool contains (T_key key) const {
     	return all.count(key) > 0;
 	};
 

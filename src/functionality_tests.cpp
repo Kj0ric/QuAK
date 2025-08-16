@@ -4,20 +4,9 @@
 #include "Automaton.h"
 #include "ChildAutomaton.h"
 #include "NestedAutomaton.h"
+#include "Set.h"
 #include "Weight.h"
 #include "utility.h"
-
-extern SetStd<weight_t> computeChildReturnValues(ChildAutomaton* child, value_function_t finVal, weight_t bound = -1);
-extern SetStd<weight_t> computeGlobalReturnValues(const NestedAutomaton* nwa, value_function_t finVal, weight_t bound = -1);
-extern void constructMonitors(
-        const NestedAutomaton* nwa,
-        const SetStd<weight_t>& global_return_values,
-        std::vector<std::vector<ChildAutomaton*>>& monitors,
-        SetStd<State*>& Q_S,
-        SetStd<State*>& F_S,
-        value_function_t finVal,
-        weight_t bound
-    );
 
 void testReadDomain() {
     std::string filename = "../samples/tests/testH1.txt";
@@ -116,17 +105,23 @@ void testS_ijConstruction(
         QUAK_FAIL("Child automaton pointer is null.\n");
     }
 
-    std::cout << "Start determinizing..." << std::endl;
-    ChildAutomaton* S_ij = child->determiniseToS_ij(j, g, bound);
-    std::cout << "Determinized S_{" << j << "} automaton (child " << child_index << "):\n";
-    S_ij->print();
+    std::cout << "\n=== DETAILED S_ij ANALYSIS ===" << std::endl;
 
-    // Clean up
+    // Analyze the S_ij construction
+    ChildAutomaton* S_ij = child->determiniseToS_ij(j, g, bound);
+    
+    std::cout << "S_{" << child_index << "," << j << "} Analysis:" << std::endl;
+    std::cout << "- Total states: " << S_ij->getStates()->size() << std::endl;
+    std::cout << "- Final states: " << S_ij->getFinalStates()->size() << std::endl;
+    std::cout << "- Alphabet size: " << S_ij->getAlphabetSize() << std::endl;
+    
+    S_ij->print();
+    
     delete S_ij;
     delete nested;
 }
 
-void testComputeChildReturnValues(const std::string& filepath) {
+void testComputeChildReturnValues(const std::string& filepath, weight_t bound) {
     std::cout << "=== Testing Child Return Values Computation ===" << std::endl;
     
     NestedAutomaton* nested = new NestedAutomaton(filepath);
@@ -180,8 +175,7 @@ void testComputeChildReturnValues(const std::string& filepath) {
     }
     
     // Test SumB function
-    std::cout << "--- Testing SumB Function (bound=10) ---" << std::endl;
-    weight_t bound = 10;
+    std::cout << "--- Testing SumB Function " << "bound=" << bound << std::endl;
     for (size_t i = 0; i < nested->getChildrenSize(); ++i) {
         ChildAutomaton* child = nested->getChild(i);
         if (!child) continue;
@@ -255,24 +249,32 @@ void testConstructMonitors(const std::string& filepath, value_function_t finVal,
         }
     }
     
-    // Step 2: Test constructMonitors
-    std::vector<std::vector<ChildAutomaton*>> monitors;
+    // Step 2: Test constructMonitors with MAP-BASED structure
+    MapStd<MonitorKey, ChildAutomaton*> monitors;
     SetStd<State*> Q_S, F_S;
-    
     constructMonitors(nested, global_return_values, monitors, Q_S, F_S, finVal, bound);
     
-    // Step 3: Verify correct count
+    // Step 3: Verify correct count using MAP iteration
     std::cout << "\n--- Monitor Count Verification ---" << std::endl;
     
-    bool correct_count = true;
-    size_t total_actual_monitors = 0;
+    // Count monitors per child using the map
+    std::vector<size_t> actual_counts(nested->getChildrenSize(), 0);
+    for (const auto& [key, monitor] : monitors) {
+        size_t child_index = key.first;  // Extract child index from MonitorKey
+        if (child_index < actual_counts.size()) {
+            actual_counts[child_index]++;
+        }
+    }
     
-    for (size_t i = 0; i < monitors.size(); ++i) {
+    bool correct_count = true;
+    size_t total_actual_monitors = monitors.size();
+    
+    for (size_t i = 0; i < nested->getChildrenSize(); ++i) {
         ChildAutomaton* child = nested->getChild(i);
         bool is_dummy = !child || child->getName() == "dummy" || child->getName().empty();
         
         size_t expected_count = is_dummy ? 0 : child_return_values[i].size();
-        size_t actual_count = monitors[i].size();
+        size_t actual_count = actual_counts[i];
         
         std::cout << "Child " << i;
         if (is_dummy) std::cout << " (dummy)";
@@ -285,18 +287,16 @@ void testConstructMonitors(const std::string& filepath, value_function_t finVal,
             correct_count = false;
         }
         std::cout << std::endl;
-        
-        total_actual_monitors += actual_count;
     }
     
     std::cout << "\nTotal monitors created: " << total_actual_monitors << std::endl;
     std::cout << "Total monitors expected: " << total_expected_monitors << std::endl;
     std::cout << "Count verification: " << (correct_count && total_actual_monitors == total_expected_monitors ? "✓" : "❌") << std::endl;
     
-    // Step 4: Verify correct values (sample a few monitors)
+    // Step 4: Verify correct values using MAP iteration
     std::cout << "\n--- Monitor Value Verification ---" << std::endl;
     
-    for (size_t i = 0; i < monitors.size(); ++i) {
+    for (size_t i = 0; i < nested->getChildrenSize(); ++i) {
         ChildAutomaton* child = nested->getChild(i);
         if (!child || child->getName() == "dummy" || child->getName().empty()) {
             continue;
@@ -304,29 +304,214 @@ void testConstructMonitors(const std::string& filepath, value_function_t finVal,
         
         std::cout << "Child " << i << " monitors:" << std::endl;
         
-        // Convert child return values to sorted vector for indexing
-        std::vector<weight_t> child_values_vec(child_return_values[i].begin(), child_return_values[i].end());
-        std::sort(child_values_vec.begin(), child_values_vec.end());
-        
-        for (size_t j = 0; j < monitors[i].size(); ++j) {
-            if (monitors[i][j]) {
-                std::string monitor_name = monitors[i][j]->getName();
-                weight_t expected_value = child_values_vec[j];
-                std::cout << "  [" << j << "]: " << monitor_name 
-                          << " (handles value " << expected_value << ")" << std::endl;
-            } else {
-                std::cout << "  [" << j << "]: NULL monitor ❌" << std::endl;
+        // Find all monitors for this child
+        for (const auto& [key, monitor] : monitors) {
+            if (key.first == i) {  // This monitor belongs to child i
+                weight_t value = key.second;  // The return value this monitor handles
+                std::string monitor_name = monitor->getName();
+                
+                std::cout << "  S_" << i << "^" << value << ": " << monitor_name 
+                          << " (handles value " << value << ")" << std::endl;
             }
         }
     }
     
-    // Step 5: Cleanup
-    for (size_t i = 0; i < monitors.size(); ++i) {
-        for (size_t j = 0; j < monitors[i].size(); ++j) {
-            delete monitors[i][j];
-        }
+    // Step 5: Cleanup using MAP iteration
+    for (const auto& [key, monitor] : monitors) {
+        delete monitor;
     }
     
     delete nested;
     std::cout << "\n=== Test Completed ===" << std::endl;
+}
+
+void testTransformToBuchi(const std::string& filepath, value_function_t finVal, weight_t bound = -1) {
+    std::cout << "=== Testing transformToBuchi Function ===" << std::endl;
+    std::cout << "File: " << filepath << std::endl;
+    std::cout << "Value function: " << (finVal == Min_f ? "Min_f" : 
+                                      finVal == Max_f ? "Max_f" : 
+                                      finVal == SumB ? "SumB" : "Unknown") << std::endl;
+    if (finVal == SumB) std::cout << "Bound: " << bound << std::endl;
+    
+    try {
+        // 1. Load the nested automaton
+        NestedAutomaton* nested = new NestedAutomaton(filepath);
+        std::cout << "\n--- Original Nested Automaton ---" << std::endl;
+        nested->print();
+        
+        if (nested->getChildrenSize() == 0) {
+            std::cout << "❌ No child automata found! Skipping test." << std::endl;
+            delete nested;
+            return;
+        }
+
+        // ===== NEW DIAGNOSTIC TESTS =====
+        
+        // TEST 1: Analyze Return Values
+        std::cout << "\n=== DIAGNOSTIC TEST 1: Return Values Analysis ===" << std::endl;
+        
+        SetStd<weight_t> global_values = computeGlobalReturnValues(nested, finVal, bound);
+        std::cout << "Global return values: {";
+        for (weight_t val : global_values) {
+            std::cout << val << " ";
+        }
+        std::cout << "} (count: " << global_values.size() << ")" << std::endl;
+        
+        for (size_t i = 0; i < nested->getChildrenSize(); ++i) {
+            ChildAutomaton* child = nested->getChild(i);
+            if (!child) continue;
+            
+            SetStd<weight_t> child_values = computeChildReturnValues(child, finVal, bound);
+            std::cout << "Child " << i << " returns: {";
+            for (weight_t val : child_values) {
+                std::cout << val << " ";
+            }
+            std::cout << "} (count: " << child_values.size() << ")" << std::endl;
+        }
+
+        // TEST 2: Analyze Monitor Sizes
+        std::cout << "\n=== DIAGNOSTIC TEST 2: Monitor Size Analysis ===" << std::endl;
+        
+        MapStd<MonitorKey, ChildAutomaton*> monitors;
+        SetStd<State*> Q_S, F_S;
+        constructMonitors(nested, global_values, monitors, Q_S, F_S, finVal, bound);
+        
+        std::cout << "Total monitors created: " << monitors.size() << std::endl;
+        std::cout << "Total monitor states (Q_S): " << Q_S.size() << std::endl;
+        std::cout << "Total final monitor states (F_S): " << F_S.size() << std::endl;
+        
+        // Analyze individual monitor sizes
+        size_t max_monitor_states = 0;
+        for (const auto& [key, monitor] : monitors) {
+            size_t monitor_state_count = monitor->getStates()->size();
+            std::cout << "Monitor S_" << key.first << "^" << key.second 
+                      << ": " << monitor_state_count << " states" << std::endl;
+            max_monitor_states = std::max(max_monitor_states, monitor_state_count);
+        }
+
+        // TEST 3: Theoretical State Space Analysis
+        std::cout << "\n=== DIAGNOSTIC TEST 3: Theoretical Bounds ===" << std::endl;
+        
+        size_t parent_states = nested->getStates()->size();
+        size_t guess_values = global_values.size();
+        
+        // Calculate theoretical maximum P1 and P2 sizes
+        size_t max_P_size = 1;
+        for (size_t i = 0; i < Q_S.size(); ++i) {
+            max_P_size *= 2;  // 2^|Q_S| possible subsets
+            if (max_P_size > 1000000) {  // Cap to avoid overflow
+                max_P_size = 1000000;
+                std::cout << "P set size capped at 1M (2^" << Q_S.size() << " would be too large)" << std::endl;
+                break;
+            }
+        }
+        
+        std::cout << "Parent states: " << parent_states << std::endl;
+        std::cout << "Guess values: " << guess_values << std::endl;
+        std::cout << "Max theoretical |P1| or |P2|: 2^" << Q_S.size() << " = " << max_P_size << std::endl;
+        
+        size_t theoretical_max = parent_states * guess_values * max_P_size * max_P_size;
+        std::cout << "Theoretical max Büchi states: " << parent_states << " × " << guess_values 
+                  << " × " << max_P_size << " × " << max_P_size << " = ";
+        if (theoretical_max > 1000000000) {
+            std::cout << "HUGE (>1B)" << std::endl;
+        } else {
+            std::cout << theoretical_max << std::endl;
+        }
+
+        // TEST 4: Monitor State Details (only if reasonable size)
+        if (monitors.size() <= 10 && max_monitor_states <= 20) {
+            std::cout << "\n=== DIAGNOSTIC TEST 4: Monitor Details ===" << std::endl;
+            for (const auto& [key, monitor] : monitors) {
+                std::cout << "\n--- Monitor S_" << key.first << "^" << key.second << " ---" << std::endl;
+                monitor->print();
+            }
+        } else {
+            std::cout << "\n=== DIAGNOSTIC TEST 4: Monitor Details (SKIPPED - too large) ===" << std::endl;
+        }
+
+        // ===== END DIAGNOSTIC TESTS =====
+
+        // 2. Transform to Büchi (with progress monitoring)
+        std::cout << "\n--- Transforming to Büchi Automaton ---" << std::endl;
+        std::cout << "Starting transformation..." << std::endl;
+        
+        ChildAutomaton* buchi = nested->transformToBuchi(finVal, bound);
+        
+        // 3. Print the result (limit output if too large)
+        std::cout << "\n--- Resulting Büchi Automaton ---" << std::endl;
+        
+        size_t buchi_state_count = buchi->getStates()->size();
+        if (buchi_state_count <= 50) {
+            buchi->print();
+        } else {
+            std::cout << "Büchi automaton too large to print (>" << buchi_state_count << " states)" << std::endl;
+        }
+        
+        // 4. Enhanced Sanity checks
+        std::cout << "\n--- Sanity Checks ---" << std::endl;
+        std::cout << "✓ Büchi states: " << buchi_state_count << std::endl;
+        std::cout << "✓ Büchi alphabet size: " << buchi->getAlphabetSize() << std::endl;
+        std::cout << "✓ Büchi weights: " << buchi->getWeights()->size() << std::endl;
+        std::cout << "✓ Final states: " << buchi->getFinalStates()->size() << std::endl;
+        
+        // Check initial state
+        if (buchi->getInitial()) {
+            std::cout << "✓ Initial state: " << buchi->getInitial()->getName() << std::endl;
+        } else {
+            std::cout << "❌ No initial state!" << std::endl;
+        }
+        
+        // Check alphabet consistency
+        bool alphabet_consistent = (buchi->getAlphabetSize() == nested->getAlphabetSize());
+        std::cout << "✓ Alphabet consistency: " << (alphabet_consistent ? "PASS" : "FAIL") << std::endl;
+        
+        // Check if all states are reachable (basic connectivity test)
+        bool has_edges = false;
+        for (size_t i = 0; i < buchi->getStates()->size() && !has_edges; ++i) {
+            State* state = buchi->getStates()->at(i);
+            for (size_t sym = 0; sym < buchi->getAlphabetSize() && !has_edges; ++sym) {
+                if (state->getSuccessors(sym)->size() > 0) {
+                    has_edges = true;
+                }
+            }
+        }
+        std::cout << "✓ Has transitions: " << (has_edges ? "PASS" : "FAIL") << std::endl;
+
+        // TEST 5: State Space Explosion Analysis
+        std::cout << "\n=== EXPLOSION ANALYSIS ===" << std::endl;
+        
+        if (buchi_state_count > 100) {
+            std::cout << "⚠️  STATE EXPLOSION DETECTED! (" << buchi_state_count << " states)" << std::endl;
+            
+            // Likely causes analysis
+            if (Q_S.size() > 10) {
+                std::cout << "🔍 Likely cause: Too many monitor states (" << Q_S.size() << ")" << std::endl;
+                std::cout << "   → P1/P2 subsets exploding exponentially" << std::endl;
+            }
+            if (global_values.size() > 5) {
+                std::cout << "🔍 Likely cause: Too many return values (" << global_values.size() << ")" << std::endl;
+            }
+            if (max_monitor_states > 5) {
+                std::cout << "🔍 Likely cause: Large individual monitors (max: " << max_monitor_states << " states)" << std::endl;
+            }
+        } else {
+            std::cout << "✓ State space reasonable (" << buchi_state_count << " states)" << std::endl;
+        }
+        
+        // Cleanup monitors
+        for (const auto& [key, monitor] : monitors) {
+            delete monitor;
+        }
+        
+        // Memory cleanup
+        delete buchi;
+        delete nested;
+        std::cout << "\n=== Test Completed Successfully ===" << std::endl;
+        
+    } catch (const std::exception& e) {
+        std::cout << "❌ Test failed with exception: " << e.what() << std::endl;
+    } catch (...) {
+        std::cout << "❌ Test failed with unknown exception" << std::endl;
+    }
 }

@@ -1,3 +1,4 @@
+#include <cstddef>
 #include <ostream>
 #include <string>
 #include <vector>
@@ -163,30 +164,19 @@ weight_t applyBound(weight_t value, weight_t bound) {
 // Assumes: a NWA AA with regular WA children B_i
 // Ensures: a silf(f)-WA A' that is equivalent to A
 
-//namespace {
-    const weight_t INIT_VALUE = 0;          // Does not matter what it is
-
-    // Define global state for Büchi automaton
-    struct GlobalState {
-        State* master;
-        weight_t last_guess;
-        SetStd<State*> P1, P2;
-        // bool operator==
-    };
-
-    void computeGlobalDomains(const NestedAutomaton* nwa, weight_t& global_min, weight_t& global_max){
-        global_min = std::numeric_limits<float>::max();
-        global_max = std::numeric_limits<float>::lowest();
-        for (size_t i = 0; i < nwa->getChildrenSize(); ++i) {
-            ChildAutomaton* child = nwa->getChild(i);
-            if (child == nullptr) continue;
-            global_min = std::min(global_min, child->getMinDomain());
-            global_max = std::max(global_max, child->getMaxDomain());
-        }
+void computeGlobalDomains(const NestedAutomaton* nwa, weight_t& global_min, weight_t& global_max){
+    global_min = std::numeric_limits<float>::max();
+    global_max = std::numeric_limits<float>::lowest();
+    for (size_t i = 0; i < nwa->getChildrenSize(); ++i) {
+        ChildAutomaton* child = nwa->getChild(i);
+        if (child == nullptr) continue;
+        global_min = std::min(global_min, child->getMinDomain());
+        global_max = std::max(global_max, child->getMaxDomain());
     }
+}
 
 // Helper: Compute all possible return values for a single child automaton
-SetStd<weight_t> computeChildReturnValues(ChildAutomaton* child, value_function_t finVal, weight_t bound = -1) {
+SetStd<weight_t> computeChildReturnValues(ChildAutomaton* child, value_function_t finVal, weight_t bound) {
     SetStd<weight_t> return_values;
     
     if (finVal == Min_f || finVal == Max_f) {
@@ -295,176 +285,240 @@ SetStd<weight_t> computeChildReturnValues(ChildAutomaton* child, value_function_
     return return_values;
 }
 
-    // Compute the global set of all possible return values across all children
-    SetStd<weight_t> computeGlobalReturnValues(const NestedAutomaton* nwa, value_function_t finVal, weight_t bound = -1) {
-        SetStd<weight_t> global_values;
+// Compute the global set of all possible return values across all children
+SetStd<weight_t> computeGlobalReturnValues(const NestedAutomaton* nwa, value_function_t finVal, weight_t bound) {
+    SetStd<weight_t> global_values;
+    
+    for (size_t i = 0; i < nwa->getChildrenSize(); ++i) {
+        ChildAutomaton* child = nwa->getChild(i);
+        if (child == nullptr) continue;
         
-        for (size_t i = 0; i < nwa->getChildrenSize(); ++i) {
-            ChildAutomaton* child = nwa->getChild(i);
-            if (child == nullptr) continue;
-            
-            SetStd<weight_t> child_values = computeChildReturnValues(child, finVal, bound);
-            
-            // Union with global set
-            for (weight_t val : child_values) {
-                global_values.insert(val);
-            }
-        }
+        SetStd<weight_t> child_values = computeChildReturnValues(child, finVal, bound);
         
-        return global_values;
-    }
-
-    // Construct all S_ij (monitors) and collect Q_S and F_S
-    void constructMonitors(
-        const NestedAutomaton* nwa,
-        const SetStd<weight_t>& global_return_values,
-        std::vector<std::vector<ChildAutomaton*>>& monitors,
-        SetStd<State*>& Q_S,
-        SetStd<State*>& F_S,
-        value_function_t finVal,
-        weight_t bound
-    ) {
-        size_t k = nwa->getChildrenSize();
-        monitors.resize(k);
-
-        for (size_t i = 0; i < k; ++i) {
-            ChildAutomaton* child = nwa->getChild(i);
-            if (child == nullptr) continue;
-
-            // Create monitors for possible return values by the child i
-            SetStd<weight_t> child_values = computeChildReturnValues(child, finVal, bound);
-            for (weight_t j : child_values) {
-                monitors[i].push_back(child->determiniseToS_ij(j, finVal));
-            }
-            /*
-            for (weight_t j : global_return_values) {
-                ChildAutomaton* monitor = child->determiniseToS_ij(j, finVal);
-                monitors[i].push_back(monitor);
-                
-                // Collect Q_S and F_S
-                for (size_t s = 0; s < monitor->getStates()->size(); ++s) {
-                    Q_S.insert(monitor->getStates()->at(s));
-                }
-                for (State* s : *(monitor->getFinalStates())) {
-                    F_S.insert(s);
-                }
-            }
-            */  
-        }
-    }
-
-    // Find the sucessors of the states in P1 or P2. Exclude if final state
-    SetStd<State*> stepMonitors(const SetStd<State*>& P, Symbol* a, const SetStd<State*>& F_S) {
-        SetStd<State*> result;
-
-        for (State* q : P) {
-            // Since monitors are DFA, there's either 1 or 0 transitions
-            for (Edge* e : *(q->getSuccessors(a->getId()))){
-                State* q_prime = e->getTo();
-
-                // Add only non-accepting states
-                if (F_S.contains(q_prime) != true) {
-                    result.insert(q_prime);
-                }
-           }    
-        }
-        return result;
-    }
-
-    // Extra function to remove the accepting states in P
-    void removeFinalStates(SetStd<State*>&P, const SetStd<State*>& F_S) {
-        auto it = P.begin();
-        while (it != P.end()) {
-            if (F_S.contains(*it)) {
-                State* to_remove = *it;
-                ++it;
-                P.erase(to_remove);
-            } else {
-                ++it;
-            }
+        // Union with global set
+        for (weight_t val : child_values) {
+            global_values.insert(val);
         }
     }
     
-    #if 0
-    // Helper: Initialize büchi automaton components
-    void initializeBuchiAutomaton(
-        const NestedAutomaton* nwa,
-        MapArray<Symbol*>*& new_alphabet,
-        MapArray<Weight*>*& new_weights,
-        MapStd<GlobalState, State*>& state_map,
-        State*& initial_state,
-        weight_t global_min,
-        weight_t global_max,
-        std::queue<GlobalState>& worklist,
-        unsigned int& state_counter
-    ) {
-        // Copy alphabet from master
-        size_t alph_size = nwa->getAlphabetSize();
-        new_alphabet = new MapArray<Symbol*>(alph_size);
-        for (size_t i = 0; i < alph_size; ++i) {
-            Symbol* original = nwa->getAlphabet()->at(i);
-            Symbol* copy = new Symbol(original->getName());
-            new_alphabet->insert(i, copy);
+    // Add silent value as well
+    global_values.insert(weight_t(SILENT));
+
+    return global_values;
+}
+
+using MonitorKey = std::pair<size_t, weight_t>;  // (i, j)
+
+// Construct all S_ij (monitors) and collect Q_S and F_S
+void constructMonitors(
+    const NestedAutomaton* nwa,
+    const SetStd<weight_t>& global_return_values,
+    MapStd<MonitorKey, ChildAutomaton*>& monitors,
+    SetStd<State*>& Q_S,
+    SetStd<State*>& F_S,
+    value_function_t finVal,
+    weight_t bound
+) {
+    for (size_t i = 0; i < nwa->getChildrenSize(); ++i) {
+        ChildAutomaton* child = nwa->getChild(i);
+        if (child == nullptr) continue;
+
+        // Only create monitors for possible return values by the child i
+        SetStd<weight_t> child_values = computeChildReturnValues(child, finVal, bound);
+        for (weight_t j : child_values) {
+            ChildAutomaton* monitor = child->determiniseToS_ij(j, finVal, bound);
+
+            MonitorKey key = {i,j};
+            monitors.insert(key, monitor);
+            
+            // Collect Q_S and F_S
+            for (size_t s = 0; s < monitor->getStates()->size(); ++s) {
+                Q_S.insert(monitor->getStates()->at(s));
+            }
+            for (State* s : *(monitor->getFinalStates())) {
+                F_S.insert(s);
+            }
         }
+    }
+}
 
-        // Initialize empty weights array
-        new_weights = new MapArray<Weight*>(0);
+// Find the sucessors of the states in P1 or P2. Exclude if final state
+SetStd<State*> stepMonitors(const SetStd<State*>& P, Symbol* a, const SetStd<State*>& F_S) {
+    SetStd<State*> result;
 
-        // Initialize state counter to name the states of Buchi
-        state_counter = 0;
-        
-        // Create initial Büchi state
-        GlobalState init;
-        init.master = nwa->getInitial();
-        init.last_guess = weight_t(INIT_VALUE); 
-        init.P1 = SetStd<State*>();
-        init.P2 = SetStd<State*>();
+    for (State* q : P) {
+        // Since monitors are DFA, there's either 1 or 0 transitions
+        for (Edge* e : *(q->getSuccessors(a->getId()))){
+            State* q_prime = e->getTo();
 
-        std::ostringstream ss;
-        ss << "b_" << state_counter++;
-        initial_state = new State(ss.str(), new_alphabet->size(), global_min, global_max);
+            // Add only non-accepting states
+            if (F_S.contains(q_prime) != true) {
+                result.insert(q_prime);
+            }
+        }    
+    }
+    return result;
+}
 
-        // Map the state to the tuple
-        state_map[init] = initial_state;
-        // Add init Büchi state to start exploration
-        worklist.push(init);
+// Extra function to remove the accepting states in P
+void removeFinalStates(SetStd<State*>&P, const SetStd<State*>& F_S) {
+    auto it = P.begin();
+    while (it != P.end()) {
+        if (F_S.contains(*it)) {
+            State* to_remove = *it;
+            ++it;
+            P.erase(to_remove);
+        } else {
+            ++it;
+        }
+    }
+}
+
+    
+// Helper: Initialize büchi automaton components
+State* initializeBuchi(
+    const NestedAutomaton* nwa,
+    MapArray<Symbol*>*& new_alphabet,
+    MapArray<Weight*>*& new_weights,
+    MapStd<weight_t, Weight*>& weight_register,
+    SetStd<weight_t>& global_return_values,
+    MapStd<BuchiState, State*>& state_map,
+    BuchiState init_buchi,
+    weight_t global_min,
+    weight_t global_max,
+    std::queue<BuchiState>& worklist,
+    unsigned int& state_counter
+) {
+    State::RESET();
+    Symbol::RESET();
+    Weight::RESET();
+    
+    // Copy alphabet from master
+    size_t alph_size = nwa->getAlphabetSize();
+    new_alphabet = new MapArray<Symbol*>(alph_size);
+    for (size_t i = 0; i < alph_size; ++i) {
+        Symbol* original = nwa->getAlphabet()->at(i);
+        Symbol* copy = new Symbol(original->getName());
+        new_alphabet->insert(i, copy);
     }
 
-    void processBuchiTransition(
-        const GlobalState& current_gs,
-        unsigned int symbol_id,
-        MapStd<GlobalState, State*> state_map,
-        MapArray<Symbol*>* new_alphabet,
-        MapArray<Weight*>* new_weights,
-        const SetStd<State*>& F_S,
-        unsigned int& state_counter,
-        weight_t global_min,
-        weight_t global_max,
-        std::queue<GlobalState>& worklist
+    // Create weights array and weight register
+    new_weights = new MapArray<Weight*>(global_return_values.size());
+    weight_register.clear();
 
-        // TODO:
+    for (weight_t value : global_return_values) {
+        Weight* w = new Weight(value);
+        new_weights->insert(w->getId(), w);
+        weight_register.insert(value, w);
+    }
 
-    ) {
-        Symbol* symbol = new_alphabet->at(symbol_id);
-        State* current_state = state_map[current_gs];
+    // Initialize state counter to name the states of Buchi
+    state_counter = 0;
+    
+    // Fill in Büchi state
+    init_buchi.parent_state = nwa->getInitial();
+    init_buchi.last_guess = weight_t(INIT_BUCHI_VALUE); 
+    init_buchi.P1 = SetStd<State*>();
+    init_buchi.P2 = SetStd<State*>();
 
-        for (Edge* master_edge : *(current_gs.master)->getSuccessors(symbol_id)) {
-            State* q_prime = master_edge->getTo();
+    std::ostringstream ss;
+    ss << "b_" << state_counter++;
+    State* init_state = new State(ss.str(), new_alphabet->size(), global_min, global_max);
 
-            // Advance all active monitors
-            SetStd<State*> P1next = stepMonitors(current_gs.P1, symbol, F_S);
-            SetStd<State*> P2next = stepMonitors(current_gs.P2, symbol, F_S);
+    // Map the state to the tuple
+    state_map[init_buchi] = init_state;
+    // Add init Büchi state to start exploration
+    worklist.push(init_buchi);
 
-            bool is_silent = (master_edge->getWeight()->getValue() == SILENT);
+    return init_state;
+}
 
-            if (is_silent) {
-                // Case A: Silent transition
-                // Create new GS
-                GlobalState next_global;
-                next_global.master = q_prime;
-                next_global.last_guess = SILENT_WEIGHT; // TODO:
-                next_global.P1 = P1next;
-                next_global.P2 = P2next;
+void processBuchiTransition(
+    const BuchiState& current_gs,
+    unsigned int symbol_id,
+    MapStd<BuchiState, State*>& state_map,
+    MapArray<Symbol*>* new_alphabet,
+    MapArray<Weight*>* new_weights,
+    MapStd<weight_t, Weight*>& weight_register,
+    const MapStd<MonitorKey, ChildAutomaton*>& monitors,
+    const SetStd<State*>& F_S,
+    unsigned int& state_counter,
+    SetStd<weight_t>& global_return_values,
+    weight_t global_min,
+    weight_t global_max,
+    std::queue<BuchiState>& worklist
+) {
+    Symbol* symbol = new_alphabet->at(symbol_id);   // Get symbol from id
+    State* current_state = state_map[current_gs];        // Get the State object current_state is mapped to
+
+    for (Edge* parent_edge : *(current_gs.parent_state)->getSuccessors(symbol_id)) {
+        State* q_prime = parent_edge->getTo();
+
+        // Advance all active monitors
+        SetStd<State*> P1next = stepMonitors(current_gs.P1, symbol, F_S);
+        SetStd<State*> P2next = stepMonitors(current_gs.P2, symbol, F_S);
+
+        bool is_silent = (parent_edge->getWeight()->getValue() == SILENT);
+
+        if (is_silent) {
+            // --------  CASE (A): Silent transition  --------
+            // add transition: ( (q,j,P₁,P₂) ─a/⊥→ ( q', ⊥, P₁next, P₂next ) )
+
+            // Create new GS
+            BuchiState next_global(q_prime, SILENT, P1next, P2next);
+
+            // Create new state if not seen before
+            if (state_map.contains(next_global) != true) {
+                std::ostringstream ss;
+                ss << "b_" << state_counter++;
+                State* next_state = new State(ss.str(), new_alphabet->size(), global_min, global_max);
+                state_map[next_global] = next_state;
+                worklist.push(next_global);
+            }
+
+            // Create edge with silent weight (use last_guess as weight)
+            // Edge object stores a pointer to the weight object in weights array
+            Weight* weight = weight_register.at(SILENT);    // TODO: Test if correct
+            Edge* new_edge = new Edge(symbol, weight, current_state, state_map[next_global]);
+            current_state->addSuccessor(new_edge);
+            state_map[next_global]->addPredecessor(new_edge);
+        }
+        else {
+            // --------  CASE (B/C): Call transitions  --------  
+            // Extract child automaton index from parent edge TODO: Check if correct
+            weight_t parent_weight = parent_edge->getWeight()->getValue();
+            size_t child_index = static_cast<size_t>(parent_weight.to_float()); 
+
+            for (weight_t guess : global_return_values) {
+                if (guess == SILENT) continue; // SILENT doesn't call any child
+
+                // Let child_index = i and guess = j
+                // Look up monitor given (i,j)s
+                MonitorKey key = {child_index, guess};
+                if (!monitors.contains(key)) {
+                    continue; // Skip if this child can't return guess value TODO: check if good idea
+                }
+                ChildAutomaton* monitor = monitors.at(key);
+                // Get the initial state of monitor
+                State* monitor_init = monitor->getInitial();
+
+                // Check if P2 is empty
+                SetStd<State*> P1new, P2new;
+                
+                if (current_gs.P2.size() == 0) {
+                    // CASE (B): start a fresh epoch
+                    P1new.insert(monitor_init);
+                    P2new = P1next;  // TODO: is std::move unnecessary?
+                } else {
+                    // CASE (C): overlapping call
+                    P1new = P1next;
+                    P1new.insert(monitor_init);
+                    removeFinalStates(P1new, F_S);
+                    P2new = P2next;
+                }
+
+                // Create new state q' and add it predecessor and successor
+                BuchiState next_global(q_prime, guess, P1new, P2new);
 
                 // Create new state if not seen before
                 if (state_map.contains(next_global) != true) {
@@ -475,74 +529,88 @@ SetStd<weight_t> computeChildReturnValues(ChildAutomaton* child, value_function_
                     worklist.push(next_global);
                 }
 
-                // Create edge with silent weight (use last_guess as weight)
-                Weight* weight = getOrCreateWeight(new_weights, current_gs.last_guess);
+                // Add transition ( (q,j,P₁,P₂) ─a/guess→  (q', guess, P₁new, P₂new) )
+                Weight* weight = weight_register.at(guess);
                 Edge* new_edge = new Edge(symbol, weight, current_state, state_map[next_global]);
-                current_state->addSuccessor([new_edge]);
+                current_state->addSuccessor(new_edge);
                 state_map[next_global]->addPredecessor(new_edge);
-
+                
             }
-            else {
-                // Case B and C
-            }
-
-
         }
     }
+}
 //}
 
 // Assumes:
 //      - a NWA AA <A_mas; f; B_1, ... B_k>
 //      - finite-word deterministic automata S_ij for each i and j
 //      - input alphabet is the same for parent and children
+//      - single finVal function for all child automata
 // Ensures: Outputs a büchi automaton A' such that L(A') = L(A)
-Automaton* NestedAutomaton::transformToBuchi(value_function_t finVal, weight_t bound) {
+ChildAutomaton* NestedAutomaton::transformToBuchi(value_function_t finVal, weight_t bound) {
     State::RESET();
     Symbol::RESET();
     Weight::RESET();
 
-    // Initialize containers for the G.Büchi automaton
+    // Initialize containers for Büchi automaton
     MapArray<Symbol*>* new_alphabet;
     MapArray<Weight*>* new_weights;
-    MapArray<State*>* new_states;
     weight_t global_min, global_max;
-    GlobalState* init;
+    BuchiState init_buchi;
     
     // Helper containers
-    MapStd<GlobalState, State *> state_map;
-    std::queue<GlobalState> worklist;
+    MapStd<BuchiState, State*> state_map;
+    std::queue<BuchiState> worklist;
+    MapStd<weight_t, Weight*> weight_register;
     unsigned int state_counter;
     
-    // 1. Compute global min/max domain for all children
+    // 1. Compute global return values for all children
     SetStd<weight_t> global_return_values = computeGlobalReturnValues(this, finVal, bound);
+    computeGlobalDomains(this, global_min, global_max);
 
     // 2. Construct all S_ij and collect Q_S and F_S
-    std::vector<std::vector<ChildAutomaton*>> monitors;
+    MapStd<MonitorKey, ChildAutomaton*> monitors;
     SetStd<State*> Q_S, F_S;
-    constructMonitors(this, global_return_values, monitors, Q_S, F_S, finVal);
+    constructMonitors(this, global_return_values, monitors, Q_S, F_S, finVal, bound);
 
     // 3. Initialize
-    initializeBuchiAutomaton(this, new_alphabet, new_weights, state_map, initial, global_min, global_max, worklist, state_counter);
+    State* init_state = initializeBuchi(this, new_alphabet, new_weights, weight_register, global_return_values, state_map, init_buchi, global_min, global_max, worklist, state_counter);
 
     // 4. Build the product automaton on-the-fly
     while (worklist.empty() != true)  {
-        GlobalState current_gs = worklist.front(); worklist.pop();
+        BuchiState current_gs = worklist.front(); worklist.pop();
 
         // for each symbol start transition from current
         for (unsigned symbol_id = 0; symbol_id < new_alphabet->size(); ++symbol_id) {
-            processBuchiTransition(
-                // TODO:
-            );
+            processBuchiTransition(current_gs, symbol_id, state_map, 
+                new_alphabet, new_weights, weight_register, monitors, F_S, state_counter, global_return_values, global_min, global_max, worklist);
         }
-    
     }
+    // 5. Create state and accepting state arrays
+    MapArray<State*>* new_states = new MapArray<State*>(state_map.size());
+    SetStd<State*>* accepting_states = new SetStd<State*>();
 
-    // Construct and return the product automaton
+    for (const auto& [global_state, state] : state_map) {
+        new_states->insert(state->getId(), state);  // TODO: Check if state->getId is correct
+
+        // Mark as accepting if P2 is empty
+        if (global_state.P2.size() == 0) {
+            accepting_states->insert(state);
+        }
+    }
+    
+    // 6. Construct and return the product automaton
     std::string buchi_name = "Buchi(" + this->getName() + ")";
-    Automaton* buchi = new Automaton(
-        // TODO:
+    ChildAutomaton* buchi = new ChildAutomaton(
+        buchi_name, new_alphabet, new_states, 
+        new_weights, global_min, global_max, 
+        init_state, accepting_states
     );
+    
+    // 7. Cleanup
+    for (const auto& [key, monitor] : monitors) {
+        delete monitor;
+    }
 
     return buchi;
 }
-#endif

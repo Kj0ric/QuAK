@@ -47,7 +47,7 @@ public:
 		return final_states_ && final_states_->contains(s);
 	}
 
-	// TODO: Key Lemma S_i,j construction
+	// Key Lemma: S_i,j monitor construction
 	ChildAutomaton* determiniseToS_ij(weight_t j, value_function_t g, weight_t bound = -1);
 };
 

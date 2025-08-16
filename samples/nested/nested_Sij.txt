@@ -2,7 +2,6 @@
 a : 1, q0 -> q1
 
 @CHILD 1    
-# Child is MAX-automaton
 final: s1
 a : 0, s0 -> s0 
 a : 1, s0 -> s1 # Notice non-determinism

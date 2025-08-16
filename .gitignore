@@ -40,3 +40,5 @@ quak-main
 # IDE files
 .vscode/
 .idea/
+
+.cache/

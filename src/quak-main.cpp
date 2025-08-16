@@ -16,14 +16,13 @@
 
 int main(int argc, char* argv[]) {
     std::string filepath = argv[1];
-    
     value_function_t g = SumB;      // Adjust
-    weight_t bound = 20;             // Adjust (for SumB)
+    weight_t bound = 5;            // Adjust (for SumB)
 
-    /*
     std:: size_t i = 1;             // Adjust
-    weight_t j = 3;                 // Adjust
-    
+    weight_t j = 1;                 // Adjust
+
+    testComputeChildReturnValues(filepath, bound);
     
     std::cout << "Testing determinization of B_{" << i << "}." << std::endl;
     testS_ijConstruction(
@@ -33,10 +32,18 @@ int main(int argc, char* argv[]) {
         g,
         bound
     );
-    */
 
     //testComputeChildReturnValues(filepath);
-    testConstructMonitors(filepath, g, bound);
+    //testConstructMonitors(filepath, g, bound);
+    /*
+    std::cout << "Testing transformToBuchi with:" << std::endl;
+    std::cout << "File: " << filepath << std::endl;
+    std::cout << "Value function: " << (g == Min_f ? "Min_f" : 
+                                      g == Max_f ? "Max_f" : "SumB") << std::endl;
+    if (g == SumB) std::cout << "Bound: " << bound << std::endl;
+    
+    testTransformToBuchi(filepath, g, bound);
+    */
 
     return 0;
 }

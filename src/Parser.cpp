@@ -139,8 +139,6 @@ void readNestedFile(std::ifstream& file, Parser* parser) {
 
 	while(std::getline(file, line)) {
 		line_counter++;
-
-		if (line.empty()) continue;
 		
 		// Delete comments
 		size_t index = line.find('#');
@@ -155,7 +153,7 @@ void readNestedFile(std::ifstream& file, Parser* parser) {
         line.erase(0, line.find_first_not_of(" \t"));
         line.erase(line.find_last_not_of(" \t") + 1);
 
-		// if (line.empty()) continue;
+		if (line.empty()) continue;
 
 		// Section headers must start with @PARENT/CHILD
 		if (line.rfind("@PARENT", 0) == 0) {

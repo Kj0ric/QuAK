@@ -57,7 +57,8 @@ public:
   float to_float() const { return value; }
   uint32_t to_bv() const;
 
-  T operator*() const { return value; }
+
+  
 
   bool operator==(weight_t rhs) const { return fabs(value - rhs.value) < EPSILON; }
   bool operator!=(weight_t rhs) const { return fabs(value - rhs.value) >= EPSILON; }
@@ -86,7 +87,7 @@ private:
 public:
 	~Weight();
 	Weight(weight_t value); // constructor
-	Weight(Weight* weight); // copy constructor EXPLICIT keyword??
+	Weight(Weight* weight); // TODO: copy constructor EXPLICIT keyword??
 	static void RESET();
 	weight_t getValue() const;
 	void setValue(weight_t value);
