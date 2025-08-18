@@ -140,7 +140,14 @@ void readNestedFile(std::ifstream& file, Parser* parser) {
 	while(std::getline(file, line)) {
 		line_counter++;
 		
-		// Delete comments
+		// Remove comments (keep content before '#')
+		size_t comment_pos = line.find('#');
+		if (comment_pos != std::string::npos) {
+			line = line.substr(0, comment_pos);
+		}
+		// If line starts with #, line becomes an empty line
+		
+		/*
 		size_t index = line.find('#');
 		if (index != std::string::npos) {
 			auto i = index;
@@ -148,6 +155,7 @@ void readNestedFile(std::ifstream& file, Parser* parser) {
 				line[i++] = ' ';
 			}
 		}
+		*/
 
 		// Trim whitespace
         line.erase(0, line.find_first_not_of(" \t"));
@@ -329,9 +337,12 @@ void readFinalStates(std::ifstream& file, Parser* parser, int line_counter) {
 
 		// Remove comments and trim whitespace
 		size_t comment_pos = final_line.find('#');
-		if (comment_pos != std::string::npos) final_line = final_line.substr(0, comment_pos);
+		if (comment_pos != std::string::npos) {
+			final_line = final_line.substr(0, comment_pos);
+		}
 		final_line.erase(0, final_line.find_first_not_of(" \t"));
 		final_line.erase(final_line.find_last_not_of(" \t") + 1);
+		
 		if (!final_line.empty()) break;
 	}
 	
