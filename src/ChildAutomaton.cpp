@@ -57,18 +57,37 @@ ChildAutomaton::ChildAutomaton(const ChildAutomaton& other)
      final_states_(new SetStd<State*>(*other.final_states_)) {}
 
 /* --------------------------- B_i DETERMINIZATION --------------------------- */
-// Helper struct for hashing a pair of SetStd<State*> and int
-struct SubsetValuePairHash{
+//using Subset = SetStd<State*>;
+//using Pair = std::pair<Subset, weight_t>;
+using StateVector = std::vector<weight_t>;
+
+// Hash function for StateVector TODO: Check this
+struct StateVectorHash {
     // Define a custom hash functor. This allows the use of struct as a function
-    std::size_t operator()(const std::pair<SetStd<State*>, weight_t>& pair) const {
-        std::size_t h1 = 0;
-        for (const State* s : pair.first) {
-            h1 ^= std::hash<unsigned int>()(s->getId());
+    std::size_t operator()(const StateVector& vec) const {
+        std::size_t seed = vec.size();
+        for (auto& val : vec) {
+            seed ^= std::hash<float>()(val.to_float()) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
         }
-        std::size_t h2 = std::hash<float>()(pair.second.to_float());
-        return h1 ^(h2 << 1);
+        return seed;
     }
 };
+
+// Helper to print the state vector for debugging
+void printVector(const StateVector& vec) {
+    std::cout << "<";
+    for (size_t i = 0; i < vec.size(); ++i) {
+        if (i > 0) std::cout << ", ";
+        if (vec[i] == weight_t(std::numeric_limits<float>::lowest())) {
+            std::cout << "-inf";
+        } else if (vec[i] == weight_t(std::numeric_limits<float>::max())){
+            std::cout << "+inf";
+        } else {
+            std::cout << vec[i];
+        }
+    }
+    std::cout << ">";
+}
 
 // Solve non-determinism in S_ij transition weights with MAX value function
 weight_t aggregateWeights(MapStd<State*, std::vector<weight_t>> *weightMap) {
@@ -87,34 +106,37 @@ weight_t transitionFunction(weight_t state_value, weight_t transit_value, value_
     if (finVal == Max_f) {
         result = std::max(state_value, transit_value);  
     } else if (finVal == Min_f) {
-        result   = std::min(state_value, transit_value);
+        result = std::min(state_value, transit_value);
     } else if (finVal == SumB) {
-        result = state_value + transit_value;
-        if (state_value == bound || result >= bound) {
-            result = bound;
-        } else if (state_value == -bound || result <= -bound) {
-            result = -bound;
+        // Handle bound exceeded cases
+        if (state_value == bound + 1 || state_value == -bound - 1) {
+            return state_value; // Once exceeded stay exceeded
         }
-        // If none satisfies above then result = state_value + transit_value
+
+        result = state_value + transit_value;
+
+        // Check bounds with placeholder values
+        if (result > bound) {
+            result = bound + 1;     // Means positive bound exceeded
+        } else if (result < -bound) {
+            result = -bound - 1;    // Means negative bound exceeded
+        }
     } else {
         QUAK_FAIL("transitionFunction: Non-regular value function for child automaton B_i\n");
     }
 	return result;
 }
 
-// Helper to compare Pairs
-using Subset = SetStd<State*>;
-using Pair = std::pair<Subset, weight_t>;
 // Helper: Initialize S_ij
 void initializeDFA(
 	MapArray<Symbol*>*& dfa_alphabet, 
 	MapArray<Weight*>*& dfa_weights, 
-	MapStd<Pair, State*>& state_map_DFA, 
-	std::queue<Pair>& worklist, 
+	MapStd<StateVector, State*>& state_map_DFA,
+	std::queue<StateVector>& worklist, 
 	State* &initial_dfa, 
 	unsigned int& state_counter, 
 	const ChildAutomaton* B_i, 
-	weight_t initial_value
+    value_function_t finVal
 ) {
     dfa_alphabet = new MapArray<Symbol*>(B_i->getAlphabet()->size());
     for (size_t i = 0; i < B_i->getAlphabet()->size(); ++i) {
@@ -122,28 +144,50 @@ void initializeDFA(
         dfa_alphabet->insert(i, new Symbol(*orig));
     }
 
-    // Initialize weightss
+    // Initialize weights
 	dfa_weights = new MapArray<Weight*>(2);
 	dfa_weights->insert(0, new Weight(weight_t(0)));
 	dfa_weights->insert(1, new Weight(weight_t(1)));
 
-	Subset initial_subset;
-	initial_subset.insert(B_i->getInitial());
-	Pair initial_pair = {initial_subset, initial_value};
+    // Create initial vector: 0 for initial state of B_i -\inf for other states
+    StateVector initial_vector(B_i->getStates()->size());
+    weight_t initial_value, unreachable_value;
 
-	std::ostringstream ss;
+    if (finVal == Min_f) {
+        initial_value = weight_t(std::numeric_limits<float>::max());        // +\inf
+        unreachable_value = weight_t(std::numeric_limits<float>::max());    // +\inf
+    } else if (finVal == Max_f) {
+        initial_value = weight_t(std::numeric_limits<float>::lowest());     // -\inf
+        unreachable_value = weight_t(std::numeric_limits<float>::lowest()); // -\inf
+    } else if (finVal == SumB) {
+        initial_value = weight_t(0);                                        // 0
+        unreachable_value = weight_t(std::numeric_limits<float>::lowest()); // -\inf
+    } else {
+        QUAK_FAIL("Unsupported value function in initializeDFA");
+    }
+    
+    for (size_t k = 0; k < initial_vector.size(); ++k) {
+        if (k == B_i->getInitial()->getId()) {
+            initial_vector[k] = initial_value;
+        } else {
+            initial_vector[k] = unreachable_value;
+        }
+    }
+
+    // Create initial DFA state
+    std::ostringstream ss;
     ss << "d_" << state_counter++;
     initial_dfa = new State(ss.str(), dfa_alphabet->size(), 0, 1);
-    initial_dfa->setDFAValue(initial_value);
-
-    state_map_DFA.insert(initial_pair, initial_dfa);
-    //state_map_DFA[initial_pair] = initial_dfa;  
-    worklist.push(initial_pair);        // Push initial pair to start subset construction
+    
+    state_map_DFA.insert(initial_vector, initial_dfa);
+    worklist.push(initial_vector);
 
     #ifdef DEBUG
-        std::cout << "Initial DFA state: " << ss.str() << " for subset {";
-        for (State* s : initial_subset) std::cout << s->getName() << " ";
-        std::cout << "} with value: " << initial_value << std::endl;
+        std::cout << "Initial DFA state: " << ss.str() << " with vector: <";
+        for (weight_t v : initial_vector){
+            std::cout << v << ", ";
+        } 
+        std::cout << ">" << std::endl;
     #endif
 }
 
@@ -155,75 +199,163 @@ bool hasFinalIntersection(const SetStd<State*>& subset, const SetStd<State*>* fi
 }
 
 // Helper: Check if a DFA state is accepting
-bool isAcceptingState(const SetStd<State*>& subset, weight_t value, weight_t j, const SetStd<State*>* finals) {
-	return (value == j) && hasFinalIntersection(subset, finals);
+bool isAcceptingVector(
+    const StateVector& vector,
+    weight_t j,
+    const SetStd<State*>* finals,
+    const ChildAutomaton* B_i,
+    weight_t bound
+) {
+    // Check if any final state component has value j or (B+1/-B-1 for bound case)
+    for (State* final_state : * finals) {
+        size_t k = final_state->getId();
+        weight_t component_value = vector[k];
+
+        if (component_value == j) {
+            return true;
+        }
+
+        // For SumB: also check bound exceeded cases
+        if (j == bound && (component_value == bound + 1 || component_value == -bound - 1)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 // Helper: Process a single transition for the subset construction
 void processTransition(
-	const Pair& current_pair,
+	const StateVector& current_vector,
 	unsigned symbol_id,
 	MapArray<Symbol*>* dfa_alphabet,
 	MapArray<Weight*>* dfa_weights,
-	MapStd<Pair, State*>& state_map_DFA, 
-    std::queue<Pair>& worklist,
+	MapStd<StateVector, State*>& state_map_DFA, 
+    std::queue<StateVector>& worklist,
     unsigned int& state_counter,
 	weight_t j,
     value_function_t finVal,
     weight_t bound,
-    const SetStd<State*>* finals
+    const SetStd<State*>* finals,
+    const ChildAutomaton* B_i
 ) {
-	const Subset& current_subset = current_pair.first;
-	weight_t current_value = current_pair.second;
-	State* from_state = state_map_DFA[current_pair];
-
+	
+	State* from_state = state_map_DFA[current_vector];
 	Symbol* symbol = dfa_alphabet->at(symbol_id);
-	Subset next_subset;
-	auto* weights_to_T = new MapStd<State*, std::vector<weight_t>>();
 
-	// Compute subset of successors
-	for (State* s : current_subset) {
-		for (Edge* e : *(s->getSuccessors(symbol_id))) {
-			State* t = e->getTo();
-			next_subset.insert(t);		// Construct the next state of S_ij
-			(*weights_to_T)[t].push_back(e->getWeight()->getValue());
-		}
-	}
+    #ifdef DEBUG
+        std::cout << "\n--- Processing transition from state " << from_state->getName() 
+                << " with symbol " << symbol->getName() << " ---" << std::endl;
+        std::cout << "Current vector: ";
+        printVector(current_vector);
+        std::cout << std::endl;
+    #endif
 
-    // Next_subset is empty, it will never reach to an accepting state, thus DFA must die
-    if (next_subset.size() == 0) {
-        // Somehow create a sink state
-        // When an invalid input is given, in all cases must create an edge to this sink state
+    // Compute next vector
+    StateVector next_vector(B_i->getStates()->size());
+    weight_t unreachable_value;
+
+    if (finVal == Min_f) {
+        unreachable_value = weight_t(std::numeric_limits<float>::max()); // +\inf
+    } else if (finVal == Max_f) {
+        unreachable_value = weight_t(std::numeric_limits<float>::lowest()); // -\inf
+    } else { // SumB
+        unreachable_value = weight_t(std::numeric_limits<float>::lowest()); // -\inf
     }
 
-	// Calculate new accumulated value for the next state of S_ij
-	weight_t aggregated_weight = aggregateWeights(weights_to_T);
-	weight_t next_value = transitionFunction(current_value, aggregated_weight, finVal, bound);
-	Pair next_pair = {next_subset, next_value};
+    // Initialize the vector
+    for (size_t k = 0; k < next_vector.size(); ++k) {
+        next_vector[k] = unreachable_value;
+    }
 
-	// If next_pair is NOT visited, create new S_ij state out of it
-	if (state_map_DFA.contains(next_pair) != true) {
-		std::ostringstream ss;
-		ss << "d_" << state_counter++;
+    // Compute max value achievable ending in each state k in B_i
+    for (size_t k = 0; k < current_vector.size(); ++k) {
+        weight_t from_value = current_vector[k];
 
-		State* next_state = new State(ss.str(), dfa_alphabet->size(), 0, 1);
-		next_state->setDFAValue(next_value);
-		state_map_DFA[next_pair] = next_state;		// Add to the map
-		worklist.push(next_pair);				// Add to the queue to explore later
+        bool should_skip;
+        if (finVal == Min_f) {
+            // Skip if this component has +inf AND it's not the initial state
+            should_skip = (from_value == weight_t(std::numeric_limits<float>::max())) && 
+                        (k != B_i->getInitial()->getId());
+        } else if (finVal == Max_f) {
+            // Skip if this component has -inf AND it's not the initial state  
+            should_skip = (from_value == weight_t(std::numeric_limits<float>::lowest())) &&
+                        (k != B_i->getInitial()->getId());
+        } else { // SumB
+            // Skip if this component is -inf (truly unreachable)
+            should_skip = (from_value == weight_t(std::numeric_limits<float>::lowest()));
+        }
 
         #ifdef DEBUG
-        std::cout << "Created DFA state: " << ss.str() << " for subset {";
-        for (State* s : next_subset) std::cout << s->getName() << " ";
-        std::cout << "} with value: " << next_value << std::endl;
+        std::cout << "  Component " << k << " (state " << B_i->getStates()->at(k)->getName() 
+                  << "): value=" << from_value << ", skip=" << should_skip << std::endl;
         #endif
-	}
+        
+        if (should_skip) continue;
+        
+        State* from_bi_state = B_i->getStates()->at(k);
+
+        // Explore all transitions from bi_state
+        for (Edge* edge : *(from_bi_state->getSuccessors(symbol_id))) {
+            State* to_bi_state = edge->getTo();
+            size_t to_k = to_bi_state->getId();
+            weight_t edge_weight = edge->getWeight()->getValue();
+
+            weight_t new_value = transitionFunction(from_value, edge_weight, finVal, bound);
+
+            #ifdef DEBUG
+                std::cout << "    Transition: " << from_bi_state->getName() 
+                        << " --" << symbol->getName() << "/" << edge_weight 
+                        << "--> " << to_bi_state->getName() 
+                        << " gives new_value=" << new_value << std::endl;
+            #endif
+            
+            // Update the vector based on finVal
+            if (finVal == Min_f) {
+                weight_t old_value = next_vector[to_k];
+                next_vector[to_k] = std::min(next_vector[to_k], new_value);
+
+                #ifdef DEBUG
+                    std::cout << "    Updated component " << to_k << ": " 
+                            << old_value << " -> " << next_vector[to_k] << std::endl;
+                #endif
+
+            } else {    // for Max_f and SumB
+                next_vector[to_k] = std::max(next_vector[to_k], new_value);
+            }
+        }
+    }
+
+    #ifdef DEBUG
+        std::cout << "Next vector: ";
+        printVector(next_vector);
+        std::cout << std::endl;
+    #endif
+
+    // Create new DFA state if not seen before
+    if (!state_map_DFA.contains(next_vector)) {
+        std::ostringstream ss;
+        ss << "d_" << state_counter++;
+
+        State* next_state = new State(ss.str(), dfa_alphabet->size(), 0, 1);
+        state_map_DFA.insert(next_vector, next_state);
+        worklist.push(next_vector);     // Explore this new state
+
+        #ifdef DEBUG
+            std::cout << "Created DFA state: " << ss.str() << " with vector: ";
+            printVector(next_vector);  
+            std::cout << std::endl;
+        #endif
+    }
+
+	// Create edge (weight 1 if accepting, 0 otherwise)
+    // Accepting only if one of the accepting state components of the vector has the value j
+    bool accepting = isAcceptingVector(next_vector, j, finals, B_i, bound);
+    Weight* weight = dfa_weights->at(accepting ? 1: 0);
 
 	// Set weight (1 if accepting, 0 otherwise)
 	// Next state is accepting only if hasFinalIntersection == true and next_value == j
-	bool accepting = isAcceptingState(next_subset, next_value, j, finals);
-	Weight* weight = dfa_weights->at(accepting ? 1 : 0);
 
-	State* to_state = state_map_DFA[next_pair];
+	State* to_state = state_map_DFA[next_vector];
 	Edge* edge = new Edge(symbol, weight, from_state, to_state);
 	from_state->addSuccessor(edge);
 	to_state->addPredecessor(edge);
@@ -232,38 +364,31 @@ void processTransition(
     std::cout << "Edge: " << from_state->getName() << " --" << symbol->getName()
             << "/" << weight->getValue() << "--> " << to_state->getName() << std::endl;
     #endif
-
-	delete weights_to_T;
 }
 
 // Helper: Collect DFA states and final states
 void collectDFAStatesAndFinals(
-	const MapStd<Pair, State*>& state_map_DFA, 
-	MapArray<State*>*& dfa_states,
-	SetStd<State*>*& dfa_final_states,
-	weight_t j,
-	const SetStd<State*>* finals
+    const MapStd<StateVector, State*>& state_map_DFA,  
+    MapArray<State*>*& dfa_states,
+    SetStd<State*>*& dfa_final_states,
+    weight_t j,
+    const SetStd<State*>* finals,
+    const ChildAutomaton* B_i,  
+    weight_t bound
 ) {
-	dfa_states = new MapArray<State*>(state_map_DFA.size());
+    dfa_states = new MapArray<State*>(state_map_DFA.size());
     dfa_final_states = new SetStd<State*>();
     
-	unsigned idx = 0;
-    // entry = (Pair, State*) where Pair = (Subset, weight_t)
-    for (const auto& [pair, current_dfa_state] : state_map_DFA) {
+    unsigned idx = 0;
+    for (const auto& [vector, current_dfa_state] : state_map_DFA) {
         // Add to set of states
         dfa_states->insert(idx++, current_dfa_state);
 
-        // Add to set of accepting states if
-        //   - intersection of the dfa state and B_i accepting state set is not empty and
-        //   - value is j
-		const SetStd<State*>& subset = pair.first;
-        weight_t state_value = pair.second;
-        if (isAcceptingState(subset, state_value, j, finals)) {
+        if (isAcceptingVector(vector, j, finals, B_i, bound)) {
             dfa_final_states->insert(current_dfa_state);
         }
     }
 }
-
 // Create S_ij boolean finite-word automaton from a child automaton B_i 
 // S_ij recognizes the words on which B_i returns the value j 
 // Must provide a bound if finVal = SumB
@@ -276,45 +401,29 @@ ChildAutomaton* ChildAutomaton::determiniseToS_ij(weight_t j, value_function_t f
     // 1. Initialize
 	MapArray<Symbol*>* dfa_alphabet;
 	MapArray<Weight*>* dfa_weights;
-    MapStd<Pair, State*> state_map_DFA;
+    MapStd<StateVector, State*> state_map_DFA;
+	std::queue<StateVector> worklist;  // Queue for BFS
 
-	std::queue<Pair> worklist;  // Queue for BFS
 	State* initial_dfa;
 	unsigned int state_counter = 0;
-	
-    weight_t initial_value = 0;
-    if (finVal == Min_f) 
-        { initial_value = weight_t(std::numeric_limits<float>::max()); }
-    else if (finVal == Max_f) 
-        { initial_value = weight_t(std::numeric_limits<float>::lowest()); }
-    else ;   // finval is SumB, then initial_value is 0
     
-	initializeDFA(dfa_alphabet, dfa_weights, state_map_DFA, worklist, initial_dfa, state_counter, this, initial_value);
+	initializeDFA(dfa_alphabet, dfa_weights, state_map_DFA, worklist, initial_dfa, state_counter, this, finVal);
 
     // 2. Subset construction using BFS
     while(!worklist.empty()) {
-        Pair current_pair = worklist.front(); worklist.pop();
+        StateVector current_pair = worklist.front(); worklist.pop();
 		for (unsigned symbol_id = 0; symbol_id < dfa_alphabet->size(); ++ symbol_id) {
 			processTransition(
 				current_pair, symbol_id, dfa_alphabet, dfa_weights, 
-				state_map_DFA, worklist, state_counter, j, finVal, bound, this->final_states_
+				state_map_DFA, worklist, state_counter, j, finVal, bound, this->final_states_, this
 			);
 		}
 	}
     
-    #ifdef DEBUG
-    std::cout << "All DFA states constructed:" << std::endl;
-    for (const auto& [pair, state] : state_map_DFA) {
-        std::cout << state->getName() << ": subset {";
-        for (State* s : pair.first) std::cout << s->getName() << " ";
-        std::cout << "} value: " << pair.second << std::endl;
-    }
-    #endif
-    
     // 3. Collect S_ij states and final states
 	MapArray<State*>* dfa_states;
 	SetStd<State*>* dfa_final_states;
-	collectDFAStatesAndFinals(state_map_DFA, dfa_states, dfa_final_states, j, this->final_states_);
+    collectDFAStatesAndFinals(state_map_DFA, dfa_states, dfa_final_states, j, this->final_states_, this, bound);
 
     // 4. Construct and return the DFA as a ChildAutomaton
     std::ostringstream dfa_name;
@@ -331,18 +440,6 @@ ChildAutomaton* ChildAutomaton::determiniseToS_ij(weight_t j, value_function_t f
     );
 
     return s_ij;
-}
-
-/* ------------------------- Key Lemma cont'd ------------------------- */
-// Helper for taking disjoint union of states of S_ij's
-SetStd<State*> disjointUnionCloned(const std::vector<SetStd<State*>>& sets) {
-    SetStd<State*> result;
-    for (const auto& sset : sets) {
-        for (State* s : sset) {
-            result.insert(new State(*s));
-        }
-    }
-    return result;
 }
 
 /* ------------------------- Other HELPERS ------------------------- */

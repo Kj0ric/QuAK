@@ -87,7 +87,7 @@ void testS_ijConstruction(
 ) {
     NestedAutomaton* nested = new NestedAutomaton(filepath);
     std::cout << "Original NestedAutomaton from " << filepath << ":\n" << std::endl;
-    nested->print();
+    //nested->print();
 
     if (nested->getChildrenSize() == 0) {
         delete nested;
@@ -121,7 +121,7 @@ void testS_ijConstruction(
     delete nested;
 }
 
-void testComputeChildReturnValues(const std::string& filepath, weight_t bound) {
+void testComputeChildReturnValues(const std::string& filepath, value_function_t finVal, weight_t bound) {
     std::cout << "=== Testing Child Return Values Computation ===" << std::endl;
     
     NestedAutomaton* nested = new NestedAutomaton(filepath);
@@ -134,60 +134,15 @@ void testComputeChildReturnValues(const std::string& filepath, weight_t bound) {
         return;
     }
     
-    std::cout << "\n=== Testing Different Value Functions ===" << std::endl;
-    
-    // Test MIN function
-    std::cout << "\n--- Testing MIN Function ---" << std::endl;
     for (size_t i = 0; i < nested->getChildrenSize(); ++i) {
         ChildAutomaton* child = nested->getChild(i);
         if (!child) continue;
     
-        SetStd<weight_t> values_min = computeChildReturnValues(child, Min_f);
+        SetStd<weight_t> values = computeChildReturnValues(child, finVal, bound);
         
-        std::cout << "Computed MIN return values for Child_" << i << ": {";
+        std::cout << "Computed return values for Child_" << i << ": {";
         bool first = true;
-        for (weight_t val : values_min) {
-            if (!first) std::cout << ", ";
-            std::cout << val;
-            first = false;
-        }
-        std::cout << "}" << std::endl;
-
-    }
-    
-    // Test MAX function  
-    std::cout << "--- Testing MAX Function ---" << std::endl;
-    for (size_t i = 0; i < nested->getChildrenSize(); ++i) {
-        ChildAutomaton* child = nested->getChild(i);
-        if (!child) continue;
-        
-        SetStd<weight_t> values_max = computeChildReturnValues(child, Max_f);
-        
-        std::cout << "Computed MAX return values for Child_" << i << ": {";
-        bool first = true;
-        for (weight_t val : values_max) {
-            if (!first) std::cout << ", ";
-            std::cout << val;
-            first = false;
-        }
-        std::cout << "}" << std::endl;
-
-    }
-    
-    // Test SumB function
-    std::cout << "--- Testing SumB Function " << "bound=" << bound << std::endl;
-    for (size_t i = 0; i < nested->getChildrenSize(); ++i) {
-        ChildAutomaton* child = nested->getChild(i);
-        if (!child) continue;
-        
-        //std::cout << "Child " << i << " (SumB with bound=" << bound << "):" << std::endl;
-        //child->print(); // Print the automaton structure
-        
-        SetStd<weight_t> sumB_values = computeChildReturnValues(child, SumB, bound);
-        
-        std::cout << "Computed SumB return values for Child_" << i << ": {";
-        bool first = true;
-        for (weight_t val : sumB_values) {
+        for (weight_t val : values) {
             if (!first) std::cout << ", ";
             std::cout << val;
             first = false;
@@ -337,7 +292,7 @@ void testTransformToBuchi(const std::string& filepath, value_function_t finVal, 
         // 1. Load the nested automaton
         NestedAutomaton* nested = new NestedAutomaton(filepath);
         std::cout << "\n--- Original Nested Automaton ---" << std::endl;
-        nested->print();
+        //nested->print();
         
         if (nested->getChildrenSize() == 0) {
             std::cout << "❌ No child automata found! Skipping test." << std::endl;
@@ -424,7 +379,7 @@ void testTransformToBuchi(const std::string& filepath, value_function_t finVal, 
             std::cout << "\n=== DIAGNOSTIC TEST 4: Monitor Details ===" << std::endl;
             for (const auto& [key, monitor] : monitors) {
                 std::cout << "\n--- Monitor S_" << key.first << "^" << key.second << " ---" << std::endl;
-                monitor->print();
+                //monitor->print();
             }
         } else {
             std::cout << "\n=== DIAGNOSTIC TEST 4: Monitor Details (SKIPPED - too large) ===" << std::endl;

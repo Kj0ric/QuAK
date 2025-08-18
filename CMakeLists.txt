@@ -12,7 +12,7 @@ OPTION(ENABLE_CONTEXT_REDUNDANCY_OPT "Enable context redundancy optimization in 
 add_compile_definitions(WEIGHT_EQ_EPSILON=10e-5f)
 
 # DEBUG
-add_compile_definitions(DEBUG)
+#add_compile_definitions(DEBUG)
 
 if (ENABLE_SCC_SEARCH_OPT)
 	add_compile_definitions(INCLUSION_SCC_SEARCH_ACTIVE)

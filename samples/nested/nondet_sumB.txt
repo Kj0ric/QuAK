@@ -1,6 +1,5 @@
 @PARENT
 a : 1, q0 -> q1
-b : 2, q1 -> 0
 
 @CHILD 1
 final: s2
