@@ -1,0 +1,164 @@
+@PARENT
+# Single state parent - only start symbols call child automata
+s1 : 1, q0 -> q0     # Call child 1
+s2 : 2, q0 -> q0     # Call child 2  
+# All other symbols are silent transitions (call dummy child 0)
+t1 : SILENT, q0 -> q0     # Silent transition
+t2 : SILENT, q0 -> q0     # Silent transition
+a1_1 : SILENT, q0 -> q0   # Silent transition
+a1_2 : SILENT, q0 -> q0   # Silent transition
+a2_1 : SILENT, q0 -> q0   # Silent transition
+a2_2 : SILENT, q0 -> q0   # Silent transition
+
+@CHILD 0
+# Dummy child automaton (always returns 0)
+
+@CHILD 1
+# Resource tracking automaton for process 1 (k=2 resources)
+# States: 2^2 = 4 resource combinations (00,01,10,11) + reject + accept = 6 states
+final: acc1
+# Initial state accepts words s1 (Σ \ {s1, t1})* t1
+# Reject on incorrect start/terminate symbols
+s1 : 0, init1 -> track1_00
+s2 : 0, init1 -> rej1
+t1 : 0, init1 -> rej1
+t2 : 0, init1 -> rej1
+a1_1 : 0, init1 -> rej1
+a1_2 : 0, init1 -> rej1
+a2_1 : 0, init1 -> rej1
+a2_2 : 0, init1 -> rej1
+
+# Resource access transitions from state 00 (no resources accessed)
+a1_1 : 0, track1_00 -> track1_01  # Access resource 1
+a1_2 : 0, track1_00 -> track1_10  # Access resource 2
+s1 : 0, track1_00 -> rej1         # Cannot restart
+s2 : 0, track1_00 -> track1_00    # Other process symbols ignored
+t1 : 0, track1_00 -> acc1         # Terminate with 0 resources used
+t2 : 0, track1_00 -> track1_00    # Other process symbols ignored
+a2_1 : 0, track1_00 -> track1_00  # Other process symbols ignored
+a2_2 : 0, track1_00 -> track1_00  # Other process symbols ignored
+
+# Resource access transitions from state 01 (resource 1 accessed)
+a1_1 : 0, track1_01 -> track1_01  # Already have resource 1
+a1_2 : 0, track1_01 -> track1_11  # Also access resource 2
+s1 : 0, track1_01 -> rej1         # Cannot restart
+s2 : 0, track1_01 -> track1_01    # Other process symbols ignored
+t1 : 1, track1_01 -> acc1         # Terminate with 1 resource used
+t2 : 0, track1_01 -> track1_01    # Other process symbols ignored
+a2_1 : 0, track1_01 -> track1_01  # Other process symbols ignored
+a2_2 : 0, track1_01 -> track1_01  # Other process symbols ignored
+
+# Resource access transitions from state 10 (resource 2 accessed)
+a1_1 : 0, track1_10 -> track1_11  # Also access resource 1
+a1_2 : 0, track1_10 -> track1_10  # Already have resource 2
+s1 : 0, track1_10 -> rej1         # Cannot restart
+s2 : 0, track1_10 -> track1_10    # Other process symbols ignored
+t1 : 1, track1_10 -> acc1         # Terminate with 1 resource used
+t2 : 0, track1_10 -> track1_10    # Other process symbols ignored
+a2_1 : 0, track1_10 -> track1_10  # Other process symbols ignored
+a2_2 : 0, track1_10 -> track1_10  # Other process symbols ignored
+
+# Resource access transitions from state 11 (both resources accessed)
+a1_1 : 0, track1_11 -> track1_11  # Already have resource 1
+a1_2 : 0, track1_11 -> track1_11  # Already have resource 2
+s1 : 0, track1_11 -> rej1         # Cannot restart
+s2 : 0, track1_11 -> track1_11    # Other process symbols ignored
+t1 : 2, track1_11 -> acc1         # Terminate with 2 resources used
+t2 : 0, track1_11 -> track1_11    # Other process symbols ignored
+a2_1 : 0, track1_11 -> track1_11  # Other process symbols ignored
+a2_2 : 0, track1_11 -> track1_11  # Other process symbols ignored
+
+# Reject state - all symbols loop with weight 0
+s1 : 0, rej1 -> rej1
+s2 : 0, rej1 -> rej1
+t1 : 0, rej1 -> rej1
+t2 : 0, rej1 -> rej1
+a1_1 : 0, rej1 -> rej1
+a1_2 : 0, rej1 -> rej1
+a2_1 : 0, rej1 -> rej1
+a2_2 : 0, rej1 -> rej1
+
+# Accept state - all symbols loop with weight 0
+s1 : 0, acc1 -> acc1
+s2 : 0, acc1 -> acc1
+t1 : 0, acc1 -> acc1
+t2 : 0, acc1 -> acc1
+a1_1 : 0, acc1 -> acc1
+a1_2 : 0, acc1 -> acc1
+a2_1 : 0, acc1 -> acc1
+a2_2 : 0, acc1 -> acc1
+
+@CHILD 2
+# Resource tracking automaton for process 2 (k=2 resources)
+# States: 2^2 = 4 resource combinations (00,01,10,11) + reject + accept = 6 states
+final: acc2
+# Initial state accepts words s2 (Σ \ {s2, t2})* t2
+# Reject on incorrect start/terminate symbols
+s2 : 0, init2 -> track2_00
+s1 : 0, init2 -> rej2
+t1 : 0, init2 -> rej2
+t2 : 0, init2 -> rej2
+a1_1 : 0, init2 -> rej2
+a1_2 : 0, init2 -> rej2
+a2_1 : 0, init2 -> rej2
+a2_2 : 0, init2 -> rej2
+
+# Resource access transitions from state 00 (no resources accessed)
+a2_1 : 0, track2_00 -> track2_01  # Access resource 1
+a2_2 : 0, track2_00 -> track2_10  # Access resource 2
+s1 : 0, track2_00 -> track2_00    # Other process symbols ignored
+s2 : 0, track2_00 -> rej2         # Cannot restart
+t1 : 0, track2_00 -> track2_00    # Other process symbols ignored
+t2 : 0, track2_00 -> acc2         # Terminate with 0 resources used
+a1_1 : 0, track2_00 -> track2_00  # Other process symbols ignored
+a1_2 : 0, track2_00 -> track2_00  # Other process symbols ignored
+
+# Resource access transitions from state 01 (resource 1 accessed)
+a2_1 : 0, track2_01 -> track2_01  # Already have resource 1
+a2_2 : 0, track2_01 -> track2_11  # Also access resource 2
+s1 : 0, track2_01 -> track2_01    # Other process symbols ignored
+s2 : 0, track2_01 -> rej2         # Cannot restart
+t1 : 0, track2_01 -> track2_01    # Other process symbols ignored
+t2 : 1, track2_01 -> acc2         # Terminate with 1 resource used
+a1_1 : 0, track2_01 -> track2_01  # Other process symbols ignored
+a1_2 : 0, track2_01 -> track2_01  # Other process symbols ignored
+
+# Resource access transitions from state 10 (resource 2 accessed)
+a2_1 : 0, track2_10 -> track2_11  # Also access resource 1
+a2_2 : 0, track2_10 -> track2_10  # Already have resource 2
+s1 : 0, track2_10 -> track2_10    # Other process symbols ignored
+s2 : 0, track2_10 -> rej2         # Cannot restart
+t1 : 0, track2_10 -> track2_10    # Other process symbols ignored
+t2 : 1, track2_10 -> acc2         # Terminate with 1 resource used
+a1_1 : 0, track2_10 -> track2_10  # Other process symbols ignored
+a1_2 : 0, track2_10 -> track2_10  # Other process symbols ignored
+
+# Resource access transitions from state 11 (both resources accessed)
+a2_1 : 0, track2_11 -> track2_11  # Already have resource 1
+a2_2 : 0, track2_11 -> track2_11  # Already have resource 2
+s1 : 0, track2_11 -> track2_11    # Other process symbols ignored
+s2 : 0, track2_11 -> rej2         # Cannot restart
+t1 : 0, track2_11 -> track2_11    # Other process symbols ignored
+t2 : 2, track2_11 -> acc2         # Terminate with 2 resources used
+a1_1 : 0, track2_11 -> track2_11  # Other process symbols ignored
+a1_2 : 0, track2_11 -> track2_11  # Other process symbols ignored
+
+# Reject state - all symbols loop with weight 0
+s1 : 0, rej2 -> rej2
+s2 : 0, rej2 -> rej2
+t1 : 0, rej2 -> rej2
+t2 : 0, rej2 -> rej2
+a1_1 : 0, rej2 -> rej2
+a1_2 : 0, rej2 -> rej2
+a2_1 : 0, rej2 -> rej2
+a2_2 : 0, rej2 -> rej2
+
+# Accept state - all symbols loop with weight 0
+s1 : 0, acc2 -> acc2
+s2 : 0, acc2 -> acc2
+t1 : 0, acc2 -> acc2
+t2 : 0, acc2 -> acc2
+a1_1 : 0, acc2 -> acc2
+a1_2 : 0, acc2 -> acc2
+a2_1 : 0, acc2 -> acc2
+a2_2 : 0, acc2 -> acc2

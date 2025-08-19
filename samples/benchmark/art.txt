@@ -1,0 +1,12 @@
+@PARENT
+i : SILENT, q0 -> q0
+g : SILENT, q0 -> q0
+r : 1, q0 -> q0
+
+@CHILD 0
+
+@CHILD 1
+final: s1
+i : 1, s0 -> s0
+r : 1, s0 -> s0
+g : 0, s0 -> s1
