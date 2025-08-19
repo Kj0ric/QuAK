@@ -84,6 +84,8 @@ struct BuchiState {
 // ----------------- Free function declarations --------------------
 weight_t applyBound(weight_t value, weight_t bound);
 SetStd<weight_t> computeChildReturnValues(ChildAutomaton* child, value_function_t finVal, weight_t bound = -1);
+SetStd<weight_t> oldComputeChildReturnValues(ChildAutomaton* child, value_function_t finVal, weight_t bound = -1);
+
 SetStd<weight_t> computeGlobalReturnValues(const NestedAutomaton* nwa, value_function_t finVal, weight_t bound = -1);
 void computeGlobalDomains(const NestedAutomaton* nwa, weight_t& global_min, weight_t& global_max);
 

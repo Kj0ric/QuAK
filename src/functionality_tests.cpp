@@ -1,5 +1,6 @@
 #include <iostream>
 #include <string>
+#include <iomanip>
 #include "Parser.h"
 #include "Automaton.h"
 #include "ChildAutomaton.h"
@@ -7,6 +8,9 @@
 #include "Set.h"
 #include "Weight.h"
 #include "utility.h"
+
+#include <queue>
+#include <unordered_set>
 
 void testReadDomain() {
     std::string filename = "../samples/tests/testH1.txt";
@@ -280,6 +284,167 @@ void testConstructMonitors(const std::string& filepath, value_function_t finVal,
     std::cout << "\n=== Test Completed ===" << std::endl;
 }
 
+void testAllMonitorsConstruction(const std::string& filepath, value_function_t finVal, weight_t bound = -1) {
+    std::cout << "=== Testing ALL Monitors Construction ===" << std::endl;
+    std::cout << "File: " << filepath << std::endl;
+    std::cout << "Value function: " << (finVal == Min_f ? "Min_f" : 
+                                      finVal == Max_f ? "Max_f" : 
+                                      finVal == SumB ? "SumB" : "Unknown") << std::endl;
+    if (finVal == SumB) std::cout << "Bound: " << bound << std::endl;
+    
+    try {
+        // Load the nested automaton
+        NestedAutomaton* nested = new NestedAutomaton(filepath);
+        
+        if (nested->getChildrenSize() == 0) {
+            std::cout << "No child automata found!" << std::endl;
+            delete nested;
+            return;
+        }
+
+        // Compute global return values
+        SetStd<weight_t> global_values = computeGlobalReturnValues(nested, finVal, bound);
+        std::cout << "\nGlobal return values: {";
+        for (weight_t val : global_values) {
+            std::cout << val << " ";
+        }
+        std::cout << "} (count: " << global_values.size() << ")" << std::endl;
+
+        // Construct all monitors
+        MapStd<MonitorKey, ChildAutomaton*> monitors;
+        SetStd<State*> Q_S, F_S;
+        constructMonitors(nested, global_values, monitors, Q_S, F_S, finVal, bound);
+        
+        std::cout << "\nTotal monitors created: " << monitors.size() << std::endl;
+        std::cout << "Total monitor states (Q_S): " << Q_S.size() << std::endl;
+        std::cout << "Total final monitor states (F_S): " << F_S.size() << std::endl;
+
+        // Individual monitor details
+        std::cout << "\n--- Individual Monitor Details ---" << std::endl;
+        for (const auto& [key, monitor] : monitors) {
+            size_t states = monitor->getStates()->size();
+            size_t final_states = monitor->getFinalStates()->size();
+            
+            std::cout << "Monitor S_" << key.first << "^" << key.second << ": " 
+                      << states << " states, " << final_states << " final" << std::endl;
+        }
+
+        // Cleanup
+        for (const auto& [key, monitor] : monitors) {
+            delete monitor;
+        }
+        
+        delete nested;
+        std::cout << "\n=== Test Completed ===" << std::endl;
+        
+    } catch (const std::exception& e) {
+        std::cout << "Test failed with exception: " << e.what() << std::endl;
+    } catch (...) {
+        std::cout << "Test failed with unknown exception" << std::endl;
+    }
+}
+
+void testCompareOldVsNewReturnValues(const std::string& filepath, value_function_t finVal, weight_t bound = -1) {
+    std::cout << "=== Comparing OLD vs NEW Return Values ===" << std::endl;
+    std::cout << "File: " << filepath << std::endl;
+    std::cout << "Function: " << (finVal == Min_f ? "Min_f" : 
+                                 finVal == Max_f ? "Max_f" : 
+                                 finVal == SumB ? "SumB" : "Unknown") << std::endl;
+    if (finVal == SumB) std::cout << "Bound: " << bound << std::endl;
+    
+    try {
+        NestedAutomaton* nested = new NestedAutomaton(filepath);
+        
+        if (nested->getChildrenSize() == 0) {
+            std::cout << "No child automata found." << std::endl;
+            delete nested;
+            return;
+        }
+
+        std::cout << "\n--- Return Values Comparison ---" << std::endl;
+        
+        size_t total_old_monitors = 0;
+        size_t total_new_monitors = 0;
+
+        for (size_t i = 0; i < nested->getChildrenSize(); ++i) {
+            ChildAutomaton* child = nested->getChild(i);
+            if (!child) continue;
+
+            SetStd<weight_t> old_values = oldComputeChildReturnValues(child, finVal, bound);
+            SetStd<weight_t> new_values = computeChildReturnValues(child, finVal, bound);
+
+            total_old_monitors += old_values.size();
+            total_new_monitors += new_values.size();
+
+            std::cout << "Child " << i << ": OLD={";
+            for (weight_t val : old_values) std::cout << val << " ";
+            std::cout << "} (" << old_values.size() << ") NEW={";
+            for (weight_t val : new_values) std::cout << val << " ";
+            std::cout << "} (" << new_values.size() << ")" << std::endl;
+        }
+
+        // Construct monitors with OLD method
+        MapStd<MonitorKey, ChildAutomaton*> old_monitors;
+        SetStd<State*> old_Q_S, old_F_S;
+        
+        for (size_t i = 0; i < nested->getChildrenSize(); ++i) {
+            ChildAutomaton* child = nested->getChild(i);
+            if (!child) continue;
+
+            SetStd<weight_t> old_values = oldComputeChildReturnValues(child, finVal, bound);
+            for (weight_t w : old_values) {
+                ChildAutomaton* monitor = child->determiniseToS_ij(w, finVal, bound);
+                MonitorKey key = {i, w};
+                old_monitors.insert(key, monitor);
+                
+                for (size_t s = 0; s < monitor->getStates()->size(); ++s) {
+                    old_Q_S.insert(monitor->getStates()->at(s));
+                }
+                for (State* s : *(monitor->getFinalStates())) {
+                    old_F_S.insert(s);
+                }
+            }
+        }
+
+        // Construct monitors with NEW method
+        SetStd<weight_t> new_global_values = computeGlobalReturnValues(nested, finVal, bound);
+        MapStd<MonitorKey, ChildAutomaton*> new_monitors;
+        SetStd<State*> new_Q_S, new_F_S;
+        constructMonitors(nested, new_global_values, new_monitors, new_Q_S, new_F_S, finVal, bound);
+
+        std::cout << "\n--- Monitor Statistics ---" << std::endl;
+        std::cout << "Total monitors: OLD=" << old_monitors.size() 
+                  << " NEW=" << new_monitors.size() << std::endl;
+        std::cout << "Monitor states: OLD=" << old_Q_S.size() 
+                  << " NEW=" << new_Q_S.size() << std::endl;
+        std::cout << "Final states: OLD=" << old_F_S.size() 
+                  << " NEW=" << new_F_S.size() << std::endl;
+
+        if (old_monitors.size() != new_monitors.size()) {
+            int diff = (int)old_monitors.size() - (int)new_monitors.size();
+            std::cout << "Monitor difference: " << diff << std::endl;
+        }
+
+        if (old_Q_S.size() != new_Q_S.size()) {
+            int diff = (int)old_Q_S.size() - (int)new_Q_S.size();
+            std::cout << "State difference: " << diff << std::endl;
+        }
+
+        // Cleanup
+        for (const auto& [key, monitor] : old_monitors) {
+            delete monitor;
+        }
+        for (const auto& [key, monitor] : new_monitors) {
+            delete monitor;
+        }
+        
+        delete nested;
+        
+    } catch (const std::exception& e) {
+        std::cout << "Test failed: " << e.what() << std::endl;
+    }
+}
+
 void testTransformToBuchi(const std::string& filepath, value_function_t finVal, weight_t bound = -1) {
     std::cout << "=== Testing transformToBuchi Function ===" << std::endl;
     std::cout << "File: " << filepath << std::endl;
@@ -375,7 +540,7 @@ void testTransformToBuchi(const std::string& filepath, value_function_t finVal, 
         }
 
         // TEST 4: Monitor State Details (only if reasonable size)
-        if (monitors.size() <= 10 && max_monitor_states <= 20) {
+        if (monitors.size() <= 12 && max_monitor_states <= 20) {
             std::cout << "\n=== DIAGNOSTIC TEST 4: Monitor Details ===" << std::endl;
             for (const auto& [key, monitor] : monitors) {
                 std::cout << "\n--- Monitor S_" << key.first << "^" << key.second << " ---" << std::endl;

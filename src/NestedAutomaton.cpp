@@ -175,35 +175,314 @@ void computeGlobalDomains(const NestedAutomaton* nwa, weight_t& global_min, weig
     }
 }
 
+//Helper: Efficient dominance-based state removal for MinState pairs
+void removeDominatedStates(SetStd<std::pair<State*, weight_t>>& visited, State* target_state, weight_t new_value, value_function_t finVal) {
+    SetStd<std::pair<State*, weight_t>> to_remove;
+    
+    // Collect all dominated states (same state with worse min value)
+    for (const auto& visited_state : visited) {
+        if (finVal == Min_f) {
+            if (visited_state.first == target_state && visited_state.second >= new_value) {
+                to_remove.insert(visited_state);
+            }
+        } else if (finVal == Max_f) {
+            if (visited_state.first == target_state && visited_state.second <= new_value) {
+                to_remove.insert(visited_state);
+            }
+        }
+    }
+    
+    // Remove dominated entries in batch
+    for (const auto& remove_state : to_remove) {
+        visited.erase(remove_state);
+    }
+}
+
+// Helper: Check if a state-value pair is dominated by existing visited states
+bool isDominatedState(const SetStd<std::pair<State*, weight_t>>& visited, State* target_state, weight_t new_value, value_function_t finVal) {
+    for (const auto& visited_state : visited) {
+        if (finVal == Min_f) {
+            if (visited_state.first == target_state && visited_state.second <= new_value) {
+                return true; // Existing state has better (smaller) min value
+            }
+        } else if (finVal == Max_f) {
+            if (visited_state.first == target_state && visited_state.second >= new_value) {
+                return true; // Existing state has better (larger) max value
+            }
+        }
+    }
+    return false;
+}
+
+SetStd<weight_t> computeMinMaxReturnValues(ChildAutomaton* child, value_function_t finVal) {
+    SetStd<weight_t> return_values;
+    
+    // State representation: (current_automaton_state, accumulated_value_so_far_on_path)
+    using ValueState = std::pair<State*, weight_t>;
+    std::queue<ValueState> worklist;  // BFS queue
+    SetStd<ValueState> visited;       // Visited (state, value) pairs
+    
+    // Start exploration from initial state with appropriate initial value
+    weight_t initial_value;
+    if (finVal == Min_f) {
+        initial_value = std::numeric_limits<float>::max();     // +∞ for Min_f
+    } else { // Max_f
+        initial_value = std::numeric_limits<float>::lowest();  // -∞ for Max_f
+    }
+    
+    ValueState init_state = {child->getInitial(), initial_value};
+    worklist.push(init_state);
+    visited.insert(init_state);
+    
+    while (!worklist.empty()) {
+        ValueState current = worklist.front(); 
+        worklist.pop();
+        
+        State* curr_state = current.first;
+        weight_t curr_value = current.second;
+        
+        // Explore all outgoing transitions from current state
+        for (size_t sym_id = 0; sym_id < child->getAlphabetSize(); ++sym_id) {
+            SetStd<Edge*>* successors = curr_state->getSuccessors(sym_id);
+            if (!successors) continue;
+            
+            for (Edge* edge : *successors) {
+                State* next_state = edge->getTo();
+                weight_t edge_weight = edge->getWeight()->getValue();
+                
+                // Update accumulated value based on value function
+                weight_t next_value;
+                if (finVal == Min_f) {
+                    next_value = std::min(curr_value, edge_weight);
+                } else { // Max_f
+                    next_value = std::max(curr_value, edge_weight);
+                }
+                
+                ValueState next_value_state = {next_state, next_value};
+                
+                // If reached a final state, record this value as returnable
+                if (child->isFinal(next_state)) {
+                    return_values.insert(next_value);
+                    
+                    #ifdef DEBUG
+                    std::cout << (finVal == Min_f ? "Min" : "Max") << "_f path to final state " 
+                              << next_state->getName() << ": " 
+                              << (finVal == Min_f ? "min" : "max") << "_value = " << next_value << std::endl;
+                    #endif
+                    continue; // Don't continue exploration from final states (treat as sinks)
+                }
+                
+                // Dominance checking: avoid redundant exploration
+                // Check if we've already seen this state with a better value
+                bool should_explore = true;
+                for (const ValueState& visited_state : visited) {
+                    if (visited_state.first == next_state) {
+                        if (finVal == Min_f) {
+                            // For Min_f: existing smaller value dominates
+                            if (visited_state.second <= next_value) {
+                                should_explore = false;
+                                break;
+                            }
+                        } else { // Max_f
+                            // For Max_f: existing larger value dominates
+                            if (visited_state.second >= next_value) {
+                                should_explore = false;
+                                break;
+                            }
+                        }
+                    }
+                }
+                
+                if (should_explore) {
+                    // Remove any dominated entries: same state with worse value
+                    SetStd<ValueState> to_remove;
+                    for (const ValueState& visited_state : visited) {
+                        if (visited_state.first == next_state) {
+                            if (finVal == Min_f) {
+                                // Remove entries with larger (worse) min values
+                                if (visited_state.second >= next_value) {
+                                    to_remove.insert(visited_state);
+                                }
+                            } else { // Max_f
+                                // Remove entries with smaller (worse) max values
+                                if (visited_state.second <= next_value) {
+                                    to_remove.insert(visited_state);
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Remove dominated entries in batch
+                    for (const ValueState& remove_state : to_remove) {
+                        visited.erase(remove_state);
+                    }
+                    
+                    // Add this new state-value pair for continued exploration
+                    visited.insert(next_value_state);
+                    worklist.push(next_value_state);
+                }
+            }
+        }
+    }
+    
+    return return_values;
+}
+
+SetStd<weight_t> computeSumBReturnValues(ChildAutomaton* child, weight_t bound) {
+    SetStd<weight_t> return_values;
+
+    // BFS to explore all possible sums
+    // State: (automaton_state, accumulated_sum, bound_value_hit)
+    // bound_value_hit: 0 = never exceeded, +bound = hit upper bound, -bound = hit lower bound
+    using SumState = std::tuple<State*, weight_t, weight_t>;
+    std::queue<SumState> worklist;
+    SetStd<SumState> visited;
+    
+    // Start from initial state with sum 0, no bound hit
+    SumState init_state = {child->getInitial(), weight_t(0), weight_t(0)};
+    worklist.push(init_state);
+    visited.insert(init_state);
+    
+    // Check if initial state is final
+    if (child->isFinal(child->getInitial())) {
+        return_values.insert(weight_t(0));
+    }
+    
+    while (!worklist.empty()) {
+        SumState current = worklist.front(); 
+        worklist.pop();
+        
+        State* curr_state = std::get<0>(current);
+        weight_t curr_sum = std::get<1>(current);
+        weight_t bound_hit = std::get<2>(current);  // 0, +bound, or -bound
+        
+        // If this is a final state, record the return value
+        if (child->isFinal(curr_state)) {
+            if (bound_hit != weight_t(0)) {
+                // Path exceeded bounds at some point -> return the bound value that was hit
+                return_values.insert(bound_hit);
+            } else {
+                // Never exceeded bounds -> return actual sum
+                return_values.insert(curr_sum);
+            }
+            continue;   // Final states are treated as sinks
+        }
+        
+        // Explore all outgoing transitions
+        for (size_t sym_id = 0; sym_id < child->getAlphabetSize(); ++sym_id) {
+            for (Edge* edge : *(curr_state->getSuccessors(sym_id))) {
+                State* next_state = edge->getTo();
+                weight_t edge_weight = edge->getWeight()->getValue();
+                weight_t raw_sum = curr_sum + edge_weight;
+                
+                // Determine next state values
+                weight_t next_sum;
+                weight_t next_bound_hit = bound_hit; 
+                
+                if (raw_sum > bound && bound_hit == weight_t(0)) {
+                    // First time hitting upper bound
+                    next_sum = bound;
+                    next_bound_hit = bound;  // Remember we hit +bound
+                } else if (raw_sum < -bound && bound_hit == weight_t(0)) {
+                    // First time hitting lower bound  
+                    next_sum = -bound;
+                    next_bound_hit = -bound;  // Remember we hit -bound
+                } else if (bound_hit != weight_t(0)) {
+                    // Already exceeded bounds before, so continue with bounded value
+                    next_sum = applyBound(raw_sum, bound);
+                    // next_bound_hit stays the same (already hit bound)
+                } else {
+                    // Normal case: within bounds
+                    next_sum = raw_sum;
+                    // next_bound_hit stays 0
+                }
+                
+                SumState next_sum_state = {next_state, next_sum, next_bound_hit};
+                
+                // Continue exploration if not visited
+                if (!visited.contains(next_sum_state)) {
+                    visited.insert(next_sum_state);
+                    
+                    if (child->isFinal(next_state)) {
+                        // Final state: return bound value if ever exceeded
+                        if (next_bound_hit != weight_t(0)) {
+                            return_values.insert(next_bound_hit);  // Return the bound that was hit
+                        } else {
+                            return_values.insert(next_sum); 
+                        }
+                    } else {
+                        // Non-final: continue BFS
+                        worklist.push(next_sum_state);
+                    }
+                }
+            }
+        }
+    }
+
+    return return_values;
+}
+
 // Helper: Compute all possible return values for a single child automaton
 SetStd<weight_t> computeChildReturnValues(ChildAutomaton* child, value_function_t finVal, weight_t bound) {
     SetStd<weight_t> return_values;
     
+    if (!child) {
+        return return_values; // Empty set for null child
+    }
+
     if (finVal == Min_f || finVal == Max_f) {
-        // For MIN/MAX: return values are exactly the weights in the automaton
-        for (size_t w = 0; w < child->getWeights()->size(); ++w) {
-            return_values.insert(child->getWeights()->at(w)->getValue());
+        return_values = computeMinMaxReturnValues(child, finVal);
+    } 
+    else if (finVal == SumB) {
+        if (bound < 0) {
+            QUAK_FAIL("SumB requires a non-negative bound");
+        }
+        return_values = computeSumBReturnValues(child, bound);
+    }
+    else {
+        QUAK_FAIL("Unsupported value function for child automaton");
+    }
+    
+    #ifdef DEBUG
+    std::cout << "Child " << child->getName() << " (";
+    switch(finVal) {
+        case Min_f: std::cout << "Min_f"; break;
+        case Max_f: std::cout << "Max_f"; break;
+        case SumB: std::cout << "SumB"; break;
+        default: std::cout << "Unknown"; break;
+    }
+    std::cout << ") can return values: {";
+    for (weight_t val : return_values) {
+        std::cout << val << " ";
+    }
+    std::cout << "} (count: " << return_values.size() << ")" << std::endl;
+    #endif
+    
+    return return_values;
+}
+
+SetStd<weight_t> oldComputeChildReturnValues(ChildAutomaton* child, value_function_t finVal, weight_t bound) {
+    SetStd<weight_t> return_values;
+    
+    if (finVal == Min_f || finVal == Max_f) {
+        for (size_t i = 0; i < child->getWeights()->size(); ++i) {
+            return_values.insert(child->getWeights()->at(i)->getValue());
         }
     }
     else if (finVal == SumB) {
-        // For SUM_bounded: need BFS to compute all reachable sums
+        // Keep existing SumB implementation (already correct)
         if (bound < 0) {
             QUAK_FAIL("SumB requires a non-negative bound");
         }
         
-        // BFS to explore all possible sums
-        // State: (automaton_state, accumulated_sum, bound_value_hit)
-        // bound_value_hit: 0 = never exceeded, +bound = hit upper bound, -bound = hit lower bound
         using SumState = std::tuple<State*, weight_t, weight_t>;
         std::queue<SumState> worklist;
         SetStd<SumState> visited;
         
-        // Start from initial state with sum 0, no bound hit
         SumState init_state = {child->getInitial(), weight_t(0), weight_t(0)};
         worklist.push(init_state);
         visited.insert(init_state);
         
-        // Check if initial state is final
         if (child->isFinal(child->getInitial())) {
             return_values.insert(weight_t(0));
         }
@@ -214,64 +493,53 @@ SetStd<weight_t> computeChildReturnValues(ChildAutomaton* child, value_function_
             
             State* curr_state = std::get<0>(current);
             weight_t curr_sum = std::get<1>(current);
-            weight_t bound_hit = std::get<2>(current);  // 0, +bound, or -bound
+            weight_t bound_hit = std::get<2>(current);
             
-            // If this is a final state, record the return value
             if (child->isFinal(curr_state)) {
                 if (bound_hit != weight_t(0)) {
-                    // Path exceeded bounds at some point -> return the bound value that was hit
                     return_values.insert(bound_hit);
                 } else {
-                    // Never exceeded bounds -> return actual sum
                     return_values.insert(curr_sum);
                 }
-                continue;   // Final states are treated as sinks
+                continue;
             }
             
-            // Explore all outgoing transitions
             for (size_t sym_id = 0; sym_id < child->getAlphabetSize(); ++sym_id) {
-                for (Edge* edge : *(curr_state->getSuccessors(sym_id))) {
+                SetStd<Edge*>* successors = curr_state->getSuccessors(sym_id);
+                if (!successors) continue;
+                
+                for (Edge* edge : *successors) {
                     State* next_state = edge->getTo();
                     weight_t edge_weight = edge->getWeight()->getValue();
                     weight_t raw_sum = curr_sum + edge_weight;
                     
-                    // Determine next state values
                     weight_t next_sum;
-                    weight_t next_bound_hit = bound_hit;  // Inherit bound hit status
+                    weight_t next_bound_hit = bound_hit;
                     
                     if (raw_sum > bound && bound_hit == weight_t(0)) {
-                        // First time hitting upper bound
                         next_sum = bound;
-                        next_bound_hit = bound;  // Remember we hit +bound
+                        next_bound_hit = bound;
                     } else if (raw_sum < -bound && bound_hit == weight_t(0)) {
-                        // First time hitting lower bound  
                         next_sum = -bound;
-                        next_bound_hit = -bound;  // Remember we hit -bound
+                        next_bound_hit = -bound;
                     } else if (bound_hit != weight_t(0)) {
-                        // Already exceeded bounds before -> continue with bounded value
                         next_sum = applyBound(raw_sum, bound);
-                        // next_bound_hit stays the same (already hit bound)
                     } else {
-                        // Normal case: within bounds
                         next_sum = raw_sum;
-                        // next_bound_hit stays 0
                     }
                     
                     SumState next_sum_state = {next_state, next_sum, next_bound_hit};
                     
-                    // Continue exploration if not visited
                     if (!visited.contains(next_sum_state)) {
                         visited.insert(next_sum_state);
                         
                         if (child->isFinal(next_state)) {
-                            // Final state: return bound value if ever exceeded
                             if (next_bound_hit != weight_t(0)) {
-                                return_values.insert(next_bound_hit);  // Return the bound that was hit
+                                return_values.insert(next_bound_hit);
                             } else {
-                                return_values.insert(next_sum); 
+                                return_values.insert(next_sum);
                             }
                         } else {
-                            // Non-final: continue BFS
                             worklist.push(next_sum_state);
                         }
                     }
@@ -282,6 +550,17 @@ SetStd<weight_t> computeChildReturnValues(ChildAutomaton* child, value_function_
     else {
         QUAK_FAIL("Unsupported value function for child automaton");
     }
+    
+    #ifdef DEBUG
+    std::cout << "Child " << child->getName() << " (" << 
+        (finVal == Min_f ? "Min_f" : finVal == Max_f ? "Max_f" : "SumB") << 
+        ") can return values: {";
+    for (weight_t val : return_values) {
+        std::cout << val << " ";
+    }
+    std::cout << "}" << std::endl;
+    #endif
+    
     return return_values;
 }
 
@@ -308,7 +587,6 @@ SetStd<weight_t> computeGlobalReturnValues(const NestedAutomaton* nwa, value_fun
 }
 
 using MonitorKey = std::pair<size_t, weight_t>;  // (i, j)
-
 // Construct all S_ij (monitors) and collect Q_S and F_S
 void constructMonitors(
     const NestedAutomaton* nwa,
@@ -525,6 +803,7 @@ void processBuchiTransition(
                     std::ostringstream ss;
                     ss << "b_" << state_counter++;
                     State* next_state = new State(ss.str(), new_alphabet->size(), global_min, global_max);
+
                     state_map[next_global] = next_state;
                     worklist.push(next_global);
                 }

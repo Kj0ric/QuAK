@@ -51,4 +51,10 @@ public:
 	ChildAutomaton* determiniseToS_ij(weight_t j, value_function_t g, weight_t bound = -1);
 };
 
+// ---------- Free function declarations ------------
+bool isMinimalDFA(const ChildAutomaton* dfa);
+
+
+
+
 #endif /* CHILD_AUTOMATON_H */

@@ -4,7 +4,6 @@ add_library(quak STATIC
 		ChildAutomaton.cpp
 	    Edge.cpp
 	    Map.cpp
-	    Set.cpp
 	    State.cpp
 	    Symbol.cpp
 	    Weight.cpp
@@ -12,6 +11,8 @@ add_library(quak STATIC
 	    Parser.cpp
 	    Monitor.cpp
 	    RandomAutomaton.cpp
+		functionality_tests.cpp     
+        dfa_minimal_check.cpp        
 	    FORKLIFT/inclusion.cpp
 	    FORKLIFT/FixpointLoop.cpp
 	    FORKLIFT/FixpointStem.cpp

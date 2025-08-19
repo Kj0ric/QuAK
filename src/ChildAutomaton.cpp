@@ -285,10 +285,12 @@ void processTransition(
             should_skip = (from_value == weight_t(std::numeric_limits<float>::lowest()));
         }
 
+        /*
         #ifdef DEBUG
         std::cout << "  Component " << k << " (state " << B_i->getStates()->at(k)->getName() 
                   << "): value=" << from_value << ", skip=" << should_skip << std::endl;
         #endif
+        */
         
         if (should_skip) continue;
         
@@ -389,6 +391,7 @@ void collectDFAStatesAndFinals(
         }
     }
 }
+
 // Create S_ij boolean finite-word automaton from a child automaton B_i 
 // S_ij recognizes the words on which B_i returns the value j 
 // Must provide a bound if finVal = SumB

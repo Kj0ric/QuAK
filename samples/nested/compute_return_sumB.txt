@@ -1,0 +1,33 @@
+@PARENT
+a : 1, q0 -> q1
+
+@CHILD 1
+# SumB with bound=4: Testing bound hit continuation
+# Path: s0 --a/3--> s1 --b/2--> s2 --c/1--> s3 (final)
+# Step by step: 0 + 3 = 3, 3 + 2 = 5 > bound=4 → hit +bound=4, 4 + 1 = 5 (but capped at 4)
+# Should return {4} (bound hit value)
+final: s3
+a : 3, s0 -> s1
+b : 2, s1 -> s2
+c : 1, s2 -> s3
+
+@CHILD 2
+# SumB with bound=4: Multiple bound scenarios
+# Path 1: t0 --a/1--> t1 --b/1--> t2 (final) → sum = 2 (within bounds)
+# Path 2: t0 --c/5--> t2 (final) → sum = 5 > bound=4 → return +bound=4
+# Path 3: t0 --d/-6--> t2 (final) → sum = -6 < -bound=-4 → return -bound=-4
+# Should return {2, 4, -4}
+final: t2
+a : 1, t0 -> t1
+b : 1, t1 -> t2
+c : 5, t0 -> t2
+d : -6, t0 -> t2
+
+@CHILD 3
+# SumB: Testing bound hit followed by more transitions
+# Path: r0 --a/6--> r1 --b/-2--> r2 (final)
+# Step by step: 0 + 6 = 6 > bound=4 → hit +bound=4, 4 + (-2) = 2 (still bounded)
+# Should return {4} (bound hit value maintained)
+final: r2
+a : 6, r0 -> r1
+b : -2, r1 -> r2
