@@ -20,17 +20,17 @@ int main(int argc, char* argv[]) {
     std::string filepath = argv[1];
     
     std:: size_t i = 1;              // Adjust
-    weight_t j = 2;                 // Adjust
+    weight_t j = 1;                 // Adjust
 
     std::vector<std::pair<value_function_t, weight_t>> tests = {
         //{Min_f, -1},    // No bound needed
         //{Max_f, -1},    // No bound needed  
-        {SumB, 5}       // Small bound for testing
+        {SumB, 2}     
     };
     
     for (auto [finVal, bound] : tests) {
-        std::cout << "\n" << std::string(50, '=') << std::endl;
-        std::cout << "Testing transformToBuchi with:" << std::endl;
+
+        //std::cout << "Testing transformToBuchi with:" << std::endl;
         std::cout << "File: " << filepath << std::endl;
         std::cout << "Value function: " << (finVal == Min_f ? "Min_f" : 
                                       finVal == Max_f ? "Max_f" : "SumB") << std::endl;
@@ -40,7 +40,11 @@ int main(int argc, char* argv[]) {
         
         // Test return values computation
         //testCompareOldVsNewReturnValues(filepath, finVal, bound);
-        testTransformToBuchi(filepath, finVal, bound);
+
+        // Test monitors constructed
+        testS_ijConstruction(filepath, i, j, finVal, bound);
+
+        //testTransformToBuchi(filepath, finVal, bound);
     }
     
     return 0;

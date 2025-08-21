@@ -53,8 +53,7 @@ public:
 
 // ---------- Free function declarations ------------
 bool isMinimalDFA(const ChildAutomaton* dfa);
-
-
-
+ChildAutomaton* hopcroftMinimizeDFA(ChildAutomaton* dfa);
+bool allStatesReachable(const ChildAutomaton* dfa);
 
 #endif /* CHILD_AUTOMATON_H */

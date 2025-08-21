@@ -275,7 +275,7 @@ void testConstructMonitors(const std::string& filepath, value_function_t finVal,
         }
     }
     
-    // Step 5: Cleanup using MAP iteration
+    // Step 5: Cleanup
     for (const auto& [key, monitor] : monitors) {
         delete monitor;
     }

@@ -9,6 +9,7 @@
 #include <map>
 #include <queue>
 #include <sstream>
+#include <unordered_map>
 
 #include "Automaton.h"
 #include "NestedAutomaton.h"
@@ -21,6 +22,7 @@
 #include "Weight.h"
 #include "utility.h"
 #include "FORKLIFT/inclusion.h"
+#include "dfa_minimal_check.h"
 
 /* ----------------------------------------------- ChildAutomaton ------------------------------------------------------ */
 inline SetStd<State*> getStatesByNames(MapArray<State*>* states, const SetStd<std::string>& final_state_names);
@@ -402,30 +404,30 @@ ChildAutomaton* ChildAutomaton::determiniseToS_ij(weight_t j, value_function_t f
     Weight::RESET();
     
     // 1. Initialize
-	MapArray<Symbol*>* dfa_alphabet;
-	MapArray<Weight*>* dfa_weights;
+    MapArray<Symbol*>* dfa_alphabet;
+    MapArray<Weight*>* dfa_weights;
     MapStd<StateVector, State*> state_map_DFA;
-	std::queue<StateVector> worklist;  // Queue for BFS
+    std::queue<StateVector> worklist;  // Queue for BFS
 
-	State* initial_dfa;
-	unsigned int state_counter = 0;
+    State* initial_dfa;
+    unsigned int state_counter = 0;
     
-	initializeDFA(dfa_alphabet, dfa_weights, state_map_DFA, worklist, initial_dfa, state_counter, this, finVal);
+    initializeDFA(dfa_alphabet, dfa_weights, state_map_DFA, worklist, initial_dfa, state_counter, this, finVal);
 
     // 2. Subset construction using BFS
     while(!worklist.empty()) {
         StateVector current_pair = worklist.front(); worklist.pop();
-		for (unsigned symbol_id = 0; symbol_id < dfa_alphabet->size(); ++ symbol_id) {
-			processTransition(
-				current_pair, symbol_id, dfa_alphabet, dfa_weights, 
-				state_map_DFA, worklist, state_counter, j, finVal, bound, this->final_states_, this
-			);
-		}
-	}
+        for (unsigned symbol_id = 0; symbol_id < dfa_alphabet->size(); ++ symbol_id) {
+            processTransition(
+                current_pair, symbol_id, dfa_alphabet, dfa_weights, 
+                state_map_DFA, worklist, state_counter, j, finVal, bound, this->final_states_, this
+            );
+        }
+    }
     
     // 3. Collect S_ij states and final states
-	MapArray<State*>* dfa_states;
-	SetStd<State*>* dfa_final_states;
+    MapArray<State*>* dfa_states;
+    SetStd<State*>* dfa_final_states;
     collectDFAStatesAndFinals(state_map_DFA, dfa_states, dfa_final_states, j, this->final_states_, this, bound);
 
     // 4. Construct and return the DFA as a ChildAutomaton
@@ -441,8 +443,17 @@ ChildAutomaton* ChildAutomaton::determiniseToS_ij(weight_t j, value_function_t f
         initial_dfa,
         dfa_final_states
     );
+    #ifdef DEBUG
+    if (!allStatesReachable(s_ij)) {
+        abort("All states are not reachable for this S_i,j.\n");
+    }
+    #endif
 
-    return s_ij;
+    ChildAutomaton* minimized = hopcroftMinimizeDFA(s_ij);
+    if (minimized != s_ij) {
+        delete s_ij;
+    }
+    return minimized;
 }
 
 /* ------------------------- Other HELPERS ------------------------- */
@@ -472,4 +483,205 @@ void ChildAutomaton::print(std::ostream& out, bool full, bool bv_weights, bool b
         out << s->getName() << " ";
     }
     out << std::endl;
+}
+
+ChildAutomaton* hopcroftMinimizeDFA(ChildAutomaton* dfa) {
+    State::RESET();
+    Symbol::RESET();
+    Weight::RESET();
+
+    using Block = std::set<State*>;
+    using Partition = std::vector<Block>;
+
+    auto* states = dfa->getStates();
+    auto* alphabet = dfa->getAlphabet();
+    auto* finals = dfa->getFinalStates();
+    State* initial = dfa->getInitial();
+
+    // 1. Initial partition: accepting vs non-accepting
+    Block accepting, non_accepting;
+    for (auto it = states->begin(); it != states->end(); ++it) {
+        State* s = *it;
+        if (finals->contains(s)) accepting.insert(s);
+        else non_accepting.insert(s);
+    }
+    Partition partition;
+    if (!accepting.empty()) partition.push_back(accepting);
+    if (!non_accepting.empty()) partition.push_back(non_accepting);
+
+    // Helper: find block index for a state
+    auto find_block_index = [&](State* s, const Partition& part) -> int {
+        for (size_t i = 0; i < part.size(); ++i)
+            if (part[i].count(s)) return static_cast<int>(i);
+        return -1;
+    };
+
+    // 2. Iterative refinement
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        Partition new_partition;
+        for (const Block& block : partition) {
+            if (block.size() <= 1) {
+                new_partition.push_back(block);
+                continue;
+            }
+            // Group by transition signature
+            std::map<std::vector<int>, Block> signature_groups;
+            for (State* s : block) {
+                std::vector<int> signature;
+                for (size_t a = 0; a < alphabet->size(); ++a) {
+                    Symbol* sym = alphabet->at(a);
+                    SetStd<Edge*>* succ = s->getSuccessors(sym->getId());
+                    State* dest = nullptr;
+                    if (succ && succ->size() == 1) {
+                        dest = (*(succ->begin()))->getTo();
+                    }
+                    signature.push_back(find_block_index(dest, partition));
+                }
+                signature_groups[signature].insert(s);
+            }
+            if (signature_groups.size() > 1) changed = true;
+            for (auto& [_, group] : signature_groups)
+                new_partition.push_back(group);
+        }
+        partition = std::move(new_partition);
+    }
+
+    // If already minimal, return original DFA
+    if (partition.size() == states->size()) return dfa;
+
+    // 3. Build minimized DFA
+    auto* min_alphabet = new MapArray<Symbol*>(alphabet->size());
+    for (size_t i = 0; i < alphabet->size(); ++i)
+        min_alphabet->insert(i, new Symbol(*alphabet->at(i)));
+
+    auto* min_weights = new MapArray<Weight*>(dfa->getWeights()->size());
+    for (size_t i = 0; i < dfa->getWeights()->size(); ++i)
+        min_weights->insert(i, new Weight(*dfa->getWeights()->at(i)));
+
+    auto* min_states = new MapArray<State*>(partition.size());
+    auto* min_finals = new SetStd<State*>();
+    std::map<State*, int> state_to_block;
+    std::vector<State*> block_representatives(partition.size(), nullptr);
+
+    // Create new states and map old states to blocks
+    for (size_t i = 0; i < partition.size(); ++i) {
+        std::ostringstream nm;
+        nm << "q" << i;
+        State* new_state = new State(nm.str(), alphabet->size(), 0, 1);
+        min_states->insert(i, new_state);
+        block_representatives[i] = new_state;
+        for (State* s : partition[i]) state_to_block[s] = static_cast<int>(i);
+        // If any state in block is final, mark as final
+        for (State* s : partition[i]) {
+            if (finals->contains(s)) {
+                min_finals->insert(new_state);
+                break;
+            }
+        }
+    }
+
+    // Set initial state
+    State* min_initial = block_representatives[state_to_block[initial]];
+
+    // Add transitions
+    for (size_t i = 0; i < partition.size(); ++i) {
+        State* from = block_representatives[i];
+        State* rep = *(partition[i].begin());
+        for (size_t a = 0; a < alphabet->size(); ++a) {
+            Symbol* sym = min_alphabet->at(a);
+            SetStd<Edge*>* succ = rep->getSuccessors(sym->getId());
+            if (succ && succ->size() == 1) {
+                State* dest = (*(succ->begin()))->getTo();
+                int dest_block = state_to_block[dest];
+                State* to = block_representatives[dest_block];
+                Weight* w = min_weights->at((*(succ->begin()))->getWeight()->getId());
+                Edge* edge = new Edge(sym, w, from, to);
+                from->addSuccessor(edge);
+                to->addPredecessor(edge);
+            }
+        }
+    }
+
+    // Construct minimized DFA
+    ChildAutomaton* min_dfa = new ChildAutomaton(
+        dfa->getName() + "_min",
+        min_alphabet,
+        min_states,
+        min_weights,
+        0, 1,
+        min_initial,
+        min_finals
+    );
+
+    return min_dfa;
+}
+
+/**
+ * Helper function: Check if all states are reachable from initial state
+ */
+bool allStatesReachable(const ChildAutomaton* dfa) {
+    if (!dfa || !dfa->getStates() || dfa->getStates()->size() == 0) {
+        return true;
+    }
+    
+    MapArray<State*>* states = dfa->getStates();
+    MapArray<Symbol*>* alphabet = dfa->getAlphabet();
+    State* initial = dfa->getInitial();
+    
+    if (!initial) {
+        return false;
+    }
+    
+    // BFS to find all reachable states
+    SetStd<State*> reachable;
+    std::queue<State*> worklist;
+    
+    reachable.insert(initial);
+    worklist.push(initial);
+    
+    while (!worklist.empty()) {
+        State* current = worklist.front();
+        worklist.pop();
+        
+        if (!alphabet) continue;
+        
+        for (Symbol* symbol : *alphabet) {
+            if (!symbol) continue;
+            
+            auto* successors = current->getSuccessors(symbol->getId());
+            if (!successors) continue;
+            
+            for (Edge* edge : *successors) {
+                if (!edge || !edge->getTo()) continue;
+                
+                State* successor = edge->getTo();
+                
+                if (!reachable.contains(successor)) {
+                    reachable.insert(successor);
+                    worklist.push(successor);
+                }
+            }
+        }
+    }
+    
+    bool all_reachable = (reachable.size() == states->size());
+    
+    #ifdef DEBUG
+    std::cout << "Reachability check for '" << dfa->getName() << "': " 
+              << reachable.size() << "/" << states->size() << " states reachable" << std::endl;
+    
+    if (!all_reachable) {
+        std::cout << "Unreachable states:" << std::endl;
+        for (size_t i = 0; i < states->size(); ++i) {
+            State* state = states->at(i);
+            if (!reachable.contains(state)) {
+                std::cout << "  - " << state->getName() << std::endl;
+            }
+        }
+    }
+    #endif
+    
+    return all_reachable;
 }

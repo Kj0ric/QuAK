@@ -470,7 +470,6 @@ SetStd<weight_t> oldComputeChildReturnValues(ChildAutomaton* child, value_functi
         }
     }
     else if (finVal == SumB) {
-        // Keep existing SumB implementation (already correct)
         if (bound < 0) {
             QUAK_FAIL("SumB requires a non-negative bound");
         }
@@ -652,7 +651,6 @@ void removeFinalStates(SetStd<State*>&P, const SetStd<State*>& F_S) {
     }
 }
 
-    
 // Helper: Initialize büchi automaton components
 State* initializeBuchi(
     const NestedAutomaton* nwa,
