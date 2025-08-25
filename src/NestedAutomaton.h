@@ -130,7 +130,8 @@ void processBuchiTransition(
     SetStd<weight_t>& global_return_values,
     weight_t global_min,
     weight_t global_max,
-    std::queue<BuchiState>& worklist
+    std::queue<BuchiState>& worklist,
+    long long int count
 );
 
 #endif /* NESTED_AUTOMATON_H_ */

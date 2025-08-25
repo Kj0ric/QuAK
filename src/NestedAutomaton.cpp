@@ -799,9 +799,10 @@ void processBuchiTransition(
                 // Create new state if not seen before
                 if (state_map.contains(next_global) != true) {
                     std::ostringstream ss;
+                    //std::cout << "State " << state_counter << " is created." << std::endl;
                     ss << "b_" << state_counter++;
                     State* next_state = new State(ss.str(), new_alphabet->size(), global_min, global_max);
-
+                    
                     state_map[next_global] = next_state;
                     worklist.push(next_global);
                 }

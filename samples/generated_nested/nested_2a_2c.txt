@@ -1,0 +1,15 @@
+@PARENT
+a : 1, q0 -> q0
+b : 2, q0 -> q0
+
+@CHILD 0
+
+@CHILD 1
+final: s1_1
+a : 1, s1_0 -> s1_0
+b : 0, s1_0 -> s1_1
+
+@CHILD 2
+final: t2_1
+a : 0, t2_0 -> t2_1
+b : 1, t2_0 -> t2_0

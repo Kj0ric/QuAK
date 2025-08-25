@@ -252,28 +252,6 @@ void testConstructMonitors(const std::string& filepath, value_function_t finVal,
     std::cout << "Total monitors expected: " << total_expected_monitors << std::endl;
     std::cout << "Count verification: " << (correct_count && total_actual_monitors == total_expected_monitors ? "✓" : "❌") << std::endl;
     
-    // Step 4: Verify correct values using MAP iteration
-    std::cout << "\n--- Monitor Value Verification ---" << std::endl;
-    
-    for (size_t i = 0; i < nested->getChildrenSize(); ++i) {
-        ChildAutomaton* child = nested->getChild(i);
-        if (!child || child->getName() == "dummy" || child->getName().empty()) {
-            continue;
-        }
-        
-        std::cout << "Child " << i << " monitors:" << std::endl;
-        
-        // Find all monitors for this child
-        for (const auto& [key, monitor] : monitors) {
-            if (key.first == i) {  // This monitor belongs to child i
-                weight_t value = key.second;  // The return value this monitor handles
-                std::string monitor_name = monitor->getName();
-                
-                std::cout << "  S_" << i << "^" << value << ": " << monitor_name 
-                          << " (handles value " << value << ")" << std::endl;
-            }
-        }
-    }
     
     // Step 5: Cleanup
     for (const auto& [key, monitor] : monitors) {

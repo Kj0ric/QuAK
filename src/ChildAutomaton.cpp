@@ -61,31 +61,48 @@ ChildAutomaton::ChildAutomaton(const ChildAutomaton& other)
 /* --------------------------- B_i DETERMINIZATION --------------------------- */
 //using Subset = SetStd<State*>;
 //using Pair = std::pair<Subset, weight_t>;
-using StateVector = std::vector<weight_t>;
+//using DFAStateKey = std::vector<weight_t>;
+struct DFAStateKey {
+    std::vector<weight_t> vec;
+    bool is_initial;
 
-// Hash function for StateVector TODO: Check this
-struct StateVectorHash {
-    // Define a custom hash functor. This allows the use of struct as a function
-    std::size_t operator()(const StateVector& vec) const {
-        std::size_t seed = vec.size();
-        for (auto& val : vec) {
+    // TODO: check if this is true
+    DFAStateKey(size_t size) : vec(std::vector<weight_t>(size)), is_initial(false) {}
+
+    bool operator==(const DFAStateKey& other) const {
+        return is_initial == other.is_initial && vec == other.vec;
+    }
+
+    bool operator<(const DFAStateKey& other) const {
+        if (vec < other.vec) return true;
+        if (other.vec < vec) return false;
+        return is_initial < other.is_initial;
+    }
+};
+
+// Hash function for DFAStateKey
+struct DFAStateKeyHash {
+    std::size_t operator()(const DFAStateKey& key) const {
+        std::size_t seed = key.vec.size();
+        for (auto& val : key.vec) {
             seed ^= std::hash<float>()(val.to_float()) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
         }
+        seed ^= std::hash<bool>()(key.is_initial) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
         return seed;
     }
 };
 
 // Helper to print the state vector for debugging
-void printVector(const StateVector& vec) {
+void printVector(const DFAStateKey& key) {
     std::cout << "<";
-    for (size_t i = 0; i < vec.size(); ++i) {
+    for (size_t i = 0; i < key.vec.size(); ++i) {
         if (i > 0) std::cout << ", ";
-        if (vec[i] == weight_t(std::numeric_limits<float>::lowest())) {
+        if (key.vec[i] == weight_t(std::numeric_limits<float>::lowest())) {
             std::cout << "-inf";
-        } else if (vec[i] == weight_t(std::numeric_limits<float>::max())){
+        } else if (key.vec[i] == weight_t(std::numeric_limits<float>::max())){
             std::cout << "+inf";
         } else {
-            std::cout << vec[i];
+            std::cout <<key.vec[i];
         }
     }
     std::cout << ">";
@@ -133,8 +150,8 @@ weight_t transitionFunction(weight_t state_value, weight_t transit_value, value_
 void initializeDFA(
 	MapArray<Symbol*>*& dfa_alphabet, 
 	MapArray<Weight*>*& dfa_weights, 
-	MapStd<StateVector, State*>& state_map_DFA,
-	std::queue<StateVector>& worklist, 
+	MapStd<DFAStateKey, State*>& state_map_DFA,
+	std::queue<DFAStateKey>& worklist, 
 	State* &initial_dfa, 
 	unsigned int& state_counter, 
 	const ChildAutomaton* B_i, 
@@ -152,7 +169,8 @@ void initializeDFA(
 	dfa_weights->insert(1, new Weight(weight_t(1)));
 
     // Create initial vector: 0 for initial state of B_i -\inf for other states
-    StateVector initial_vector(B_i->getStates()->size());
+    DFAStateKey init_key(B_i->getStates()->size());
+    init_key.is_initial = true;
     weight_t initial_value, unreachable_value;
 
     if (finVal == Min_f) {
@@ -168,11 +186,11 @@ void initializeDFA(
         QUAK_FAIL("Unsupported value function in initializeDFA");
     }
     
-    for (size_t k = 0; k < initial_vector.size(); ++k) {
+    for (size_t k = 0; k < init_key.vec.size(); ++k) {
         if (k == B_i->getInitial()->getId()) {
-            initial_vector[k] = initial_value;
+            init_key.vec[k] = initial_value;
         } else {
-            initial_vector[k] = unreachable_value;
+            init_key.vec[k] = unreachable_value;
         }
     }
 
@@ -181,12 +199,12 @@ void initializeDFA(
     ss << "d_" << state_counter++;
     initial_dfa = new State(ss.str(), dfa_alphabet->size(), 0, 1);
     
-    state_map_DFA.insert(initial_vector, initial_dfa);
-    worklist.push(initial_vector);
+    state_map_DFA.insert(init_key, initial_dfa);
+    worklist.push(init_key);
 
     #ifdef DEBUG
         std::cout << "Initial DFA state: " << ss.str() << " with vector: <";
-        for (weight_t v : initial_vector){
+        for (weight_t v : init_key.vec){
             std::cout << v << ", ";
         } 
         std::cout << ">" << std::endl;
@@ -202,7 +220,7 @@ bool hasFinalIntersection(const SetStd<State*>& subset, const SetStd<State*>* fi
 
 // Helper: Check if a DFA state is accepting
 bool isAcceptingVector(
-    const StateVector& vector,
+    const DFAStateKey& key,
     weight_t j,
     const SetStd<State*>* finals,
     const ChildAutomaton* B_i,
@@ -211,7 +229,7 @@ bool isAcceptingVector(
     // Check if any final state component has value j or (B+1/-B-1 for bound case)
     for (State* final_state : * finals) {
         size_t k = final_state->getId();
-        weight_t component_value = vector[k];
+        weight_t component_value = key.vec[k];
 
         if (component_value == j) {
             return true;
@@ -227,12 +245,12 @@ bool isAcceptingVector(
 
 // Helper: Process a single transition for the subset construction
 void processTransition(
-	const StateVector& current_vector,
+	const DFAStateKey& current_key,
 	unsigned symbol_id,
 	MapArray<Symbol*>* dfa_alphabet,
 	MapArray<Weight*>* dfa_weights,
-	MapStd<StateVector, State*>& state_map_DFA, 
-    std::queue<StateVector>& worklist,
+	MapStd<DFAStateKey, State*>& state_map_DFA, 
+    std::queue<DFAStateKey>& worklist,
     unsigned int& state_counter,
 	weight_t j,
     value_function_t finVal,
@@ -241,51 +259,45 @@ void processTransition(
     const ChildAutomaton* B_i
 ) {
 	
-	State* from_state = state_map_DFA[current_vector];
+	State* from_state = state_map_DFA[current_key];
 	Symbol* symbol = dfa_alphabet->at(symbol_id);
 
     #ifdef DEBUG
         std::cout << "\n--- Processing transition from state " << from_state->getName() 
                 << " with symbol " << symbol->getName() << " ---" << std::endl;
         std::cout << "Current vector: ";
-        printVector(current_vector);
+        printVector(current_key);
         std::cout << std::endl;
     #endif
 
     // Compute next vector
-    StateVector next_vector(B_i->getStates()->size());
+    DFAStateKey next_key(B_i->getStates()->size());
     weight_t unreachable_value;
 
     if (finVal == Min_f) {
         unreachable_value = weight_t(std::numeric_limits<float>::max()); // +\inf
-    } else if (finVal == Max_f) {
+    } else if (finVal == Max_f || finVal == SumB) {
         unreachable_value = weight_t(std::numeric_limits<float>::lowest()); // -\inf
     } else { // SumB
-        unreachable_value = weight_t(std::numeric_limits<float>::lowest()); // -\inf
+        QUAK_FAIL("Unrecognized finVal");
     }
 
     // Initialize the vector
-    for (size_t k = 0; k < next_vector.size(); ++k) {
-        next_vector[k] = unreachable_value;
+    //next_vector = current_vector;
+    
+    for (size_t k = 0; k < next_key.vec.size(); ++k) {
+        next_key.vec[k] = unreachable_value;
     }
+    
 
     // Compute max value achievable ending in each state k in B_i
-    for (size_t k = 0; k < current_vector.size(); ++k) {
-        weight_t from_value = current_vector[k];
+    for (size_t k = 0; k < current_key.vec.size(); ++k) {
+        weight_t from_value = current_key.vec[k];
 
-        bool should_skip;
-        if (finVal == Min_f) {
-            // Skip if this component has +inf AND it's not the initial state
-            should_skip = (from_value == weight_t(std::numeric_limits<float>::max())) && 
-                        (k != B_i->getInitial()->getId());
-        } else if (finVal == Max_f) {
-            // Skip if this component has -inf AND it's not the initial state  
-            should_skip = (from_value == weight_t(std::numeric_limits<float>::lowest())) &&
-                        (k != B_i->getInitial()->getId());
-        } else { // SumB
-            // Skip if this component is -inf (truly unreachable)
-            should_skip = (from_value == weight_t(std::numeric_limits<float>::lowest()));
-        }
+        // TODO: There's sth wrong with the should_skip logic:
+        // Process if curr value is not unreachable_value OR it is unreachable_value and it is the initial component of the initial vector
+        bool should_process = (from_value != unreachable_value) ||
+                            (k == B_i->getInitial()->getId() && current_key.is_initial);
 
         /*
         #ifdef DEBUG
@@ -294,7 +306,7 @@ void processTransition(
         #endif
         */
         
-        if (should_skip) continue;
+        if (should_process != true) continue;
         
         State* from_bi_state = B_i->getStates()->at(k);
 
@@ -307,59 +319,60 @@ void processTransition(
             weight_t new_value = transitionFunction(from_value, edge_weight, finVal, bound);
 
             #ifdef DEBUG
-                std::cout << "    Transition: " << from_bi_state->getName() 
-                        << " --" << symbol->getName() << "/" << edge_weight 
-                        << "--> " << to_bi_state->getName() 
-                        << " gives new_value=" << new_value << std::endl;
+            std::cout << "    Transition: " << from_bi_state->getName() 
+                    << " --" << symbol->getName() << "/" << edge_weight 
+                    << "--> " << to_bi_state->getName() 
+                    << " gives new_value=" << new_value << std::endl;
             #endif
             
             // Update the vector based on finVal
             if (finVal == Min_f) {
-                weight_t old_value = next_vector[to_k];
-                next_vector[to_k] = std::min(next_vector[to_k], new_value);
+                weight_t old_value = next_key.vec[to_k];
+                next_key.vec[to_k] = std::min(next_key.vec[to_k], new_value);
 
                 #ifdef DEBUG
                     std::cout << "    Updated component " << to_k << ": " 
-                            << old_value << " -> " << next_vector[to_k] << std::endl;
+                            << old_value << " -> " << next_key.vec[to_k] << std::endl;
                 #endif
 
             } else {    // for Max_f and SumB
-                next_vector[to_k] = std::max(next_vector[to_k], new_value);
+                //next_key.vec[to_k] = std::max(next_key.vec[to_k], new_value); // TODO: I believe "next_vector[to_k] = new_value" would suffice
+                next_key.vec[to_k] = new_value;
             }
         }
     }
 
     #ifdef DEBUG
         std::cout << "Next vector: ";
-        printVector(next_vector);
+        printVector(next_key);
         std::cout << std::endl;
     #endif
 
     // Create new DFA state if not seen before
-    if (!state_map_DFA.contains(next_vector)) {
+    if (!state_map_DFA.contains(next_key)) {
         std::ostringstream ss;
         ss << "d_" << state_counter++;
 
         State* next_state = new State(ss.str(), dfa_alphabet->size(), 0, 1);
-        state_map_DFA.insert(next_vector, next_state);
-        worklist.push(next_vector);     // Explore this new state
+        state_map_DFA.insert(next_key, next_state);
+        worklist.push(next_key);     // Explore this new state
 
         #ifdef DEBUG
             std::cout << "Created DFA state: " << ss.str() << " with vector: ";
-            printVector(next_vector);  
+            printVector(next_key);  
             std::cout << std::endl;
         #endif
     }
 
 	// Create edge (weight 1 if accepting, 0 otherwise)
     // Accepting only if one of the accepting state components of the vector has the value j
-    bool accepting = isAcceptingVector(next_vector, j, finals, B_i, bound);
+    bool accepting = isAcceptingVector(next_key, j, finals, B_i, bound);
     Weight* weight = dfa_weights->at(accepting ? 1: 0);
 
 	// Set weight (1 if accepting, 0 otherwise)
 	// Next state is accepting only if hasFinalIntersection == true and next_value == j
 
-	State* to_state = state_map_DFA[next_vector];
+	State* to_state = state_map_DFA[next_key];
 	Edge* edge = new Edge(symbol, weight, from_state, to_state);
 	from_state->addSuccessor(edge);
 	to_state->addPredecessor(edge);
@@ -372,7 +385,7 @@ void processTransition(
 
 // Helper: Collect DFA states and final states
 void collectDFAStatesAndFinals(
-    const MapStd<StateVector, State*>& state_map_DFA,  
+    const MapStd<DFAStateKey, State*>& state_map_DFA,  
     MapArray<State*>*& dfa_states,
     SetStd<State*>*& dfa_final_states,
     weight_t j,
@@ -406,8 +419,8 @@ ChildAutomaton* ChildAutomaton::determiniseToS_ij(weight_t j, value_function_t f
     // 1. Initialize
     MapArray<Symbol*>* dfa_alphabet;
     MapArray<Weight*>* dfa_weights;
-    MapStd<StateVector, State*> state_map_DFA;
-    std::queue<StateVector> worklist;  // Queue for BFS
+    MapStd<DFAStateKey, State*> state_map_DFA;
+    std::queue<DFAStateKey> worklist;  // Queue for BFS
 
     State* initial_dfa;
     unsigned int state_counter = 0;
@@ -416,10 +429,10 @@ ChildAutomaton* ChildAutomaton::determiniseToS_ij(weight_t j, value_function_t f
 
     // 2. Subset construction using BFS
     while(!worklist.empty()) {
-        StateVector current_pair = worklist.front(); worklist.pop();
+        DFAStateKey current_vector = worklist.front(); worklist.pop();
         for (unsigned symbol_id = 0; symbol_id < dfa_alphabet->size(); ++ symbol_id) {
             processTransition(
-                current_pair, symbol_id, dfa_alphabet, dfa_weights, 
+                current_vector, symbol_id, dfa_alphabet, dfa_weights, 
                 state_map_DFA, worklist, state_counter, j, finVal, bound, this->final_states_, this
             );
         }
@@ -443,12 +456,13 @@ ChildAutomaton* ChildAutomaton::determiniseToS_ij(weight_t j, value_function_t f
         initial_dfa,
         dfa_final_states
     );
+
     #ifdef DEBUG
     if (!allStatesReachable(s_ij)) {
         abort("All states are not reachable for this S_i,j.\n");
     }
     #endif
-
+    
     ChildAutomaton* minimized = hopcroftMinimizeDFA(s_ij);
     if (minimized != s_ij) {
         delete s_ij;

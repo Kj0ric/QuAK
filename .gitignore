@@ -42,3 +42,6 @@ quak-main
 .idea/
 
 .cache/
+
+# Environment
+venv/

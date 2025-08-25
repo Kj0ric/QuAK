@@ -20,12 +20,12 @@ int main(int argc, char* argv[]) {
     std::string filepath = argv[1];
     
     std:: size_t i = 1;              // Adjust
-    weight_t j = 1;                 // Adjust
+    weight_t j = 2;                 // Adjust
 
     std::vector<std::pair<value_function_t, weight_t>> tests = {
         //{Min_f, -1},    // No bound needed
         //{Max_f, -1},    // No bound needed  
-        {SumB, 2}     
+        {SumB, 3}     
     };
     
     for (auto [finVal, bound] : tests) {
@@ -39,12 +39,13 @@ int main(int argc, char* argv[]) {
         std::cout << std::string(50, '=') << std::endl;
         
         // Test return values computation
+        //testConstructMonitors(filepath, finVal, bound);
         //testCompareOldVsNewReturnValues(filepath, finVal, bound);
 
         // Test monitors constructed
-        testS_ijConstruction(filepath, i, j, finVal, bound);
+        //testS_ijConstruction(filepath, i, j, finVal, bound);
 
-        //testTransformToBuchi(filepath, finVal, bound);
+        testTransformToBuchi(filepath, finVal, bound);
     }
     
     return 0;

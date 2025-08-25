@@ -24,6 +24,7 @@ private:
 	MapArray<SetStd<Edge*>*>* predecessors;
 
 	weight_t dfa_value;	// Value field for S_ij DFAs
+	//bool is_initial = false;
 
   	// Friendship is not inherited
 	friend class Automaton;	
@@ -60,6 +61,9 @@ public:
 	// dfa_value methods
 	void setDFAValue(weight_t v) { dfa_value = v; }
 	weight_t getDFAValue() const { return dfa_value; }
+
+	//void setInitial() { is_initial = true; }
+	//bool checkInitial() { return is_initial; }
 };
 
 #endif /* STATE_H_ */
