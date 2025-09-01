@@ -154,6 +154,8 @@ void initializeDFA(
 	std::queue<DFAStateKey>& worklist, 
 	State* &initial_dfa, 
 	unsigned int& state_counter, 
+    const size_t& i,
+    const weight_t& j,
 	const ChildAutomaton* B_i, 
     value_function_t finVal
 ) {
@@ -196,13 +198,13 @@ void initializeDFA(
 
     // Create initial DFA state
     std::ostringstream ss;
-    ss << "d_" << state_counter++;
+    ss << "S_{" << i << "," << j << "}^" << state_counter++;    // TODO: Check if correct
     initial_dfa = new State(ss.str(), dfa_alphabet->size(), 0, 1);
     
     state_map_DFA.insert(init_key, initial_dfa);
     worklist.push(init_key);
 
-    #ifdef DEBUG
+    #ifdef DEBUG_MONITOR
         std::cout << "Initial DFA state: " << ss.str() << " with vector: <";
         for (weight_t v : init_key.vec){
             std::cout << v << ", ";
@@ -252,6 +254,7 @@ void processTransition(
 	MapStd<DFAStateKey, State*>& state_map_DFA, 
     std::queue<DFAStateKey>& worklist,
     unsigned int& state_counter,
+    size_t i,
 	weight_t j,
     value_function_t finVal,
     weight_t bound,
@@ -262,7 +265,7 @@ void processTransition(
 	State* from_state = state_map_DFA[current_key];
 	Symbol* symbol = dfa_alphabet->at(symbol_id);
 
-    #ifdef DEBUG
+    #ifdef DEBUG_MONITOR
         std::cout << "\n--- Processing transition from state " << from_state->getName() 
                 << " with symbol " << symbol->getName() << " ---" << std::endl;
         std::cout << "Current vector: ";
@@ -294,13 +297,12 @@ void processTransition(
     for (size_t k = 0; k < current_key.vec.size(); ++k) {
         weight_t from_value = current_key.vec[k];
 
-        // TODO: There's sth wrong with the should_skip logic:
         // Process if curr value is not unreachable_value OR it is unreachable_value and it is the initial component of the initial vector
         bool should_process = (from_value != unreachable_value) ||
                             (k == B_i->getInitial()->getId() && current_key.is_initial);
 
         /*
-        #ifdef DEBUG
+        #ifdef DEBUG_MONITOR
         std::cout << "  Component " << k << " (state " << B_i->getStates()->at(k)->getName() 
                   << "): value=" << from_value << ", skip=" << should_skip << std::endl;
         #endif
@@ -318,7 +320,7 @@ void processTransition(
 
             weight_t new_value = transitionFunction(from_value, edge_weight, finVal, bound);
 
-            #ifdef DEBUG
+            #ifdef DEBUG_MONITOR
             std::cout << "    Transition: " << from_bi_state->getName() 
                     << " --" << symbol->getName() << "/" << edge_weight 
                     << "--> " << to_bi_state->getName() 
@@ -330,7 +332,7 @@ void processTransition(
                 weight_t old_value = next_key.vec[to_k];
                 next_key.vec[to_k] = std::min(next_key.vec[to_k], new_value);
 
-                #ifdef DEBUG
+                #ifdef DEBUG_MONITOR
                     std::cout << "    Updated component " << to_k << ": " 
                             << old_value << " -> " << next_key.vec[to_k] << std::endl;
                 #endif
@@ -342,7 +344,7 @@ void processTransition(
         }
     }
 
-    #ifdef DEBUG
+    #ifdef DEBUG_MONITOR
         std::cout << "Next vector: ";
         printVector(next_key);
         std::cout << std::endl;
@@ -351,13 +353,12 @@ void processTransition(
     // Create new DFA state if not seen before
     if (!state_map_DFA.contains(next_key)) {
         std::ostringstream ss;
-        ss << "d_" << state_counter++;
-
+        ss << "S_{" << i << "," << j << "}^" << state_counter++;    // TODO: CHeck if this is correct
         State* next_state = new State(ss.str(), dfa_alphabet->size(), 0, 1);
         state_map_DFA.insert(next_key, next_state);
         worklist.push(next_key);     // Explore this new state
 
-        #ifdef DEBUG
+        #ifdef DEBUG_MONITOR
             std::cout << "Created DFA state: " << ss.str() << " with vector: ";
             printVector(next_key);  
             std::cout << std::endl;
@@ -367,17 +368,17 @@ void processTransition(
 	// Create edge (weight 1 if accepting, 0 otherwise)
     // Accepting only if one of the accepting state components of the vector has the value j
     bool accepting = isAcceptingVector(next_key, j, finals, B_i, bound);
+    
     Weight* weight = dfa_weights->at(accepting ? 1: 0);
 
 	// Set weight (1 if accepting, 0 otherwise)
 	// Next state is accepting only if hasFinalIntersection == true and next_value == j
-
 	State* to_state = state_map_DFA[next_key];
 	Edge* edge = new Edge(symbol, weight, from_state, to_state);
 	from_state->addSuccessor(edge);
 	to_state->addPredecessor(edge);
 
-    #ifdef DEBUG
+    #ifdef DEBUG_MONITOR
     std::cout << "Edge: " << from_state->getName() << " --" << symbol->getName()
             << "/" << weight->getValue() << "--> " << to_state->getName() << std::endl;
     #endif
@@ -410,7 +411,7 @@ void collectDFAStatesAndFinals(
 // Create S_ij boolean finite-word automaton from a child automaton B_i 
 // S_ij recognizes the words on which B_i returns the value j 
 // Must provide a bound if finVal = SumB
-ChildAutomaton* ChildAutomaton::determiniseToS_ij(weight_t j, value_function_t finVal, weight_t bound) {
+ChildAutomaton* ChildAutomaton::determiniseToS_ij(size_t i, weight_t j, value_function_t finVal, weight_t bound) {
     // Reset IDs
     State::RESET();
     Symbol::RESET();
@@ -425,7 +426,7 @@ ChildAutomaton* ChildAutomaton::determiniseToS_ij(weight_t j, value_function_t f
     State* initial_dfa;
     unsigned int state_counter = 0;
     
-    initializeDFA(dfa_alphabet, dfa_weights, state_map_DFA, worklist, initial_dfa, state_counter, this, finVal);
+    initializeDFA(dfa_alphabet, dfa_weights, state_map_DFA, worklist, initial_dfa, state_counter, i, j, this, finVal);
 
     // 2. Subset construction using BFS
     while(!worklist.empty()) {
@@ -433,7 +434,7 @@ ChildAutomaton* ChildAutomaton::determiniseToS_ij(weight_t j, value_function_t f
         for (unsigned symbol_id = 0; symbol_id < dfa_alphabet->size(); ++ symbol_id) {
             processTransition(
                 current_vector, symbol_id, dfa_alphabet, dfa_weights, 
-                state_map_DFA, worklist, state_counter, j, finVal, bound, this->final_states_, this
+                state_map_DFA, worklist, state_counter, i, j, finVal, bound, this->final_states_, this
             );
         }
     }
@@ -463,7 +464,7 @@ ChildAutomaton* ChildAutomaton::determiniseToS_ij(weight_t j, value_function_t f
     }
     #endif
     
-    ChildAutomaton* minimized = hopcroftMinimizeDFA(s_ij);
+    ChildAutomaton* minimized = hopcroftMinimizeDFA(s_ij, i, j);
     if (minimized != s_ij) {
         delete s_ij;
     }
@@ -499,7 +500,7 @@ void ChildAutomaton::print(std::ostream& out, bool full, bool bv_weights, bool b
     out << std::endl;
 }
 
-ChildAutomaton* hopcroftMinimizeDFA(ChildAutomaton* dfa) {
+ChildAutomaton* hopcroftMinimizeDFA(ChildAutomaton* dfa, size_t i, weight_t j) {
     State::RESET();
     Symbol::RESET();
     Weight::RESET();
@@ -579,22 +580,55 @@ ChildAutomaton* hopcroftMinimizeDFA(ChildAutomaton* dfa) {
     std::map<State*, int> state_to_block;
     std::vector<State*> block_representatives(partition.size(), nullptr);
 
-    // Create new states and map old states to blocks
-    for (size_t i = 0; i < partition.size(); ++i) {
+    // Populate state_to_block map
+    for (size_t i_block = 0; i_block < partition.size(); ++i_block) {
+        for (State* s : partition[i_block]) {
+            state_to_block[s] = static_cast<int>(i_block);
+        }
+    }
+
+    int initial_block_idx = state_to_block[initial];
+
+    // Create a suffix mapping to ensure consecutive state numbers
+    std::vector<int> suffix_mapping(partition.size());
+    int next_suffix = 1; // Start with 1 since 0 is reserved for initial
+
+    // Set initial block to suffix 0
+    suffix_mapping[initial_block_idx] = 0;
+
+    // Assign consecutive suffixes to other blocks
+    for (size_t i_block = 0; i_block < partition.size(); ++i_block) {
+        if (i_block != initial_block_idx) {
+            suffix_mapping[i_block] = next_suffix++;
+        }
+    }
+
+    // Create new states using the suffix mapping
+    auto* remapped_states = new MapArray<State*>(partition.size());
+
+    for (size_t i_block = 0; i_block < partition.size(); ++i_block) {
         std::ostringstream nm;
-        nm << "q" << i;
+        nm << "S_{" << i << "," << j << "}^" << suffix_mapping[i_block];
+        
         State* new_state = new State(nm.str(), alphabet->size(), 0, 1);
-        min_states->insert(i, new_state);
-        block_representatives[i] = new_state;
-        for (State* s : partition[i]) state_to_block[s] = static_cast<int>(i);
+        remapped_states->insert(suffix_mapping[i_block], new_state);
+        block_representatives[i_block] = new_state;
+        
         // If any state in block is final, mark as final
-        for (State* s : partition[i]) {
+        for (State* s : partition[i_block]) {
             if (finals->contains(s)) {
                 min_finals->insert(new_state);
                 break;
             }
         }
     }
+
+    // Copy states to min_states in remapped order
+    min_states = new MapArray<State*>(partition.size());
+    for (size_t i = 0; i < remapped_states->size(); ++i) {
+        min_states->insert(i, remapped_states->at(i));
+    }
+    delete remapped_states;
 
     // Set initial state
     State* min_initial = block_representatives[state_to_block[initial]];
@@ -682,7 +716,7 @@ bool allStatesReachable(const ChildAutomaton* dfa) {
     
     bool all_reachable = (reachable.size() == states->size());
     
-    #ifdef DEBUG
+    #ifdef DEBUG_MONITOR
     std::cout << "Reachability check for '" << dfa->getName() << "': " 
               << reachable.size() << "/" << states->size() << " states reachable" << std::endl;
     

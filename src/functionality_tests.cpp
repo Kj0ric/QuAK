@@ -112,7 +112,7 @@ void testS_ijConstruction(
     std::cout << "\n=== DETAILED S_ij ANALYSIS ===" << std::endl;
 
     // Analyze the S_ij construction
-    ChildAutomaton* S_ij = child->determiniseToS_ij(j, g, bound);
+    ChildAutomaton* S_ij = child->determiniseToS_ij(child_index, j, g, bound);
     
     std::cout << "S_{" << child_index << "," << j << "} Analysis:" << std::endl;
     std::cout << "- Total states: " << S_ij->getStates()->size() << std::endl;
@@ -322,6 +322,7 @@ void testAllMonitorsConstruction(const std::string& filepath, value_function_t f
     }
 }
 
+/*
 void testCompareOldVsNewReturnValues(const std::string& filepath, value_function_t finVal, weight_t bound = -1) {
     std::cout << "=== Comparing OLD vs NEW Return Values ===" << std::endl;
     std::cout << "File: " << filepath << std::endl;
@@ -422,6 +423,7 @@ void testCompareOldVsNewReturnValues(const std::string& filepath, value_function
         std::cout << "Test failed: " << e.what() << std::endl;
     }
 }
+*/
 
 void testTransformToBuchi(const std::string& filepath, value_function_t finVal, weight_t bound = -1) {
     std::cout << "=== Testing transformToBuchi Function ===" << std::endl;
@@ -455,18 +457,6 @@ void testTransformToBuchi(const std::string& filepath, value_function_t finVal, 
         }
         std::cout << "} (count: " << global_values.size() << ")" << std::endl;
         
-        for (size_t i = 0; i < nested->getChildrenSize(); ++i) {
-            ChildAutomaton* child = nested->getChild(i);
-            if (!child) continue;
-            
-            SetStd<weight_t> child_values = computeChildReturnValues(child, finVal, bound);
-            std::cout << "Child " << i << " returns: {";
-            for (weight_t val : child_values) {
-                std::cout << val << " ";
-            }
-            std::cout << "} (count: " << child_values.size() << ")" << std::endl;
-        }
-
         // TEST 2: Analyze Monitor Sizes
         std::cout << "\n=== DIAGNOSTIC TEST 2: Monitor Size Analysis ===" << std::endl;
         
@@ -522,7 +512,7 @@ void testTransformToBuchi(const std::string& filepath, value_function_t finVal, 
             std::cout << "\n=== DIAGNOSTIC TEST 4: Monitor Details ===" << std::endl;
             for (const auto& [key, monitor] : monitors) {
                 std::cout << "\n--- Monitor S_" << key.first << "^" << key.second << " ---" << std::endl;
-                //monitor->print();
+                monitor->print();
             }
         } else {
             std::cout << "\n=== DIAGNOSTIC TEST 4: Monitor Details (SKIPPED - too large) ===" << std::endl;

@@ -25,7 +25,7 @@ int main(int argc, char* argv[]) {
     std::vector<std::pair<value_function_t, weight_t>> tests = {
         //{Min_f, -1},    // No bound needed
         //{Max_f, -1},    // No bound needed  
-        {SumB, 3}     
+        {SumB, 1}     
     };
     
     for (auto [finVal, bound] : tests) {

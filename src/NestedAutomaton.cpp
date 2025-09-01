@@ -444,120 +444,18 @@ SetStd<weight_t> computeChildReturnValues(ChildAutomaton* child, value_function_
     }
     
     #ifdef DEBUG
-    std::cout << "Child " << child->getName() << " (";
-    switch(finVal) {
-        case Min_f: std::cout << "Min_f"; break;
-        case Max_f: std::cout << "Max_f"; break;
-        case SumB: std::cout << "SumB"; break;
-        default: std::cout << "Unknown"; break;
-    }
-    std::cout << ") can return values: {";
-    for (weight_t val : return_values) {
-        std::cout << val << " ";
-    }
-    std::cout << "} (count: " << return_values.size() << ")" << std::endl;
-    #endif
-    
-    return return_values;
-}
-
-SetStd<weight_t> oldComputeChildReturnValues(ChildAutomaton* child, value_function_t finVal, weight_t bound) {
-    SetStd<weight_t> return_values;
-    
-    if (finVal == Min_f || finVal == Max_f) {
-        for (size_t i = 0; i < child->getWeights()->size(); ++i) {
-            return_values.insert(child->getWeights()->at(i)->getValue());
+        std::cout << "Child " << child->getName() << " (";
+        switch(finVal) {
+            case Min_f: std::cout << "Min_f"; break;
+            case Max_f: std::cout << "Max_f"; break;
+            case SumB: std::cout << "SumB"; break;
+            default: std::cout << "Unknown"; break;
         }
-    }
-    else if (finVal == SumB) {
-        if (bound < 0) {
-            QUAK_FAIL("SumB requires a non-negative bound");
+        std::cout << ") can return values: {";
+        for (weight_t val : return_values) {
+            std::cout << val << " ";
         }
-        
-        using SumState = std::tuple<State*, weight_t, weight_t>;
-        std::queue<SumState> worklist;
-        SetStd<SumState> visited;
-        
-        SumState init_state = {child->getInitial(), weight_t(0), weight_t(0)};
-        worklist.push(init_state);
-        visited.insert(init_state);
-        
-        if (child->isFinal(child->getInitial())) {
-            return_values.insert(weight_t(0));
-        }
-        
-        while (!worklist.empty()) {
-            SumState current = worklist.front(); 
-            worklist.pop();
-            
-            State* curr_state = std::get<0>(current);
-            weight_t curr_sum = std::get<1>(current);
-            weight_t bound_hit = std::get<2>(current);
-            
-            if (child->isFinal(curr_state)) {
-                if (bound_hit != weight_t(0)) {
-                    return_values.insert(bound_hit);
-                } else {
-                    return_values.insert(curr_sum);
-                }
-                continue;
-            }
-            
-            for (size_t sym_id = 0; sym_id < child->getAlphabetSize(); ++sym_id) {
-                SetStd<Edge*>* successors = curr_state->getSuccessors(sym_id);
-                if (!successors) continue;
-                
-                for (Edge* edge : *successors) {
-                    State* next_state = edge->getTo();
-                    weight_t edge_weight = edge->getWeight()->getValue();
-                    weight_t raw_sum = curr_sum + edge_weight;
-                    
-                    weight_t next_sum;
-                    weight_t next_bound_hit = bound_hit;
-                    
-                    if (raw_sum > bound && bound_hit == weight_t(0)) {
-                        next_sum = bound;
-                        next_bound_hit = bound;
-                    } else if (raw_sum < -bound && bound_hit == weight_t(0)) {
-                        next_sum = -bound;
-                        next_bound_hit = -bound;
-                    } else if (bound_hit != weight_t(0)) {
-                        next_sum = applyBound(raw_sum, bound);
-                    } else {
-                        next_sum = raw_sum;
-                    }
-                    
-                    SumState next_sum_state = {next_state, next_sum, next_bound_hit};
-                    
-                    if (!visited.contains(next_sum_state)) {
-                        visited.insert(next_sum_state);
-                        
-                        if (child->isFinal(next_state)) {
-                            if (next_bound_hit != weight_t(0)) {
-                                return_values.insert(next_bound_hit);
-                            } else {
-                                return_values.insert(next_sum);
-                            }
-                        } else {
-                            worklist.push(next_sum_state);
-                        }
-                    }
-                }
-            }
-        }
-    }
-    else {
-        QUAK_FAIL("Unsupported value function for child automaton");
-    }
-    
-    #ifdef DEBUG
-    std::cout << "Child " << child->getName() << " (" << 
-        (finVal == Min_f ? "Min_f" : finVal == Max_f ? "Max_f" : "SumB") << 
-        ") can return values: {";
-    for (weight_t val : return_values) {
-        std::cout << val << " ";
-    }
-    std::cout << "}" << std::endl;
+        std::cout << "} (count: " << return_values.size() << ")" << std::endl;
     #endif
     
     return return_values;
@@ -603,7 +501,7 @@ void constructMonitors(
         // Only create monitors for possible return values by the child i
         SetStd<weight_t> child_values = computeChildReturnValues(child, finVal, bound);
         for (weight_t j : child_values) {
-            ChildAutomaton* monitor = child->determiniseToS_ij(j, finVal, bound);
+            ChildAutomaton* monitor = child->determiniseToS_ij(i, j, finVal, bound);
 
             MonitorKey key = {i,j};
             monitors.insert(key, monitor);
@@ -649,6 +547,31 @@ void removeFinalStates(SetStd<State*>&P, const SetStd<State*>& F_S) {
             ++it;
         }
     }
+}
+
+// Helper to print a BuchiState
+void printBuchiState(const BuchiState& bs) {
+    std::cout << "<";
+    if (bs.parent_state) std::cout << bs.parent_state->getName();
+    else std::cout << "null";
+    std::cout << ", " << bs.last_guess;
+    std::cout << ", P1={";
+    
+    bool first = true;
+    for (State* s : bs.P1) {
+        if (!first) std::cout << ",";
+        std::cout << s->getName();
+        first = false;
+    }
+    std::cout << "}, P2={";
+    
+    first = true;
+    for (State* s : bs.P2) {
+        if (!first) std::cout << ",";
+        std::cout << s->getName();
+        first = false;
+    }
+    std::cout << "}>";
 }
 
 // Helper: Initialize büchi automaton components
@@ -764,7 +687,6 @@ void processBuchiTransition(
             // Extract child automaton index from parent edge TODO: Check if correct
             weight_t parent_weight = parent_edge->getWeight()->getValue();
             size_t child_index = static_cast<size_t>(parent_weight.to_float()); 
-
             for (weight_t guess : global_return_values) {
                 if (guess == SILENT) continue; // SILENT doesn't call any child
 
@@ -812,6 +734,14 @@ void processBuchiTransition(
                 Edge* new_edge = new Edge(symbol, weight, current_state, state_map[next_global]);
                 current_state->addSuccessor(new_edge);
                 state_map[next_global]->addPredecessor(new_edge);
+
+                #ifdef DEBUG
+                    std::cout << "Current state: ";
+                    printBuchiState(current_gs);
+                    std::cout << "\nNew state: ";
+                    printBuchiState(next_global);
+                    std::cout << " with symbol: " << symbol->getName() << ", guess: " << guess << std::endl;
+                #endif
                 
             }
         }

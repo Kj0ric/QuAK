@@ -48,12 +48,12 @@ public:
 	}
 
 	// Key Lemma: S_i,j monitor construction
-	ChildAutomaton* determiniseToS_ij(weight_t j, value_function_t g, weight_t bound = -1);
+	ChildAutomaton* determiniseToS_ij(size_t i, weight_t j, value_function_t g, weight_t bound = -1);
 };
 
 // ---------- Free function declarations ------------
 bool isMinimalDFA(const ChildAutomaton* dfa);
-ChildAutomaton* hopcroftMinimizeDFA(ChildAutomaton* dfa);
+ChildAutomaton* hopcroftMinimizeDFA(ChildAutomaton* dfa, size_t i, weight_t j);
 bool allStatesReachable(const ChildAutomaton* dfa);
 
 #endif /* CHILD_AUTOMATON_H */
