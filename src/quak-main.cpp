@@ -18,7 +18,9 @@
 
 int main(int argc, char* argv[]) {
     std::string filepath = argv[1];
+    testGenerateMacro(filepath);
     
+    /*
     std:: size_t i = 1;              // Adjust
     weight_t j = 2;                 // Adjust
 
@@ -47,6 +49,7 @@ int main(int argc, char* argv[]) {
 
         testTransformToBuchi(filepath, finVal, bound);
     }
+    */
     
     return 0;
 }

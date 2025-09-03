@@ -2,8 +2,6 @@
 #ifndef HASH_H_
 #define HASH_H_
 
-
-
 #include "Weight.h"
 class SCC_Dag;
 class Symbol;
@@ -15,6 +13,7 @@ class State;
 class Weight;
 class Edge;
 
+/* Template specialization of std::hash<T> template struct for PAIRS */
 namespace std {
 	template <> // Parser
 	struct hash<std::pair<std::string, std::string>> {

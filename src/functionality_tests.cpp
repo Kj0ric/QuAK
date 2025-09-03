@@ -1,3 +1,4 @@
+#include <exception>
 #include <iostream>
 #include <string>
 #include <iomanip>
@@ -6,11 +7,14 @@
 #include "ChildAutomaton.h"
 #include "NestedAutomaton.h"
 #include "Set.h"
+#include "Symbol.h"
 #include "Weight.h"
 #include "utility.h"
 
 #include <queue>
+#include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 void testReadDomain() {
     std::string filename = "../samples/tests/testH1.txt";
@@ -602,4 +606,94 @@ void testTransformToBuchi(const std::string& filepath, value_function_t finVal, 
     } catch (...) {
         std::cout << "❌ Test failed with unknown exception" << std::endl;
     }
+}
+
+void testGenerateMacro(const std::string& filepath) {
+    std::cout << "=== Testing generateMacro function ===" << std::endl;
+    std::cout << "File:" << filepath << std::endl;
+
+    try {
+        NestedAutomaton* nested = new NestedAutomaton(filepath);
+
+        // if no child error and return 
+        if (nested->getChildrenSize() == 0) {
+            QUAK_FAIL("No child automata found! Cannot test macro generation.");
+            delete nested;
+            return;
+        }
+
+        // Prepaer automata list
+        std::vector<Automaton*> automata_list;
+        automata_list.push_back(nested);
+
+        for (size_t i = 0; i < nested->getChildrenSize(); ++i) {
+            ChildAutomaton* child = nested->getChild(i);
+            if (child) {
+                automata_list.push_back(child);
+            }
+        }
+
+        // Prepare symbol list 
+        std::vector<Symbol*> symbol_list;
+        for (unsigned int symbol_id = 0; symbol_id < nested->getAlphabetSize(); ++symbol_id) {
+            symbol_list.push_back(nested->getAlphabet()->at(symbol_id));
+        }
+
+        // Input analysis
+        std::cout << "\n--- Input Analysis ---" << std::endl;
+        std::cout << "Number of automata: " << automata_list.size() << " (1 master + " << (automata_list.size()-1) << " children)" << std::endl;
+        std::cout << "Alphabet size: " << symbol_list.size() << std::endl;
+        std::cout << "Symbols: ";
+        for (Symbol* sym : symbol_list) {
+            std::cout << sym->getName() << " ";
+        }
+        std::cout << std::endl;
+
+        // Print automata info
+        for (size_t i = 0; i < automata_list.size(); ++i) {
+            std::cout << "Automaton " << i << ": " << automata_list[i]->getStates()->size() << " states" << std::endl;
+        }
+
+        // Initialize resolver and alphabet containers
+        std::vector<SetStd<Edge*>> resolver(automata_list.size());
+        std::unordered_set<MacroSymbol*, MacroSymbolPtrHash, MacroSymbolPtrEqual > macro_alphabet;
+        
+        std::cout << "\n--- Starting Macro Generation ---" << std::endl;
+        generateResolvers(0, 0, 0, resolver, macro_alphabet, automata_list, symbol_list);
+        generateMacro(macro_alphabet, automata_list, symbol_list);
+
+        // Print all generated macro letters
+        std::cout << "\n--- Generated Macro Alphabet ---" << std::endl;
+        int count = 0;
+        for (const auto& macro : macro_alphabet) {
+            std::cout << "MacroSymbol " << count++ << ":" << std::endl;
+            std::cout << "  Original symbol: " << macro->getSymbol()->getName() << " (ID: " << macro->getSymbol()->getId() << ")" << std::endl;
+            std::cout << "  Resolver size: " << macro->getResolver().size() << std::endl;
+            
+            // Print resolver details
+            for (size_t i = 0; i < macro->getResolver().size(); ++i) {
+                std::cout << "    Automaton " << i << " edges: {";
+                for (Edge* edge : macro->getResolver()[i]) {
+                    std::cout << "[" << edge->getFrom()->getName() << " --" 
+                              << edge->getSymbol()->getName() << "/" 
+                              << edge->getWeight()->getValue() << "--> " 
+                              << edge->getTo()->getName() << "] ";
+                }
+                std::cout << "}" << std::endl;
+            }
+            std::cout << std::endl;
+        }
+
+        // Clean all macroSymbols in macro_alphabet
+        for (MacroSymbol* macro : macro_alphabet) {
+            delete macro;
+        }
+
+        delete nested;
+    }   
+    catch (const std::exception& e) {
+        std::cout << " Error during desting: " << e.what() << std::endl;
+    }
+
+    std::cout << "\n=== Test Complete ===" << std::endl;
 }

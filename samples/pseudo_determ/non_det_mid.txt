@@ -1,0 +1,38 @@
+# For 'a': 1(P) * 3(C1_s0) * 1(C1_s1) * 1(C1_s2) * 2(C2_t1) * 2(C2_t2) = 12
+# For 'b': 1(P) * 1(C1_s0) * 2(C1_s1) * 2(C1_s2) * 3(C2_t0) * 1(C2_t1) * 1(C2_t2) = 12
+# Total: 24 macro-letters. This is a good test.
+
+@PARENT
+# Parent is simple and deterministic to isolate child non-determinism.
+a : 1, p0 -> p0
+b : 2, p0 -> p0
+
+@CHILD 1
+final: s3
+# 3-way non-determinism from s0 on symbol 'a'
+a : 1, s0 -> s0
+a : 2, s0 -> s1
+a : 3, s0 -> s2
+
+# 2-way non-determinism from s1 on symbol 'b'
+b : 1, s1 -> s1
+b : 2, s1 -> s3
+
+# 2-way non-determinism from s2 on symbol 'b'
+b : 3, s2 -> s2
+b : 4, s2 -> s3
+
+@CHILD 2
+final: t3
+# 3-way non-determinism from t0 on symbol 'b'
+b : 1, t0 -> t0
+b : 2, t0 -> t1
+b : 3, t0 -> t2
+
+# 2-way non-determinism from t1 on symbol 'a'
+a : 1, t1 -> t1
+a : 2, t1 -> t3
+
+# 2-way non-determinism from t2 on symbol 'a'
+a : 3, t2 -> t2
+a : 4, t2 -> t3

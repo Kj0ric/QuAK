@@ -4,6 +4,7 @@
 
 #include "../State.h"
 #include "../Set.h"
+#include "../Symbol.h"
 
 class TargetOf : protected SetStd<State*> {
 private:

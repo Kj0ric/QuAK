@@ -1,6 +1,7 @@
 
 #include "Edge.h"
 #include "State.h"
+#include "Symbol.h"
 #include "utility.h"
 
 
