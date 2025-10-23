@@ -622,7 +622,7 @@ void testGenerateMacro(const std::string& filepath) {
             return;
         }
 
-        // Prepaer automata list
+        // Prepare automata list
         std::vector<Automaton*> automata_list;
         automata_list.push_back(nested);
 
