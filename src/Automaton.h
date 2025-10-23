@@ -58,6 +58,7 @@ protected:
 	weight_t max_domain;	// Max weight of the transitions of A
 	State* initial;			// Initial state
 	unsigned int nb_SCCs;	// ?
+	bool* final_SCCs; //CHANGE WITH ACCEPTANCE
 	SCC_Dag** SCCs;			// ?
 
 	Automaton(std::string newname, Parser* parser, MapStd<std::string, Symbol*> sync_register);
@@ -90,6 +91,14 @@ private:
 	weight_t top_Inf (weight_t* top_values) const;
 	weight_t top_LimInf (weight_t* top_values) const;
 	weight_t top_LimAvg (weight_t* top_values) const;
+	//...................................................//
+	weight_t top_Sup_with_final () const;
+	weight_t top_Inf_with_final () const;
+	weight_t top_LimSup_with_final () const;
+	weight_t top_LimInf_with_final () const;
+	weight_t top_LimAvg_with_final () const;
+	//...................................................//
+	
 
 	void constructWitness(value_function_t f, UltimatelyPeriodicWord** witness, const weight_t* scc_values, const weight_t* top_values, SetList<Edge*>** scc_cycles, SetList<Edge*>* path, SetList<Edge*>* loop) const;
 	

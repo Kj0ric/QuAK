@@ -91,6 +91,7 @@ Automaton::Automaton(const Automaton& other) :
 	min_domain(other.min_domain),
 	max_domain(other.max_domain),
 	nb_SCCs(0),
+	final_SCCs(nullptr),
 	SCCs(nullptr)
 {
 	State::RESET();
@@ -535,20 +536,19 @@ void Automaton::compute_SCC (void) {
 
 	compute_SCC_tag(initial, &tag, &time, spot, low, &stack, stackMem);
 	this->nb_SCCs = tag;
-
-	/* DEBUG 
-    for (unsigned int state_id = 0; state_id < this->states->size(); ++state_id) {
-        std::cout << "State " << this->states->at(state_id)->getName()
-                  << " tag: " << this->states->at(state_id)->getTag() << std::endl;
-    }
-    std::cout << "nb_SCCs: " << this->nb_SCCs << std::endl;
-	*/
+	this->final_SCCs = new bool[nb_SCCs]; // CHANGE WITH ACCEPTANCE
 
 	this->SCCs = new SCC_Dag*[nb_SCCs];
 	for (unsigned int scc_id = 0; scc_id < this->nb_SCCs; ++scc_id) {
 		this->SCCs[scc_id] = new SCC_Dag();
+		this->final_SCCs[scc_id] = 0;
 	}
 	compute_SCC_dag(initial, spot, low, stackMem, this->SCCs);
+
+	for (unsigned int state_id = 0; state_id < size; ++state_id) {
+		this->final_SCCs[this->states->at(state_id)->getTag()] |= this->states->at(state_id)->getFinal();
+	}
+
 
 	delete [] spot;
 	delete [] low;
@@ -2538,7 +2538,7 @@ weight_t Automaton::compute_Top (value_function_t f, weight_t* top_values, Ultim
 
         switch (f) {
             case Inf:
-				result = top_Inf_path(top_values, path, loop, witness);
+		result = top_Inf_path(top_values, path, loop, witness);
                 break;
             case Sup:
                 result = top_Sup_path(top_values, path, witness);
@@ -2964,5 +2964,167 @@ void Automaton::write(std::ostream& out) const {
 	}
 	out << "\n";
 }
+
+
+
+//...................................................//
+
+
+
+
+
+weight_t Automaton::top_Sup_with_final () const {
+	Automaton* A = Automaton::toLimSup(this, Sup);
+	weight_t top = top_LimSup_with_final();
+	delete A;
+	return top;
+}
+
+
+
+weight_t Automaton::top_Inf_with_final () const {
+	Automaton* A = Automaton::toLimSup(this, Inf);
+	weight_t top = top_LimSup_with_final();
+	delete A;
+	return top;
+}
+
+
+
+weight_t Automaton::top_LimSup_with_final () const {
+	weight_t values[this->states->size()];
+	bool spot[this->states->size()];
+	
+	for (unsigned int state_id = 0; state_id < this->states->size(); ++state_id) {
+		values[state_id] = this->min_domain;
+		spot[state_id] = false;
+	}
+
+	weight_t top = this->min_domain;
+	for (unsigned int scc_id = 0; scc_id < this->nb_SCCs; ++scc_id) {
+		if (final_SCCs[scc_id] == true) {
+			top_reachably_scc(this->SCCs[scc_id]->origin, true, spot, values);
+			top = std::max(top, values[this->SCCs[scc_id]->origin->getId()]);
+		}
+	}
+
+	return top;
+}
+
+
+
+
+weight_t Automaton::top_LimInf_with_final () const {
+	weight_t values[this->states->size()];
+	weight_t top_scc[this->nb_SCCs];
+	top_safety_scc(values, true);
+
+	for (unsigned int scc_id = 0; scc_id < this->nb_SCCs; ++scc_id) {
+		top_scc[scc_id] = this->min_domain;
+	}
+
+	for (unsigned int state_id = 0; state_id < this->states->size(); ++state_id) {
+		unsigned int scc_id = this->states->at(state_id)->getTag();
+		if (scc_id > -1) {
+			top_scc[scc_id] = std::max(top_scc[scc_id], values[state_id]);
+		}
+	}
+
+	weight_t top = this->min_domain;
+	for (unsigned int scc_id = 0; scc_id < this->nb_SCCs; ++scc_id) {
+		if (final_SCCs[scc_id] == true) {
+			top = std::max(top, top_scc[scc_id]);
+		}
+	}
+
+	return top;
+}
+
+
+
+weight_t Automaton::top_LimAvg_with_final () const {
+	unsigned int size = this->states->size();
+	weight_t distance[size + 1][size];
+	weight_t infinity = std::max(weight_t(1), -(weight_t(size)*this->min_domain) + 1); // TODO
+
+	// O(n)
+	for (unsigned int length = 0; length <= size; ++length) {
+		for (unsigned int state_id = 0; state_id < size; ++state_id) {
+			distance[length][state_id] = infinity;
+		}
+	}
+
+
+	//O(n)
+	auto initialize_distances = [] (SCC_Dag* dag, weight_t* distance, auto &rec) -> void {
+		distance[dag->origin->getId()] = 0;
+		for (auto iter = dag->nexts->begin(); iter != dag->nexts->end(); ++iter) {
+			rec(*iter, distance, rec);
+		}
+	};
+	initialize_distances(this->SCCs[this->initial->getTag()], distance[0], initialize_distances);
+
+
+	// O(n.m)
+	for (unsigned int len = 1; len <= size; ++len) {
+		for (unsigned int state_id = 0; state_id < size; ++state_id)	{
+			for (Symbol* symbol : *(states->at(state_id)->getAlphabet())) {
+				for (Edge* edge : *(states->at(state_id)->getSuccessors(symbol->getId()))) {
+					if (edge->getFrom()->getTag() == edge->getTo()->getTag()) {
+						if (distance[len-1][edge->getFrom()->getId()] != infinity) {
+							weight_t value = distance[len-1][edge->getFrom()->getId()] - edge->getWeight()->getValue();
+							if (distance[len][edge->getTo()->getId()] == infinity) {
+								distance[len][edge->getTo()->getId()] = value;
+							}
+							else {
+								distance[len][edge->getTo()->getId()] =
+										std::min(value, distance[len][edge->getTo()->getId()]);
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	//O(n.m)
+	weight_t top_scc[this->nb_SCCs];
+	for (unsigned int scc_id = 0; scc_id < this->nb_SCCs; ++scc_id) {
+		top_scc[scc_id] = this->min_domain;
+	}
+
+	for (unsigned int state_id = 0; state_id < size; ++state_id) {
+		weight_t min_lenght_avg = this->max_domain;
+		bool len_flag = false;
+		if (distance[size][state_id] != infinity) { // => id has an ongoing edge (inside its SCC)
+			for (unsigned int lenght = 0; lenght < size; ++lenght) { // hence the nested loop is call at most O(m) times
+				if (distance[lenght][state_id] != infinity) {
+					weight_t avg = (distance[lenght][state_id] - distance[size][state_id] + 0.0) / weight_t(size - lenght + 0.0);
+					min_lenght_avg = std::min(min_lenght_avg, avg);
+					len_flag = true;
+				}
+			}
+		}
+		if (len_flag) {
+			top_scc[this->states->at(state_id)->getTag()] = std::max(top_scc[this->states->at(state_id)->getTag()], min_lenght_avg);
+		}
+	}
+
+	weight_t top = this->min_domain;
+	for (unsigned int scc_id = 0; scc_id < this->nb_SCCs; ++scc_id) {
+		if (final_SCCs[scc_id] == true) {
+			top = std::max(top, top_scc[scc_id]);
+		}
+	}
+
+	return top;
+}
+
+
+
+
+//...................................................//
+
+
 
 

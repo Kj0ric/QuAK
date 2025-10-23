@@ -16,8 +16,9 @@ class State{
 private:
 	const unsigned int my_id;
 	std::string name;
-  	Automaton *automaton{nullptr};	    // States have an owner automaton 
-	int my_scc;						    // An ID for the SCC that this state belongs
+  	Automaton *automaton{nullptr};		// States have an owner automaton 
+	int my_scc;				// An ID for the SCC that this state belongs
+	bool final;		//CHANGED WITH ACCEPTANCE
 	weight_t min_weight;
 	weight_t max_weight;
 	MapArray<SetStd<Edge*>*>* successors;
@@ -45,6 +46,9 @@ public:
 
 	int getTag() const;
 	void setTag(int tag);
+
+	bool getFinal() const;
+	void setFinal(bool final);
 
 	MapArray<Symbol*> *getAlphabet () const;
 

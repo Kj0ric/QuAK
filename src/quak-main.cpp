@@ -17,8 +17,10 @@
 #include "utility.h"
 
 int main(int argc, char* argv[]) {
-    std::string filepath = argv[1];
-    testGenerateMacro(filepath);
+	printf("TOTO LALA");
+
+    //std::string filepath = argv[1];
+    //testGenerateMacro(filepath);
     
     /*
     std:: size_t i = 1;              // Adjust

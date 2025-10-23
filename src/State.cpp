@@ -35,6 +35,7 @@ State::State (std::string name, unsigned int alphabet_size, weight_t automaton_m
 		my_id(ID_of_States++),
 		name(name),
 		my_scc(-1),
+		final(0),
 		min_weight(automaton_max_weight),
 		max_weight(automaton_min_weight),
 		successors(nullptr),
@@ -53,6 +54,7 @@ State::State (State* state) :
 		my_id(state->my_id),
 		name(state->name),
 		my_scc(state->my_scc),
+		final(state->final),
 		min_weight(state->min_weight),
 		max_weight(state->max_weight),
 		successors(nullptr),
@@ -90,6 +92,14 @@ int State::getTag() const {
 
 void State::setTag(int tag) {
 	this->my_scc = tag;
+}
+
+bool State::getFinal() const {
+	return this->final;
+}
+
+void State::setFinal(bool final) {
+	this->final = final;
 }
 
 MapArray<Symbol*>* State::getAlphabet () const {
