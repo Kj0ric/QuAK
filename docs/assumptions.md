@@ -39,9 +39,9 @@ This document describes the core assumptions, requirements enforced by QuAK's im
 ## 3. Acceptance Conditions
 
 ### 3.1 Non-Nested Automata (from file input)
-- **Final states**: Declared with blank separated `final: s0 s1` (optional)
+- **Explicit final states**: Declared with blank separated `final: s0 s1` (optional)
 - **Default behavior**: If no `final:` declaration, all states are final (F = Q)
-- **Acceptance**: All infinite runs are accepting
+- **Acceptance**: Accept infinite runs visiting at least one accepting run infinitely
 
 ### 3.2 Parent Automata
 - All states are implicitly final
