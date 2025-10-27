@@ -28,6 +28,7 @@ public:
 	~NestedAutomaton();
 	NestedAutomaton(std::string name, Parser* parser, MapStd<std::string, Symbol*> sync_register);
 	NestedAutomaton(std::string filename, Automaton* other = nullptr);
+    NestedAutomaton(std::string name, MapArray<Symbol*>* alphabet, MapArray<State*>* states, MapArray<Weight*>* weights, weight_t min_domain, weight_t max_domain, State* initial, MapArray<ChildAutomaton*>* children);
 
 	void print(bool full = false, bool bv_weights = false, bool bv_only = false) const;
 	void print(std::ostream& out, bool full = false, bool bv_weights = false, bool bv_only = false) const;
@@ -35,6 +36,10 @@ public:
 	static NestedAutomaton* removeSilentTransitions(const NestedAutomaton* A, value_function_t f);
 	std::size_t getChildrenSize() const;
 	ChildAutomaton* getChild(std::size_t index) const;
+
+    std::unordered_set<MacroSymbol*, MacroSymbolPtrHash, MacroSymbolPtrEqual> generateMacroAlphabet();
+    NestedAutomaton* determinizeWithMacroAlphabet(std::unordered_set<MacroSymbol*, MacroSymbolPtrHash, MacroSymbolPtrEqual>& macro_alphabet);
+    NestedAutomaton* synchronizeChildren(std::unordered_set<MacroSymbol*, MacroSymbolPtrHash, MacroSymbolPtrEqual>& macro_alphabet);
 
 	// Büchi transformation
 	ChildAutomaton* transformToBuchi(value_function_t finVal, weight_t bound = -1);

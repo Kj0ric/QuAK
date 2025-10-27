@@ -91,6 +91,17 @@ NestedAutomaton::NestedAutomaton(const Automaton* parent, MapArray<ChildAutomato
         this->setName(parent->getName() + "_noSilent");
 }
 
+NestedAutomaton::NestedAutomaton(std::string name,
+                                 MapArray<Symbol*>* alphabet,
+                                 MapArray<State*>* states,
+                                 MapArray<Weight*>* weights,
+                                 weight_t min_domain,
+                                 weight_t max_domain,
+                                 State* initial,
+                                 MapArray<ChildAutomaton*>* children)
+  : Automaton(name + "_parent", alphabet, states, weights, min_domain, max_domain, initial),
+    children_(children) {}
+
 /* ------------------------------ REMOVING SILENT TRANSITIONS ------------------------------ */
 NestedAutomaton* NestedAutomaton::removeSilentTransitions(const NestedAutomaton* A, value_function_t f) {
     // 1. Transform the parent automaton using the base class method
@@ -821,4 +832,533 @@ ChildAutomaton* NestedAutomaton::transformToBuchi(value_function_t finVal, weigh
     }
 
     return buchi;
+}
+
+// TODO: Check correctness if completing is indeed necessary
+// Make the parent and all children complete by adding a sink state and sink-weight (value 0 by default).
+// Parent sink uses parent_sink value; children sinks use child_sink value.
+void completeNestedAutomata(NestedAutomaton* nwa, weight_t parent_sink_w = weight_t(0), weight_t child_sink_w = weight_t(0)) {
+    if (!nwa) return;
+
+    // Helper lambdas
+    auto ensure_sink_for_automaton = [](MapArray<Symbol*>* alphabet,
+                                       MapArray<State*>* states,
+                                       MapArray<Weight*>* weights,
+                                       State*& initial,
+                                       weight_t min_domain,
+                                       weight_t max_domain,
+                                       weight_t sink_value,
+                                       const std::string& sink_name_prefix) -> State*
+    {
+        if (!alphabet || !states || !weights) return nullptr;
+
+        // Create sink weight and insert
+        Weight* sink_w = new Weight(sink_value);
+        weights->insert(sink_w->getId(), sink_w);
+
+        // Create sink state
+        std::ostringstream ss;
+        ss << sink_name_prefix << "_sink";
+        State* sink = new State(ss.str(), alphabet->size(), min_domain, max_domain);
+        states->insert(sink->getId(), sink);
+
+        // For every existing state, ensure a transition on every symbol exists
+        for (size_t si = 0; si < states->size(); ++si) {
+            State* s = states->at(si);
+            if (!s) continue;
+
+            for (size_t a = 0; a < alphabet->size(); ++a) {
+                // check successors on symbol a
+                SetStd<Edge*>* succs = s->getSuccessors(a);
+                bool has = false;
+                if (succs) {
+                    for (Edge* e : *succs) { (void)e; has = true; break; } // if any edge exists for this symbol treat as present
+                }
+                if (!has) {
+                    Symbol* sym = alphabet->at(a);
+                    Edge* e = new Edge(sym, sink_w, s, sink);
+                    s->addSuccessor(e);
+                    sink->addPredecessor(e);
+                }
+            }
+        }
+
+        // Add self-loop on sink for every symbol
+        for (size_t a = 0; a < alphabet->size(); ++a) {
+            Symbol* sym = alphabet->at(a);
+            Edge* e = new Edge(sym, sink_w, sink, sink);
+            sink->addSuccessor(e);
+            sink->addPredecessor(e);
+        }
+
+        return sink;
+    };
+
+    // Parent automaton
+    MapArray<Symbol*>* parent_alpha = nwa->getAlphabet();
+    MapArray<State*>* parent_states = nwa->getStates();
+    MapArray<Weight*>* parent_weights = nwa->getWeights();
+    State* parent_init = nwa->getInitial();
+    weight_t pmin = 0; //std::numeric_limits<float>::lowest();
+    weight_t pmax = 0; //std::numeric_limits<float>::max();
+    State* parent_sink = ensure_sink_for_automaton(parent_alpha, parent_states, parent_weights, parent_init, pmin, pmax, parent_sink_w, nwa->getName());
+
+    // Children automata
+    for (size_t i = 0; i < nwa->getChildrenSize(); ++i) {
+        ChildAutomaton* child = nwa->getChild(i);
+        if (!child) continue;
+
+        MapArray<Symbol*>* calpha = child->getAlphabet();
+        MapArray<State*>* cstates = child->getStates();
+        MapArray<Weight*>* cweights = child->getWeights();
+        State* cinit = child->getInitial();
+        weight_t cmin = child->getMinDomain();
+        weight_t cmax = child->getMaxDomain();
+
+        State* csink = ensure_sink_for_automaton(calpha, cstates, cweights, cinit, cmin, cmax, child_sink_w, child->getName());
+
+        // If child had internal references (initial/finals) they remain pointing to existing states;
+        // initial/final pointers do not need update because we kept ids mapping.
+    }
+}
+
+std::unordered_set<MacroSymbol*, MacroSymbolPtrHash, MacroSymbolPtrEqual> NestedAutomaton::generateMacroAlphabet() {
+    // Prepare automata list
+    std::vector<Automaton*> automata_list;
+    automata_list.push_back(const_cast<NestedAutomaton*>(this));
+    for (size_t i = 0; i < this->getChildrenSize(); ++i) {
+        ChildAutomaton* child = this->getChild(i);
+        if (child) {
+            automata_list.push_back(child);
+        }
+    }
+
+    // Prepare symbol list 
+    std::vector<Symbol*> symbol_list;
+    for (unsigned int symbol_id = 0; symbol_id < this->getAlphabetSize(); ++symbol_id) {
+        symbol_list.push_back(this->getAlphabet()->at(symbol_id));
+    }
+
+    // Initialize resolver and alphabet containers
+    std::vector<SetStd<Edge*>> resolver(automata_list.size());
+    std::unordered_set<MacroSymbol*, MacroSymbolPtrHash, MacroSymbolPtrEqual > macro_alphabet;
+
+    generateResolvers(0, 0, 0, resolver, macro_alphabet, automata_list, symbol_list);
+    generateMacro(macro_alphabet, automata_list, symbol_list);
+
+    return macro_alphabet;
+}
+
+NestedAutomaton* NestedAutomaton::determinizeWithMacroAlphabet(std::unordered_set<MacroSymbol*, MacroSymbolPtrHash, MacroSymbolPtrEqual>& macro_alphabet) {
+    // Initialize the nested automaton children
+    MapArray<ChildAutomaton*>* new_children = new MapArray<ChildAutomaton*>(this->getChildrenSize());
+    
+    // To get a deterministic ordering from the unordered_set, copy into a vector
+    std::vector<MacroSymbol*> macro_list;
+    macro_list.reserve(macro_alphabet.size());
+    for (MacroSymbol* m : macro_alphabet) {
+        macro_list.push_back(m);
+    }
+
+    // Build a concrete Symbol alphabet corresponding to the macro_alphabet
+    // IDs of new alphabet correspond to indices in macro_list 
+    MapArray<Symbol*>* new_alphabet = new MapArray<Symbol*>(macro_alphabet.size());
+    Symbol::RESET();
+    size_t idx = 0;
+    for (MacroSymbol* m : macro_list) {
+        new_alphabet->insert(idx, new Symbol("a" + std::to_string(idx)));
+        ++idx;
+    }
+
+    std::vector<MapArray<Symbol*>*> children_alphabet(this->getChildrenSize(), nullptr);
+    for (size_t i = 0; i < this->getChildrenSize(); ++i) {
+        Symbol::RESET();
+        ChildAutomaton* child = this->getChild(i);
+        if (child) {
+            MapArray<Symbol*>* child_alpha = new MapArray<Symbol*>(macro_alphabet.size());
+            for (size_t mid = 0; mid < macro_list.size(); ++mid) {
+                child_alpha->insert(mid, new Symbol("a" + std::to_string(mid)));
+            }
+            children_alphabet[i] = child_alpha;
+        }
+    }
+
+    // States stay the same
+    State::RESET();
+    MapArray<State*>* new_states = new MapArray<State*>(this->getStates()->size());
+    for (size_t i = 0; i < this->getStates()->size(); ++i) {
+        State* state = new State(this->getStates()->at(i)->getName(), new_alphabet->size(), 0, this->getChildrenSize() - 1);
+        new_states->insert(i, state);
+    }
+    State* new_initial = new_states->at(this->getInitial()->getId());
+    
+    std::vector<MapArray<State*>*> children_states(this->getChildrenSize(), nullptr);
+    for (size_t i = 0; i < this->getChildrenSize(); ++i) {
+        State::RESET();
+        ChildAutomaton* child = this->getChild(i);
+        if (child) {
+            MapArray<State*>* copied_states = new MapArray<State*>(child->getStates()->size());
+            for (size_t sid = 0; sid < child->getStates()->size(); ++sid) {
+                State* os = child->getStates()->at(sid);
+                State* ns = new State(os->getName(), new_alphabet->size(), child->getMinDomain(), child->getMaxDomain());
+                copied_states->insert(sid, ns);
+            }
+            children_states[i] = copied_states;
+        }
+    }
+
+    // Weights stay the same
+    Weight::RESET();
+    MapArray<Weight*>* new_weights = new MapArray<Weight*>(this->getWeights()->size());
+    for (size_t i = 0; i < this->getWeights()->size(); ++i) {
+        Weight* weight = new Weight(this->getWeights()->at(i)->getValue());
+        new_weights->insert(i, weight);  
+    }
+
+    std::vector<MapArray<Weight*>*> children_weights(this->getChildrenSize(), nullptr);
+    for (size_t i = 0; i < this->getChildrenSize(); ++i) {
+        Weight::RESET();
+        ChildAutomaton* child = this->getChild(i);
+        if (child) {
+            MapArray<Weight*>* copied_weights = new MapArray<Weight*>(child->getWeights()->size());
+            for (size_t wid = 0; wid < child->getWeights()->size(); ++wid) {
+                Weight* ow = child->getWeights()->at(wid);
+                Weight* nw = new Weight(ow->getValue());
+                copied_weights->insert(wid, nw);
+            }
+            children_weights[i] = copied_weights;
+        }
+    }
+    
+    // Build transitions based on macro symbols: for each resolver in each macro symbol, add corresponding edges
+    for (size_t macro_id = 0; macro_id < macro_list.size(); ++macro_id) {
+        MacroSymbol* macro = macro_list[macro_id];
+
+        // Edges from the parent's resolver
+        SetStd<Edge*> edges = macro->getResolver()[0];
+        for (Edge* edge : edges) {
+            State* from_state = edge->getFrom();
+            State* to_state = edge->getTo();
+
+            Weight* new_weight = new_weights->at(edge->getWeight()->getId());
+            Edge* new_edge = new Edge(new_alphabet->at(macro_id), new_weight, new_states->at(from_state->getId()), new_states->at(to_state->getId()));
+            new_states->at(from_state->getId())->addSuccessor(new_edge);
+            new_states->at(to_state->getId())->addPredecessor(new_edge);
+        }
+
+        // Edges from the children's resolvers
+        size_t ai = 1; // skip master at 0
+        size_t ci = 1; // skip dummy at 0
+        while (ai < macro->getResolver().size() && ci < children_states.size()) {
+            const SetStd<Edge*>& edges = macro->getResolver()[ai];
+            if (edges.size() == 0) {
+                // Empty bucket (dummy child or no chosen edge set for this macro)
+                // skip without consuming a child slot
+                ++ai;
+                continue;
+            }
+
+            // Sanity: all child tables exist at ci
+            auto* alpha  = children_alphabet[ci];
+            auto* wtab   = children_weights[ci];
+            auto* states = children_states[ci];
+
+            // Optional asserts (leave enabled in debug):
+            // assert(alpha && wtab && states);
+            // assert(macro_id < alpha->size());
+
+            for (Edge* e : edges) {
+                State* from_src = e->getFrom();
+                State* to_src   = e->getTo();
+
+                State* from = states->at(from_src->getId());
+                State* to   = states->at(to_src->getId());
+                auto* w     = wtab->at(e->getWeight()->getId());
+
+                Edge* new_e = new Edge(alpha->at(macro_id), w, from, to);
+                from->addSuccessor(new_e);
+                to->addPredecessor(new_e);
+            }
+
+            // We consumed one non-empty resolver bucket for this child
+            ++ai;
+            ++ci;
+        }
+    }
+
+    // // print all transitions for debugging
+    // std::cout << "Determinized Nested Automaton Transitions:" << std::endl;
+    // for (size_t sid = 0; sid < new_states->size(); ++sid) {
+    //     State* s = new_states->at(sid);
+    //     for (size_t a = 0; a < new_alphabet->size(); ++a) {
+    //         SetStd<Edge*>* succs = s->getSuccessors(a);
+    //         if (succs) {
+    //             for (Edge* e : *succs) {
+    //                 std::cout << "From state " << s->getName() << " to state " << e->getTo()->getName() << " on symbol " << new_alphabet->at(a)->getName() << " with weight " << e->getWeight()->getValue() << std::endl;
+    //             }
+    //         }
+    //     }
+    // }
+    // // print all children transitions for debugging
+    // for (size_t ci = 0; ci < this->getChildrenSize(); ++ci) {
+    //     ChildAutomaton* child = this->getChild(ci);
+    //     if (child) {
+    //         std::cout << "Child Automaton " << child->getName() << " Transitions:" << std::endl;
+    //         MapArray<State*>* cstates = children_states[ci];
+    //         for (size_t sid = 0; sid < cstates->size(); ++sid) {
+    //             State* s = cstates->at(sid);
+    //             for (size_t a = 0; a < children_alphabet[ci]->size(); ++a) {
+    //                 SetStd<Edge*>* succs = s->getSuccessors(a);
+    //                 if (succs) {
+    //                     for (Edge* e : *succs) {
+    //                         std::cout << "From state " << s->getName() << " to state " << e->getTo()->getName() << " on symbol " << children_alphabet[ci]->at(a)->getName() << " with weight " << e->getWeight()->getValue() << std::endl;
+    //                     }
+    //                 }
+    //             }
+    //         }
+    //     }
+    // }
+
+
+    // Construct children automata 
+    for (size_t i = 0; i < this->getChildrenSize(); ++i) {
+        ChildAutomaton* child = this->getChild(i);
+        if (child) {
+            State* new_init = children_states[i]->at(child->getInitial()->getId());
+
+            SetStd<State*>* copied_finals = new SetStd<State*>();
+            for (State* of : *(child->getFinalStates())) {
+                copied_finals->insert(children_states[i]->at(of->getId()));
+            }
+
+            ChildAutomaton* new_child = new ChildAutomaton(
+                child->getName(),
+                children_alphabet[i],
+                children_states[i],
+                children_weights[i],
+                child->getMinDomain(),
+                child->getMaxDomain(),
+                new_init,
+                copied_finals
+            );
+
+            new_children->insert(i, new_child);
+        }
+    }
+
+    // Construct and return the new nested automaton
+    NestedAutomaton* det_nwa = new NestedAutomaton("PsuedoDet(" + this->getName() + ")", new_alphabet, new_states, new_weights, 0, this->getChildrenSize() - 1, new_initial, new_children);
+
+    // completeNestedAutomata(det_nwa);
+
+    return det_nwa;
+}
+
+
+// After pseudo-determinization, synchronize all children automata wrt silent transitions in the parent.
+// TODO: UPDATE AFTER MODIFYING CHILD CLASS: ensure initial states are correctly handled from call sites
+NestedAutomaton* NestedAutomaton::synchronizeChildren(std::unordered_set<MacroSymbol*, MacroSymbolPtrHash, MacroSymbolPtrEqual>& macro_alphabet) {
+    // ---------- accumulator caps ----------
+    weight_t X = 2 * this->getStates()->size();
+    for (size_t i = 0; i < this->getChildrenSize(); ++i) {
+        ChildAutomaton* child = this->getChild(i);
+        if (child) X = X * child->getStates()->size();
+    }
+    std::vector<weight_t> maxWeights(this->getChildrenSize(), weight_t(0));
+    for (size_t i = 0; i < this->getChildrenSize(); ++i) {
+        ChildAutomaton* child = this->getChild(i);
+        if (child) maxWeights[i] = X * child->getMaxDomain();
+    }
+
+    // ---------- build synchronized children on-the-fly ----------
+    MapArray<ChildAutomaton*>* new_children = new MapArray<ChildAutomaton*>(this->getChildrenSize());
+
+    // Helper: take the single edge (if any) from a SetStd<Edge*>
+    auto first_edge_or_null = [](SetStd<Edge*>* succs) -> Edge* {
+        if (!succs) return nullptr;
+        for (Edge* e : *succs) return e; // at most one after determinization
+        return nullptr;
+    };
+
+    for (size_t ci = 0; ci < this->getChildrenSize(); ++ci) {
+        Symbol::RESET();
+        State::RESET();
+        Weight::RESET();
+
+        ChildAutomaton* child = this->getChild(ci);
+        if (!child) { new_children->insert(ci, nullptr); continue; }
+
+        // Reuse the encoded alphabet from determinizeWithMacroAlphabet, but with fresh Symbol objects
+        MapArray<Symbol*>* src_alpha = child->getAlphabet();
+        const size_t A = src_alpha->size();
+        std::vector<Symbol*> calpha_vec;
+        calpha_vec.reserve(A);
+        for (size_t a = 0; a < A; ++a) {
+            Symbol* s_src = src_alpha->at(a);
+            Symbol* s_new = new Symbol(s_src->getName()); // ID assigned in creation order
+            // After RESET and sequential creation, IDs match indices and s_src->getId()
+            // (Optional sanity during debugging)
+            // assert(s_new->getId() == s_src->getId());
+            calpha_vec.push_back(s_new);
+        }
+
+        // Materialize fixed-size MapArray with identical indices/IDs
+        MapArray<Symbol*>* calpha = new MapArray<Symbol*>(A);
+        for (Symbol* s : calpha_vec) {
+            calpha->insert(s->getId(), s); // s->getId() == its index 'a'
+        }
+
+        // ---- Use std::vector for dynamic sizing during on-the-fly construction ----
+        std::vector<State*>  cstates_vec;
+        std::vector<Weight*> cweights_vec;
+        MapStd<weight_t, Weight*> weight_register;
+
+        // Ensure weight 0 exists
+        {
+            Weight* w0 = new Weight(weight_t(0));
+            cweights_vec.push_back(w0);
+            weight_register.insert(weight_t(0), w0);
+        }
+
+        SetStd<State*>* cfinals = new SetStd<State*>();
+
+        // Product key (master, child, accumulator)
+        struct SyncKey {
+            State* m;
+            State* s;
+            weight_t acc;
+            bool operator==(const SyncKey& o) const { return m==o.m && s==o.s && acc==o.acc; }
+        };
+        struct SyncKeyHash {
+            size_t operator()(const SyncKey& k) const {
+                size_t h = 1469598103934665603ull;
+                auto mix = [&](uint64_t x){ h ^= x; h *= 1099511628211ull; };
+                mix((uint64_t)k.m);
+                mix((uint64_t)k.s);
+                mix((uint64_t)std::hash<float>{}(static_cast<float>(k.acc)));
+                return h;
+            }
+        };
+
+        std::unordered_map<SyncKey, State*, SyncKeyHash> state_map;
+        std::queue<SyncKey> worklist;
+
+        auto get_weight = [&](weight_t v) -> Weight* {
+            if (weight_register.contains(v) != true) {
+                Weight* w = new Weight(v);
+                cweights_vec.push_back(w);
+                weight_register.insert(v, w);
+            }
+            return weight_register.at(v);
+        };
+
+        auto get_or_make_state = [&](const SyncKey& key) -> State* {
+            auto it = state_map.find(key);
+            if (it != state_map.end()) return it->second;
+
+            std::ostringstream ss; ss << "sync_" << state_map.size();
+            State* ns = new State(ss.str(), A, child->getMinDomain(), child->getMaxDomain());
+            cstates_vec.push_back(ns);
+
+            if (child->isFinal(key.s)) cfinals->insert(ns);
+
+            state_map.insert({key, ns});
+            worklist.push(key);
+            return ns;
+        };
+
+        // --- Seed: from all call sites (m, s0, 0) ------------------------------------
+        // TODO: CHILD'S INITIAL STATE MAY BE DIFFERENT FROM CALL TARGETS
+        // UPDATE AFTER MODIFYING CHILD CLASS: START EXPLORATION FROM EACH CALL SITE WITH THE CORRECT INITIAL STATE
+        State* initial_state = nullptr;
+        {
+            State* s0 = child->getInitial();
+            const size_t M = this->getStates()->size();
+
+            for (size_t mi = 0; mi < M; ++mi) {
+                State* m = this->getStates()->at(mi);
+                bool callable_here = false;
+                for (size_t a = 0; a < A && !callable_here; ++a) {
+                    Edge* me = first_edge_or_null(m->getSuccessors(a));
+                    Edge* se = first_edge_or_null(s0->getSuccessors(a));
+                    if (me && se) callable_here = true;
+                }
+                if (callable_here) {
+                    SyncKey k{ m, s0, weight_t(0) };
+                    State* seed_state = get_or_make_state(k); // enqueues into worklist
+                    if (!initial_state) initial_state = seed_state; // pick the first as the designated initial
+                }
+            }
+            if (!initial_state) {
+                SyncKey k{ this->getInitial(), s0, weight_t(0) };
+                initial_state = get_or_make_state(k);
+            }
+        }
+
+        const weight_t accCap = maxWeights[ci];
+
+        // Explore lazily
+        while (!worklist.empty()) {
+            SyncKey cur = worklist.front(); worklist.pop();
+            State* cur_node = state_map.at(cur);
+
+            for (size_t a = 0; a < A; ++a) {
+                // Master: after pseudo-determinization, at most one outgoing per symbol
+                Edge* me = first_edge_or_null(cur.m->getSuccessors(a));
+                if (!me) continue;
+                const bool master_silent = (me->getWeight()->getValue() == weight_t(0));
+                State* m2 = me->getTo();
+
+                // Child: similarly, at most one outgoing per symbol
+                Edge* se = first_edge_or_null(cur.s->getSuccessors(a));
+                if (!se) continue;
+
+                State* s2 = se->getTo();
+                weight_t ws = se->getWeight()->getValue();
+
+                weight_t emit, acc2;
+                if (master_silent) {
+                    // emit 0, accumulate child weight
+                    emit = weight_t(0);
+                    acc2 = cur.acc + ws;
+                } else {
+                    // flush: emit acc + current, then reset
+                    emit = cur.acc + ws;
+                    acc2 = weight_t(0);
+                }
+
+                SyncKey nxt{ m2, s2, acc2 };
+                State* nxt_node = get_or_make_state(nxt);
+
+                Weight* w = get_weight(emit);
+                Edge* ne = new Edge(calpha->at(a), w, cur_node, nxt_node);
+                cur_node->addSuccessor(ne);
+                nxt_node->addPredecessor(ne);
+            }
+        }
+
+        // ---- Materialize fixed-size MapArray from vectors ----
+        size_t state_count  = cstates_vec.size();
+        size_t weight_count = cweights_vec.size();
+
+        MapArray<State*>*  cstates  = new MapArray<State*>(state_count);
+        MapArray<Weight*>* cweights = new MapArray<Weight*>(weight_count);
+
+        for (State* s : cstates_vec)   cstates->insert(s->getId(), s);
+        for (Weight* w : cweights_vec) cweights->insert(w->getId(), w);
+
+        // Build synchronized child (shares alphabet with the determinized child)
+        std::string cname = child->getName() + "_sync";
+        ChildAutomaton* synced = new ChildAutomaton(
+            cname, calpha, cstates, cweights,
+            child->getMinDomain(), child->getMaxDomain(),
+            initial_state, cfinals
+        );
+        new_children->insert(ci, synced);
+    }
+
+    // Return a fresh NWA with the same parent and synchronized children
+    NestedAutomaton* result = new NestedAutomaton(this, new_children);
+    result->setName("Sync(" + this->getName() + ")");
+    return result;
 }
