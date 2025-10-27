@@ -1,0 +1,9 @@
+# Test file for final state declaration in non-nested automaton
+# Expected: s1 and s2 are final, s0 is not final
+
+final: s1 s2    # Blank separated
+
+a : 1.0, s0 -> s1
+b : 2.0, s1 -> s2
+a : 0.5, s2 -> s0
+b : 1.5, s0 -> s0

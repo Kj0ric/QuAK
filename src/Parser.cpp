@@ -84,27 +84,76 @@ void readFile (std::string filename, Parser* parser) {
 }
 
 void readNonNestedFile(std::ifstream& file, Parser* parser) {
+	enum ParsePhase {
+		LOOKING_FOR_FINAL,
+		READING_TRANSITIONS
+	};
+	
 	if (file.is_open() == false) {
 		std::cerr << "@Error: opening file " << name << std::endl;
 		std::cerr << "Message: " << strerror(errno) << std::endl;
 		fflush(stdout);fflush(stderr);
 		exit(EXIT_FAILURE);
 	}
+	
+	ParsePhase phase = LOOKING_FOR_FINAL;
 	std::string line;
 	
-	// Read the first transition (edge line) to get the initial state
-	while (parser->initial == "" && getline(file, line)) {
-		line_counter++;
-		parser->initial = readLine(line, parser);
-	}
-
-	// Read the rest and update the Parser object
 	while (getline(file, line)) { 
 		line_counter++;
-		readLine(line, parser);
+		
+		// Remove comments and trim whitespae
+		size_t comment_pos = line.find('#');
+		if (comment_pos != std::string::npos) {
+			line = line.substr(0, comment_pos);
+		}
+		line.erase(0, line.find_first_not_of(" \t"));
+        line.erase(line.find_last_not_of(" \t") + 1);
+		
+		if (line.empty()) continue;
+
+		// Check if it's final state declaration
+		if (line.rfind("final:", 0) == 0) {
+			if (phase == READING_TRANSITIONS) {
+				abort("'final:' declaration must appear before all transitions");
+			}
+
+			// Parse final states
+			std::istringstream final_state_stream(line.substr(6));
+			std::string final_state;
+			parser->final_states.clear();
+			while (final_state_stream >> final_state) {
+				parser->final_states.insert(final_state);
+			}
+			continue;
+		}
+
+		// Check for transition
+        if (line.find("->") != std::string::npos || line.find("--") != std::string::npos) {
+            if (phase == LOOKING_FOR_FINAL) {
+                // First transition encountered
+                phase = READING_TRANSITIONS;
+            }
+            
+            // Process transition
+            std::string from_state = readLine(line, parser);
+            if (parser->initial.empty()) {
+                parser->initial = from_state;
+            }
+            continue;
+        }
+
+		abort("unexpected line format (expected 'final:' or transition)");
 	}
 
-	if (parser->initial == "") abort("automaton without transitions");	// Means no edge line parsed
+	if (parser->initial.empty()){
+		abort("automaton without transitions");
+	} 
+
+	// If no final states were declared, make all states final
+    if (parser->final_states.size() == 0) {
+        parser->final_states = parser->states;
+    }
 	
 	// Compare domain declarations and actual weights used in transitions to decide on domain ranges
 	if (parser->domain_defined == true) {
@@ -115,6 +164,7 @@ void readNonNestedFile(std::ifstream& file, Parser* parser) {
 		parser->min_domain = parser->weights.getMin();
 		parser->max_domain = parser->weights.getMax();
 	}
+	
 	file.close();
 }
 
@@ -200,7 +250,7 @@ void readNestedFile(std::ifstream& file, Parser* parser) {
 				// No transitions
 				dummy_parser->edges.clear();
 
-				// Alpahbet and weights can be empty or inherited
+				// Alphabet and weights can be empty or inherited
 				dummy_parser->alphabet.clear();
 				dummy_parser->weights.clear();
 

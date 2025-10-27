@@ -2,7 +2,6 @@
 
 This document describes the core assumptions, requirements enforced by QuAK's implementation.
 
-
 ## 1. Automaton Class Hierarchy
 
 ### 1.1 Inheritance Structure
@@ -40,9 +39,9 @@ This document describes the core assumptions, requirements enforced by QuAK's im
 ## 3. Acceptance Conditions
 
 ### 3.1 Non-Nested Automata (from file input)
-- **Final states**: All states implicitly final (F = Q)
+- **Final states**: Declared with blank separated `final: s0 s1` (optional)
+- **Default behavior**: If no `final:` declaration, all states are final (F = Q)
 - **Acceptance**: All infinite runs are accepting
-- **Implementation note**: `State::final` field remains `false` (0) during parsing despite semantic assumption
 
 ### 3.2 Parent Automata
 - All states are implicitly final
