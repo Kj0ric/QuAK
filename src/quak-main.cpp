@@ -17,9 +17,11 @@
 #include "utility.h"
 
 int main(int argc, char* argv[]) {
-	printf("TOTO LALA");
+	//printf("TOTO LALA");
 
-    //std::string filepath = argv[1];
+    std::string filepath = argv[1];
+    testNonNestedRead(filepath);
+    
     //testGenerateMacro(filepath);
     
     /*

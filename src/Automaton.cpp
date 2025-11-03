@@ -186,11 +186,14 @@ void Automaton::build(std::string newname, Parser* parser, MapStd<std::string, S
 		State* state = new State(statename, this->alphabet->size(), this->min_domain, this->max_domain);
 		this->states->insert(state->getId(), state);
 		state_register.insert(state->getName(), state);
+
+		// Set final flag based on parser's final_states
+		if (parser->final_states.contains(statename)) {
+			state->setFinal(true);
+		}
 	}
-	
-	//if (parser->is_dummy_child == false) {
+
 	this->initial = state_register.at(parser->initial);
-	//}
 	
 	// Creates Symbol objects from parser's alphabet
 	for (const std::string &symbolname : parser->alphabet) {
@@ -2904,6 +2907,23 @@ void Automaton::print(std::ostream& out, bool full, bool bv_weights, bool bv_onl
 	out << "\tstates (" << this->states->size() << "):";
 	out << states->toString(State::toString) << "\n";
 	out << "\t\tINITIAL = " << initial->getName() << "\n";
+	
+	out << "\t\tFINAL = ";
+	bool first_final = true;
+	unsigned int final_count = 0;
+	for (unsigned int state_id = 0; state_id < states->size(); ++state_id) {
+		if (states->at(state_id)->getFinal()) {
+			if (!first_final) out << ", ";
+			out << states->at(state_id)->getName();
+			first_final = false;
+			final_count++;
+		}
+	}
+	if (final_count == 0) {
+		out << "(none)";
+	}
+	out << "\n";
+
 	out << "\tSCCs (" << this->nb_SCCs << "):";
 	out << this->SCCs[this->initial->getTag()]->toString("\t\t") << "\n";
 	unsigned int nb_edge = 0;
