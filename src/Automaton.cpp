@@ -2968,7 +2968,8 @@ void Automaton::write(std::ostream& out) const {
 
 
 //...................................................//
-
+//....... Extension emptiness with acceptance .......//
+//...................................................//
 
 
 
@@ -3122,9 +3123,161 @@ weight_t Automaton::top_LimAvg_with_final () const {
 
 
 
+weight_t Automaton::compute_top_with_final (value_function_t f) const {
+        weight_t result;
+        switch (f) {
+            case Inf:
+		result = top_Inf_with_final ();
+                break;
+            case Sup:
+                result = top_Sup_with_final();
+                break;
+            case LimInf:
+                result = top_LimInf_with_final();
+                break;
+            case LimSup:
+                result = top_LimSup_with_final();
+                break;
+            case LimInfAvg: case LimSupAvg:
+                result = top_LimAvg_with_final();
+                break;
+            default:
+                QUAK_FAIL("automata top with acceptance");
+        }
+
+        return result;
+}
+
+
 
 //...................................................//
+//..... Extension universality with acceptance ......//
+//...................................................//
 
+
+Automaton::Automaton(Automaton* other, value_function_t f, weight_t threshold) :
+	name(other->name),
+	min_domain(0),
+	max_domain(1),
+	nb_SCCs(0),
+	final_SCCs(nullptr),
+	SCCs(nullptr)
+{
+	State::RESET();
+	Symbol::RESET();
+	Weight::RESET();
+
+
+	// Alphabet
+	alphabet = new MapArray<Symbol*>(other->alphabet->size());
+	for (size_t i = 0; i < other->alphabet->size(); ++i) {
+		alphabet->insert(i, new Symbol(other->alphabet->at(i)));
+	}
+
+
+	// Weights
+	weights = new MapArray<Weight*>(2);
+	for (size_t weight_id = 0; weight_id < 2; ++weight_id) {
+		weights->insert(weight_id, new Weight(weight_id));
+	}
+
+
+	// States
+	states = new MapArray<State*>(other->states->size()*2);
+	for (size_t i = 0; i < other->states->size(); ++i) {
+		size_t j = i + other->states->size();
+		states->insert(i, new State("Left_" + other->states->at(i)->getName(), alphabet->size(), 0, 1));
+		//states->insert(j, new State("Right_" + other->states->at(i)->getName(), alphabet->size(), 0, 1));
+	}
+	
+
+	// Initial state
+	initial = states->at(other->initial->getId());
+
+	// Copy edges
+	for (unsigned int state_id = 0; state_id < other->states->size(); ++state_id) {
+		State* original_state = other->states->at(state_id);
+		State* left_state = states->at(state_id);
+		State* right_state = states->at(state_id + other->states->size());
+
+
+		for (Symbol* original_symbol : *(original_state->getAlphabet())) {
+			for (Edge* original_edge : *(original_state->getSuccessors(original_symbol->getId()))) {
+				Symbol* both_symbol = alphabet->at(original_edge->getSymbol()->getId());
+				Weight* both_weight;
+				if (original_edge->getWeight()->getValue() < threshold) {
+					both_weight = weights->at(0);
+				}
+				else {
+					both_weight = weights->at(1);
+				}
+
+				State* left_from = states->at(original_edge->getFrom()->getId());
+				State* left_to;
+				if (original_edge->getWeight()->getValue() < threshold) {
+					left_to = states->at(original_edge->getTo()->getId());
+				}
+				else {
+					left_to = states->at(original_edge->getTo()->getId()+other->states->size());
+				}
+				State* right_from = states->at(original_edge->getFrom()->getId()+other->states->size());
+				State* right_to;
+				if (original_edge->getFrom()->getFinal() == false) {
+					right_to = states->at(original_edge->getTo()->getId()+other->states->size());
+				}
+				else {
+					right_to = states->at(original_edge->getTo()->getId());
+				}
+
+
+				// Edge
+				Edge* left_edge = new Edge(both_symbol, both_weight, left_from, left_to);
+				left_from->addSuccessor(left_edge);
+				left_to->addPredecessor(left_edge);
+				Edge* right_edge = new Edge(both_symbol, both_weight, right_from, right_to);
+				right_from->addSuccessor(right_edge);
+				right_to->addPredecessor(right_edge);
+
+			}
+		}
+	}
+
+	// Set ownership and compute SCCs
+	appropriateStates();
+	compute_SCC();
+}
+
+
+weight_t Automaton::compute_bottom_with_final (value_function_t f) {
+	if (this->isDeterministic()) {
+		invert_weights();
+		value_function_t f_dual = getValueFunctionDual(f);
+		weight_t result = compute_top_with_final(f_dual);
+		result = -result;
+		invert_weights();
+		return result;
+	}
+	else if (f == Inf || f == Sup || f == LimInf || f == LimSup) {
+		bool found = false;
+		unsigned int weight_id = weights->size();
+		weight_t threshold;
+
+		while (!found && weight_id > 0) {
+			weight_id--;
+			threshold = this->weights->at(weight_id)->getValue();
+			Automaton* A = new Automaton(this, f, threshold);
+			found = A->isUniversal(f, threshold);
+		}
+
+		return threshold;
+	}
+	else {
+		QUAK_FAIL("automata bottom with acceptance");
+	}
+}
+
+
+//...................................................//
 
 
 

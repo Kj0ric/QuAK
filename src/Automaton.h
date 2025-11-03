@@ -97,6 +97,10 @@ private:
 	weight_t top_LimSup_with_final () const;
 	weight_t top_LimInf_with_final () const;
 	weight_t top_LimAvg_with_final () const;
+	weight_t compute_top_with_final (value_function_t f) const;
+	//...................................................//
+	Automaton(Automaton* other, value_function_t f, weight_t threshold); // booleanize and remove acceptance
+	weight_t compute_bottom_with_final (value_function_t f);
 	//...................................................//
 	
 
