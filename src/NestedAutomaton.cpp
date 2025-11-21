@@ -10,6 +10,7 @@
 #include <unordered_map>
 #include <queue>
 #include <sstream>
+#include <cmath>
 
 #include "Automaton.h"
 #include "ChildAutomaton.h"
@@ -1361,4 +1362,444 @@ NestedAutomaton* NestedAutomaton::synchronizeChildren(std::unordered_set<MacroSy
     NestedAutomaton* result = new NestedAutomaton(this, new_children);
     result->setName("Sync(" + this->getName() + ")");
     return result;
+}
+
+// assuming the input NWA is pseudo-deterministic and children are synchronized
+Automaton* NestedAutomaton::flatten() {
+    using std::size_t;
+
+    // ---------- helper: single outgoing edge after determinization ----------
+    auto first_edge_or_null = [](SetStd<Edge*>* succs) -> Edge* {
+        if (!succs) return nullptr;
+        for (Edge* e : *succs) return e; // at most one after determinization
+        return nullptr;
+    };
+
+    // ---------- cache children and basic metadata ----------
+    const size_t C = this->getChildrenSize();
+    std::vector<ChildAutomaton*> children(C, nullptr);
+    for (size_t ci = 0; ci < C; ++ci) {
+        children[ci] = this->getChild(ci);
+    }
+
+    // |U| = total #states over all (synchronized) children
+    size_t U = 0;
+    // W_abs = largest absolute weight in U, as weight_t
+    weight_t W_abs = weight_t(0);
+
+    auto weight_zero = []() { return weight_t(0); };
+    auto weight_two  = []() { return weight_t(2); };
+
+    auto weight_abs = [&](weight_t v) -> weight_t {
+        // Non-positive weights (Sum-) ⇒ |v| = (v < 0 ? -v : v)
+        if (v < weight_zero()) return -v;
+        return v;
+    };
+
+    for (size_t ci = 0; ci < C; ++ci) {
+        ChildAutomaton* child = children[ci];
+        if (!child) continue;
+
+        MapArray<State*>* cstates = child->getStates();
+        U += cstates->size();
+
+        MapArray<Weight*>* cws = child->getWeights();
+        for (size_t wid = 0; wid < cws->size(); ++wid) {
+            weight_t wv = cws->at(wid)->getValue();
+            weight_t mag = weight_abs(wv);
+            if (mag > W_abs) W_abs = mag;
+        }
+    }
+
+    // ---------- X, Y, Z with overflow-safe integer arithmetic on the combinatorial part ----------
+    const size_t M_states = this->getStates()->size();
+
+    auto sat_mul = [](size_t a, size_t b) -> size_t {
+        if (a == 0 || b == 0) return 0;
+        const size_t maxv = std::numeric_limits<size_t>::max();
+        if (a > maxv / b) return maxv;
+        return a * b;
+    };
+
+    auto sat_pow = [&](size_t base, size_t exp) -> size_t {
+        if (exp == 0) return 1;
+        const size_t maxv = std::numeric_limits<size_t>::max();
+        size_t res = 1;
+        while (exp > 0) {
+            if (base != 0 && res > maxv / base) return maxv;
+            res *= base;
+            if (res == maxv) return maxv;
+            --exp;
+        }
+        return res;
+    };
+
+    // X = 2 * |M| * Π_i |S_i|
+    size_t X_states = 2;
+    X_states = sat_mul(X_states, M_states);
+    for (size_t ci = 0; ci < C; ++ci) {
+        ChildAutomaton* child = children[ci];
+        if (!child) continue;
+        X_states = sat_mul(X_states, child->getStates()->size());
+    }
+
+    // Y = X * (|U| + 2) * |U|^{2|U|}
+    size_t exp   = sat_mul(2, U);          // 2|U|
+    size_t U_pow = sat_pow(U, exp);        // |U|^{2|U|} (saturating)
+
+    size_t Y = sat_mul(X_states, U + 2);
+    Y = sat_mul(Y, U_pow);
+
+    // Z = 2 * X * (|U| + 2) * |U|^{2|U|} * W_abs  (all in weight_t)
+    weight_t Z = weight_zero();
+    if (W_abs > weight_zero()) {
+        // Conversions size_t -> weight_t must be supported (they are used elsewhere in QuAK)
+        weight_t WX = weight_two() * weight_t(X_states);
+        WX = WX * weight_t(U + 2);
+        WX = WX * weight_t(U_pow);
+        Z  = WX * W_abs;
+    }
+
+    // ---------- flattened alphabet: copy from NWA ----------
+    Symbol::RESET();
+    MapArray<Symbol*>* src_alpha = this->getAlphabet();
+    const size_t A = src_alpha->size();
+
+    MapArray<Symbol*>* falpha = new MapArray<Symbol*>(A);
+    for (size_t a = 0; a < A; ++a) {
+        Symbol* s_new = new Symbol(src_alpha->at(a)->getName());
+        falpha->insert(s_new->getId(), s_new); // id == index
+    }
+
+    // ---------- flat states and weights ----------
+    State::RESET();
+    Weight::RESET();
+
+    std::vector<State*>  fstates_vec;
+    std::vector<Weight*> fweights_vec;
+    fstates_vec.reserve(64);
+    fweights_vec.reserve(16);
+
+    MapStd<weight_t, Weight*> weight_register;
+
+    weight_t flat_min = weight_zero();
+    weight_t flat_max = weight_zero();
+    bool flat_has_weight = false;
+
+    auto get_weight = [&](weight_t v) -> Weight* {
+        if (weight_register.contains(v) != true) {
+            Weight* w = new Weight(v);
+            fweights_vec.push_back(w);
+            weight_register.insert(v, w);
+
+            if (!flat_has_weight) {
+                flat_min = flat_max = v;
+                flat_has_weight = true;
+            } else {
+                if (v < flat_min) flat_min = v;
+                if (v > flat_max) flat_max = v;
+            }
+        }
+        return weight_register.at(v);
+    };
+
+    // ---------- encoding of flatten states ----------
+    struct BoundedInst {
+        size_t   child_index;
+        State*   state;
+        weight_t budget;  // remaining |weight|-budget ∈ [0, Z]
+    };
+
+    using UInst = std::pair<size_t, State*>; // (child_index, child_state)
+
+    struct FlatKey {
+        State*                   master;
+        std::vector<UInst>       unbounded;
+        std::vector<BoundedInst> bounded;
+
+        bool operator==(const FlatKey& o) const {
+            if (master != o.master) return false;
+            if (unbounded.size() != o.unbounded.size()) return false;
+            if (bounded.size()   != o.bounded.size())   return false;
+
+            for (size_t i = 0; i < unbounded.size(); ++i) {
+                if (unbounded[i].first  != o.unbounded[i].first)  return false;
+                if (unbounded[i].second != o.unbounded[i].second) return false;
+            }
+            for (size_t i = 0; i < bounded.size(); ++i) {
+                const BoundedInst& b1 = bounded[i];
+                const BoundedInst& b2 = o.bounded[i];
+                if (b1.child_index != b2.child_index) return false;
+                if (b1.state       != b2.state)       return false;
+                if (b1.budget      != b2.budget)      return false;
+            }
+            return true;
+        }
+    };
+
+    struct FlatKeyHash {
+        size_t operator()(FlatKey const& k) const {
+            size_t h = 1469598103934665603ull;
+            auto mix = [&](uint64_t x) {
+                h ^= x;
+                h *= 1099511628211ull;
+            };
+            mix(reinterpret_cast<uint64_t>(k.master));
+            for (auto const& u : k.unbounded) {
+                mix(static_cast<uint64_t>(u.first));
+                mix(reinterpret_cast<uint64_t>(u.second));
+            }
+            for (auto const& b : k.bounded) {
+                mix(static_cast<uint64_t>(b.child_index));
+                mix(reinterpret_cast<uint64_t>(b.state));
+                // we deliberately ignore budget in the hash to avoid depending on hash<weight_t>
+            }
+            return h;
+        }
+    };
+
+    auto normalize_key = [](FlatKey& k) {
+        auto cmpU = [](const UInst& a, const UInst& b) {
+            if (a.first != b.first) return a.first < b.first;
+            return a.second->getId() < b.second->getId();
+        };
+        std::sort(k.unbounded.begin(), k.unbounded.end(), cmpU);
+
+        auto cmpB = [](const BoundedInst& a, const BoundedInst& b) {
+            if (a.child_index != b.child_index) return a.child_index < b.child_index;
+            int ida = a.state->getId();
+            int idb = b.state->getId();
+            if (ida != idb) return ida < idb;
+            if (a.budget < b.budget) return true;
+            if (a.budget > b.budget) return false;
+            return false;
+        };
+        std::sort(k.bounded.begin(), k.bounded.end(), cmpB);
+    };
+
+    std::unordered_map<FlatKey, State*, FlatKeyHash> state_map;
+    std::queue<FlatKey> worklist;
+
+    auto get_or_make_state = [&](FlatKey key) -> State* {
+        normalize_key(key);
+        auto it = state_map.find(key);
+        if (it != state_map.end()) return it->second;
+
+        std::ostringstream ss;
+        ss << "flat_" << state_map.size();
+        State* ns = new State(ss.str(), A, 0, 0); // no children: domain [0,0]
+        fstates_vec.push_back(ns);
+
+        state_map.insert(std::make_pair(key, ns));
+        worklist.push(key);
+        return ns;
+    };
+
+    // ---------- initial flat state: (master_initial, no slaves) ----------
+    FlatKey initKey;
+    initKey.master = this->getInitial();
+    State* flat_initial = get_or_make_state(initKey);
+
+    // ---------- BFS over flatten states ----------
+    while (!worklist.empty()) {
+        FlatKey key = worklist.front();
+        worklist.pop();
+
+        State* from_flat = state_map.at(key);
+
+        for (size_t a = 0; a < A; ++a) {
+            // master step
+            Edge* me = first_edge_or_null(key.master->getSuccessors(a));
+            if (!me) continue;
+            State*   m2 = me->getTo();
+            weight_t wm = me->getWeight()->getValue(); // ≤ 0 under Sum-
+
+            bool ok = true;
+
+            std::vector<UInst>       next_unbounded;
+            std::vector<BoundedInst> next_bounded;
+            next_unbounded.reserve(key.unbounded.size());
+            next_bounded.reserve(key.bounded.size());
+
+            weight_t sum_unbounded = weight_zero();
+            weight_t sum_bounded   = weight_zero();
+
+            // --- existing unbounded instances ---
+            for (const UInst& u : key.unbounded) {
+                const size_t ci    = u.first;
+                State* const s_cur = u.second;
+
+                ChildAutomaton* child = children[ci];
+                if (!child) { ok = false; break; }
+
+                Edge* se = first_edge_or_null(s_cur->getSuccessors(a));
+                if (!se) { ok = false; break; }
+
+                State*   s2 = se->getTo();
+                weight_t xu = se->getWeight()->getValue(); // ≤ 0
+
+                sum_unbounded += xu;
+                next_unbounded.emplace_back(ci, s2);
+            }
+            if (!ok) continue;
+
+            // --- existing bounded instances ---
+            for (const BoundedInst& b : key.bounded) {
+                const size_t ci    = b.child_index;
+                State* const s_cur = b.state;
+                weight_t     bud   = b.budget; // ≥ 0
+
+                ChildAutomaton* child = children[ci];
+                if (!child) { ok = false; break; }
+
+                Edge* se = first_edge_or_null(s_cur->getSuccessors(a));
+                if (!se) { ok = false; break; }
+
+                State*   s2 = se->getTo();
+                weight_t z  = se->getWeight()->getValue();     // ≤ 0
+                weight_t mag_z = weight_abs(z);                // |z| ≥ 0
+
+                // strictly decreasing absolute budget
+                if (bud < mag_z) { ok = false; break; }
+                weight_t bud2 = bud - mag_z;
+
+                sum_bounded += z; // actual contribution is still z (≤ 0)
+
+                // if budget is exhausted and child is in final, drop this instance
+                if (bud2 == weight_zero() && children[ci]->isFinal(s2)) {
+                    continue;
+                }
+
+                BoundedInst nb;
+                nb.child_index = ci;
+                nb.state       = s2;
+                nb.budget      = bud2;
+                next_bounded.push_back(nb);
+            }
+            if (!ok) continue;
+
+            // -------- (i) no new instantiation --------
+            {
+                FlatKey k2;
+                k2.master    = m2;
+                k2.unbounded = next_unbounded;
+                k2.bounded   = next_bounded;
+
+                State* to_flat = get_or_make_state(k2);
+                weight_t x = wm + sum_unbounded + sum_bounded; // Sum- ⇒ x ≤ 0
+
+                Edge* e = new Edge(falpha->at(a), get_weight(x), from_flat, to_flat);
+                from_flat->addSuccessor(e);
+                to_flat->addPredecessor(e);
+            }
+
+            // -------- (ii) spawn unbounded instance --------
+            if (Y > 0 && next_unbounded.size() < Y && U > 0) {
+                for (size_t ci = 0; ci < C; ++ci) {
+                    ChildAutomaton* child = children[ci];
+                    if (!child) continue;
+
+                    State* s0 = child->getInitial();
+                    Edge*  se0 = first_edge_or_null(s0->getSuccessors(a));
+                    if (!se0) continue;
+
+                    State*   s1    = se0->getTo();
+                    weight_t x_new = se0->getWeight()->getValue(); // ≤ 0
+
+                    FlatKey k2;
+                    k2.master    = m2;
+                    k2.unbounded = next_unbounded;
+                    k2.bounded   = next_bounded;
+                    k2.unbounded.emplace_back(ci, s1);
+
+                    State* to_flat = get_or_make_state(k2);
+                    weight_t x = wm + sum_unbounded + sum_bounded + x_new;
+
+                    Edge* e = new Edge(falpha->at(a), get_weight(x), from_flat, to_flat);
+                    from_flat->addSuccessor(e);
+                    to_flat->addPredecessor(e);
+                }
+            }
+
+            // -------- (iii) spawn bounded instance --------
+            if (U > 0 && Z > weight_zero() && next_bounded.size() < U) {
+                for (size_t ci = 0; ci < C; ++ci) {
+                    ChildAutomaton* child = children[ci];
+                    if (!child) continue;
+
+                    State* s0 = child->getInitial();
+                    Edge*  se0 = first_edge_or_null(s0->getSuccessors(a));
+                    if (!se0) continue;
+
+                    State*   s1 = se0->getTo();
+                    weight_t z  = se0->getWeight()->getValue();   // ≤ 0
+                    weight_t mag_z = weight_abs(z);
+                    if (mag_z > Z) continue;
+
+                    weight_t bud2 = Z - mag_z;
+
+                    FlatKey k2;
+                    k2.master    = m2;
+                    k2.unbounded = next_unbounded;
+                    k2.bounded   = next_bounded;
+
+                    BoundedInst nb;
+                    nb.child_index = ci;
+                    nb.state       = s1;
+                    nb.budget      = bud2;
+                    k2.bounded.push_back(nb);
+
+                    State* to_flat = get_or_make_state(k2);
+                    weight_t x = wm + sum_unbounded + sum_bounded + z; // ≤ 0
+
+                    Edge* e = new Edge(falpha->at(a), get_weight(x), from_flat, to_flat);
+                    from_flat->addSuccessor(e);
+                    to_flat->addPredecessor(e);
+                }
+            }
+        }
+    }
+
+    // ---------- materialize states / weights ----------
+    const size_t state_count  = fstates_vec.size();
+    const size_t weight_count = fweights_vec.size();
+
+    MapArray<State*>*  fstates  = new MapArray<State*>(state_count);
+    MapArray<Weight*>* fweights = new MapArray<Weight*>(weight_count);
+
+    for (State* s : fstates_vec)   fstates->insert(s->getId(), s);
+    for (Weight* w : fweights_vec) fweights->insert(w->getId(), w);
+
+    if (!flat_has_weight) {
+        flat_min = flat_max = weight_zero();
+    }
+
+    // ---------- select final states (logic only, wiring into Automaton left to you) ----------
+    // Final iff master is final and there are no active slave instances.
+    SetStd<State*>* flat_finals = new SetStd<State*>();
+    for (const auto& kv : state_map) {
+        const FlatKey& k = kv.first;
+        State* s = kv.second;
+        if (k.unbounded.empty() && k.bounded.empty()) {
+            flat_finals->insert(s);
+        }
+    }
+    (void)flat_finals; // TODO: wire into acceptance once Automaton/NestedAutomaton exposes it
+
+    // ---------- build and return a childless NestedAutomaton as Automaton* ----------
+    std::string fname = "Flat(" + this->getName() + ")";
+    MapArray<ChildAutomaton*>* no_children = new MapArray<ChildAutomaton*>(0);
+
+    NestedAutomaton* flatNA = new NestedAutomaton(
+        fname,
+        falpha,
+        fstates,
+        fweights,
+        flat_min,
+        flat_max,
+        flat_initial,
+        no_children
+    );
+
+    return static_cast<Automaton*>(flatNA);
 }

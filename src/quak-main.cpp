@@ -19,8 +19,24 @@
 int main(int argc, char* argv[]) {
 	//printf("TOTO LALA");
 
-    std::string filepath = argv[1];
-    testNonNestedRead(filepath);
+    // std::string filepath = argv[1];
+    // testNonNestedRead(filepath);
+    
+    std::string filepath = "/home/ege/Desktop/QuAK-playground/samples/pseudo_determ/non_det_simple_neg.txt";
+    NestedAutomaton* nwa = new NestedAutomaton(filepath);
+    nwa->print();
+    auto malph = nwa->generateMacroAlphabet();
+    NestedAutomaton* det_nwa = nwa->determinizeWithMacroAlphabet(malph);
+    det_nwa->print();
+    NestedAutomaton* sync_nwa = det_nwa->synchronizeChildren(malph);
+    sync_nwa->print();
+    Automaton* flat_nwa = sync_nwa->flatten();
+    flat_nwa->print();
+
+    delete flat_nwa;
+    delete sync_nwa;
+    delete det_nwa;
+    delete nwa;
     
     //testGenerateMacro(filepath);
     

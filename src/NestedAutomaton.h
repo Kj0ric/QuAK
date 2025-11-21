@@ -40,6 +40,7 @@ public:
     std::unordered_set<MacroSymbol*, MacroSymbolPtrHash, MacroSymbolPtrEqual> generateMacroAlphabet();
     NestedAutomaton* determinizeWithMacroAlphabet(std::unordered_set<MacroSymbol*, MacroSymbolPtrHash, MacroSymbolPtrEqual>& macro_alphabet);
     NestedAutomaton* synchronizeChildren(std::unordered_set<MacroSymbol*, MacroSymbolPtrHash, MacroSymbolPtrEqual>& macro_alphabet);
+    Automaton* flatten();
 
 	// Büchi transformation
 	ChildAutomaton* transformToBuchi(value_function_t finVal, weight_t bound = -1);
