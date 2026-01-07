@@ -388,6 +388,9 @@ Parser* parse_trim_complete(const Automaton* A, value_function_t f) {
 	for (unsigned int stateA_id = 0; stateA_id < A->getStates()->size(); ++stateA_id) {
 		if (A->getStates()->at(stateA_id)->getTag() == -1) continue;
 		parser->states.insert(A->getStates()->at(stateA_id)->getName());
+		if (A->getStates()->at(stateA_id)->getFinal()) {
+			parser->final_states.insert(A->getStates()->at(stateA_id)->getName());
+		}
 		for (Symbol* symbol : *(A->getStates()->at(stateA_id)->getAlphabet())) {
 			parser->alphabet.insert(symbol->getName());
 			for (Edge* edgeA : *(A->getStates()->at(stateA_id)->getSuccessors(symbol->getId()))) {
@@ -1318,6 +1321,9 @@ Automaton* Automaton::toLimSup (const Automaton* A, value_function_t f) {
 	for (const pair<State*, Weight*> &weighted_state : set_of_states) {
 		std::string statename = "(" + weighted_state.first->getName() + ", " + std::to_string(weighted_state.second->getValue()) + ")";
 		State* state = new State(statename, newalphabet->size(), newmin_domain, newmax_domain);
+		if (weighted_state.first->getFinal()) {
+			state->setFinal(true);
+		}
 		newstates->insert(state->getId(), state);
 		state_register.insert(weighted_state, state);
 	}
@@ -1334,7 +1340,9 @@ Automaton* Automaton::toLimSup (const Automaton* A, value_function_t f) {
 	}
 
 	Automaton* that = new Automaton(newname, newalphabet, newstates, newweights, newmin_domain, newmax_domain, newinitial);
+	// that->print();
 	Automaton* AA = copy_trim_complete(that, LimSup);
+	// AA->print();
 	delete that;
 	return AA;
 }
@@ -3082,7 +3090,7 @@ void Automaton::write(std::ostream& out) const {
 
 weight_t Automaton::top_Sup_with_final () const {
 	Automaton* A = Automaton::toLimSup(this, Sup);
-	weight_t top = top_LimSup_with_final();
+	weight_t top = A->top_LimSup_with_final();
 	delete A;
 	return top;
 }
@@ -3091,7 +3099,7 @@ weight_t Automaton::top_Sup_with_final () const {
 
 weight_t Automaton::top_Inf_with_final () const {
 	Automaton* A = Automaton::toLimSup(this, Inf);
-	weight_t top = top_LimSup_with_final();
+	weight_t top = A->top_LimSup_with_final();
 	delete A;
 	return top;
 }
@@ -3122,29 +3130,35 @@ weight_t Automaton::top_LimSup_with_final () const {
 
 
 weight_t Automaton::top_LimInf_with_final () const {
-	weight_t values[this->states->size()];
-	weight_t top_scc[this->nb_SCCs];
-	top_safety_scc(values, true);
-
-	for (unsigned int scc_id = 0; scc_id < this->nb_SCCs; ++scc_id) {
-		top_scc[scc_id] = this->min_domain;
-	}
-
-	for (unsigned int state_id = 0; state_id < this->states->size(); ++state_id) {
-		int scc_id = this->states->at(state_id)->getTag();
-		if (scc_id > -1) {
-			top_scc[scc_id] = std::max(top_scc[scc_id], values[state_id]);
-		}
-	}
-
-	weight_t top = this->min_domain;
-	for (unsigned int scc_id = 0; scc_id < this->nb_SCCs; ++scc_id) {
-		if (final_SCCs[scc_id] == true) {
-			top = std::max(top, top_scc[scc_id]);
-		}
-	}
-
+	Automaton* A = Automaton::toLimSup(this, LimInf);
+	A->print();
+	weight_t top = A->top_LimSup_with_final();
+	delete A;
 	return top;
+
+	// weight_t values[this->states->size()];
+	// weight_t top_scc[this->nb_SCCs];
+	// top_safety_scc(values, true);
+
+	// for (unsigned int scc_id = 0; scc_id < this->nb_SCCs; ++scc_id) {
+	// 	top_scc[scc_id] = this->min_domain;
+	// }
+
+	// for (unsigned int state_id = 0; state_id < this->states->size(); ++state_id) {
+	// 	int scc_id = this->states->at(state_id)->getTag();
+	// 	if (scc_id > -1) {
+	// 		top_scc[scc_id] = std::max(top_scc[scc_id], values[state_id]);
+	// 	}
+	// }
+
+	// weight_t top = this->min_domain;
+	// for (unsigned int scc_id = 0; scc_id < this->nb_SCCs; ++scc_id) {
+	// 	if (final_SCCs[scc_id] == true) {
+	// 		top = std::max(top, top_scc[scc_id]);
+	// 	}
+	// }
+
+	// return top;
 }
 
 

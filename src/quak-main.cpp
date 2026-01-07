@@ -18,7 +18,8 @@
 #include "utility.h"
 
 int main(int argc, char* argv[]) {
-    std::string filepath = "/home/ege/Desktop/QuAK-playground/samples/nested/avg_resp/avg_resp_4_4.txt";
+    // std::string filepath = "/home/ege/Desktop/QuAK-playground/samples/nested/avg_resp/avg_resp_1_1.txt";
+    std::string filepath = "/home/ege/Desktop/QuAK-playground/samples/nested/test_liminf/test2.txt";
     NestedAutomaton* nested = new NestedAutomaton(filepath);
     nested->print();
     
@@ -32,8 +33,8 @@ int main(int argc, char* argv[]) {
     for (int i = 0; i < NUM_RUNS; ++i) {
         auto start = clock::now();
         // flag = nested->emptiness_monotonic_nesting_supremum(LimSup, SumPlus, threshold);
-        // flag = nested->emptiness_monotonic_nesting(LimInf, SumPlus, threshold);
-        flag = nested->emptiness_Avg_SumPlus(LimSupAvg, threshold);
+        flag = nested->emptiness_monotonic_nesting(LimInf, SumPlus, threshold);
+        // flag = nested->emptiness_Avg_SumPlus(LimSupAvg, threshold);
         auto end = clock::now();
 
         std::chrono::duration<double, std::milli> diff = end - start;
