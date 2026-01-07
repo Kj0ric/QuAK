@@ -1,0 +1,15 @@
+@PARENT
+final: q0 q1
+a : 1, q0 -> q1      # only call is on 'a'
+b : 0, q0 -> q0
+b : 0, q1 -> q0
+a : 0, q1 -> qdead   # taking 'a' again from q1 kills acceptance
+a : 0, qdead -> qdead
+b : 0, qdead -> qdead
+
+@CHILD 0
+
+@CHILD 1
+final: s1
+a : 9, s0 -> s0
+b : 1, s0 -> s1

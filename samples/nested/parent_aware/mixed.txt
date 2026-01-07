@@ -1,0 +1,13 @@
+@PARENT
+final: q0
+a : 1, q0 -> q0
+b : 1, q0 -> q0
+
+@CHILD 0
+
+@CHILD 1
+final: s1
+a : 2,  s0 -> s1     # immediate terminate if call letter is 'a'
+b : 7,  s0 -> s2     # otherwise one more symbol
+a : -1, s2 -> s1
+b : 5,  s2 -> s1
