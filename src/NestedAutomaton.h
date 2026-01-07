@@ -40,11 +40,19 @@ public:
     std::unordered_set<MacroSymbol*, MacroSymbolPtrHash, MacroSymbolPtrEqual> generateMacroAlphabet();
     NestedAutomaton* determinizeWithMacroAlphabet(std::unordered_set<MacroSymbol*, MacroSymbolPtrHash, MacroSymbolPtrEqual>& macro_alphabet);
     NestedAutomaton* synchronizeChildren(std::unordered_set<MacroSymbol*, MacroSymbolPtrHash, MacroSymbolPtrEqual>& macro_alphabet);
+    bool emptiness_monotonic_nesting_supremum(value_function_t infinite_aggregator, value_function_t finite_aggregator, weight_t threshold);
+    bool emptiness_monotonic_nesting(value_function_t infinite_aggregator, value_function_t finite_aggregator, weight_t threshold);
+    bool emptiness_Avg_SumPlus (value_function_t infinite_aggregator, weight_t threshold);
     Automaton* flatten();
 
-	// Büchi transformation
-	ChildAutomaton* transformToBuchi(value_function_t finVal, weight_t bound = -1);
+	Automaton* transformToBuchi(value_function_t finVal, weight_t bound = -1);
 	// TODO: Decision problems
+    // public:
+    // SetStd<weight_t> debug_computeChildReturnValuesParentAware(
+    //     size_t child_index,
+    //     value_function_t finVal,
+    //     weight_t bound
+    // ) const;
 };
 
 // ------------------- Type definitions ----------------------

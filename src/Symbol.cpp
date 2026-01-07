@@ -90,11 +90,17 @@ void generateResolvers(
         return;
     }
 
+    // Skip to next state if symbol_id is not valid for this automaton's alphabet
+    if (symbol_id >= automata_list[automaton_id]->getAlphabetSize()) {
+        generateResolvers(symbol_id, automaton_id, state_id + 1, resolver, alphabet, automata_list, symbol_list);
+        return;
+    }
+
     State* current_state = automata_list[automaton_id]->getStates()->at(state_id);
-     // DEBUG: print automaton info
-    std::cout << "Automaton " << automaton_id << " alphabet size: " 
-              << automata_list[automaton_id]->getAlphabetSize() 
-              << " symbol_id: " << symbol_id << std::endl;
+    // DEBUG: print automaton info
+    // std::cout << "Automaton " << automaton_id << " alphabet size: " 
+    //           << automata_list[automaton_id]->getAlphabetSize() 
+    //           << " symbol_id: " << symbol_id << std::endl;
     SetStd<Edge*>* successors = current_state->getSuccessors(symbol_id);
 
     if (successors && successors->size() != 0) {

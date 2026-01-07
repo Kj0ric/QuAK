@@ -50,6 +50,24 @@ Parser::~Parser() {
 	delete_verbose("@Detail: 4 SetStd will be deleted (parser)\n");
 }
 
+static void parseFinalStatesLine(const std::string& final_line, Parser* target) {
+    if (final_line.rfind("final:", 0) != 0) {
+        abort("Expected 'final:' line, got: " + final_line);
+    }
+
+    std::istringstream ss(final_line.substr(6)); // after "final:"
+    std::string st;
+
+    target->final_states.clear();
+    while (ss >> st) {
+        target->final_states.insert(st);
+        target->states.insert(st); // IMPORTANT: treat final: as declaring the state
+    }
+
+    if (target->final_states.size() == 0) {
+        abort("Empty 'final:' declaration");
+    }
+}
 
 /* ------------ Main parsing functions ----------- */
 void readFile (std::string filename, Parser* parser) {
@@ -84,76 +102,27 @@ void readFile (std::string filename, Parser* parser) {
 }
 
 void readNonNestedFile(std::ifstream& file, Parser* parser) {
-	enum ParsePhase {
-		LOOKING_FOR_FINAL,
-		READING_TRANSITIONS
-	};
-	
 	if (file.is_open() == false) {
 		std::cerr << "@Error: opening file " << name << std::endl;
 		std::cerr << "Message: " << strerror(errno) << std::endl;
 		fflush(stdout);fflush(stderr);
 		exit(EXIT_FAILURE);
 	}
-	
-	ParsePhase phase = LOOKING_FOR_FINAL;
 	std::string line;
 	
-	while (getline(file, line)) { 
+	// Read the first transition (edge line) to get the initial state
+	while (parser->initial == "" && getline(file, line)) {
 		line_counter++;
-		
-		// Remove comments and trim whitespae
-		size_t comment_pos = line.find('#');
-		if (comment_pos != std::string::npos) {
-			line = line.substr(0, comment_pos);
-		}
-		line.erase(0, line.find_first_not_of(" \t"));
-        line.erase(line.find_last_not_of(" \t") + 1);
-		
-		if (line.empty()) continue;
-
-		// Check if it's final state declaration
-		if (line.rfind("final:", 0) == 0) {
-			if (phase == READING_TRANSITIONS) {
-				abort("'final:' declaration must appear before all transitions");
-			}
-
-			// Parse final states
-			std::istringstream final_state_stream(line.substr(6));
-			std::string final_state;
-			parser->final_states.clear();
-			while (final_state_stream >> final_state) {
-				parser->final_states.insert(final_state);
-			}
-			continue;
-		}
-
-		// Check for transition
-        if (line.find("->") != std::string::npos || line.find("--") != std::string::npos) {
-            if (phase == LOOKING_FOR_FINAL) {
-                // First transition encountered
-                phase = READING_TRANSITIONS;
-            }
-            
-            // Process transition
-            std::string from_state = readLine(line, parser);
-            if (parser->initial.empty()) {
-                parser->initial = from_state;
-            }
-            continue;
-        }
-
-		abort("unexpected line format (expected 'final:' or transition)");
+		parser->initial = readLine(line, parser);
 	}
 
-	if (parser->initial.empty()){
-		abort("automaton without transitions");
-	} 
+	// Read the rest and update the Parser object
+	while (getline(file, line)) { 
+		line_counter++;
+		readLine(line, parser);
+	}
 
-	// If no final states were declared, make all states final
-    if (parser->final_states.size() == 0) {
-        parser->final_states = parser->states;
-    }
+	if (parser->initial == "") abort("automaton without transitions");	// Means no edge line parsed
 	
 	// Compare domain declarations and actual weights used in transitions to decide on domain ranges
 	if (parser->domain_defined == true) {
@@ -164,7 +133,6 @@ void readNonNestedFile(std::ifstream& file, Parser* parser) {
 		parser->min_domain = parser->weights.getMin();
 		parser->max_domain = parser->weights.getMax();
 	}
-	
 	file.close();
 }
 
@@ -213,6 +181,12 @@ void readNestedFile(std::ifstream& file, Parser* parser) {
 
 		if (line.empty()) continue;
 
+		// Allow final states in PARENT section
+		if (parser->inParent() && line.rfind("final:", 0) == 0) {
+			parseFinalStatesLine(line, parser); // parent final states live in the main parser object
+			continue;
+		}
+
 		// Section headers must start with @PARENT/CHILD
 		if (line.rfind("@PARENT", 0) == 0) {
 			parser->switchToParentSection();
@@ -250,7 +224,7 @@ void readNestedFile(std::ifstream& file, Parser* parser) {
 				// No transitions
 				dummy_parser->edges.clear();
 
-				// Alphabet and weights can be empty or inherited
+				// Alpahbet and weights can be empty or inherited
 				dummy_parser->alphabet.clear();
 				dummy_parser->weights.clear();
 
@@ -361,6 +335,13 @@ void readNestedFile(std::ifstream& file, Parser* parser) {
 			QUAK_FAIL("No final states detected in a child automaton. Check the automaton description .txt file.\n");
         }
     }
+
+	// Check final states for the PARENT automaton (if provided)
+	for (const std::string& fname : parser->final_states) {
+		if (!parser->states.contains(fname)) {
+			QUAK_FAIL("Parent automaton has a final state that is not declared as a state. Check the automaton description .txt file.\n");
+		}
+	}
 }
 
 std::string readLine (std::string line, Parser* parser) {
@@ -380,35 +361,54 @@ std::string readLine (std::string line, Parser* parser) {
 	}
 }
 
+
+
 void readFinalStates(std::ifstream& file, Parser* parser, int line_counter) {
-	std::string final_line;
-	while (std::getline(file, final_line)) {
-		line_counter++;
+    std::string final_line;
+    while (std::getline(file, final_line)) {
+        line_counter++;
 
-		// Remove comments and trim whitespace
-		size_t comment_pos = final_line.find('#');
-		if (comment_pos != std::string::npos) {
-			final_line = final_line.substr(0, comment_pos);
-		}
-		final_line.erase(0, final_line.find_first_not_of(" \t"));
-		final_line.erase(final_line.find_last_not_of(" \t") + 1);
-		
-		if (!final_line.empty()) break;
-	}
-	
-	// Syntax check
-	if (final_line.rfind("final:",0) != 0) {
-		abort("Expected 'final:' line after @CHILD header, got: " + final_line);
-	} 
+        size_t comment_pos = final_line.find('#');
+        if (comment_pos != std::string::npos) final_line = final_line.substr(0, comment_pos);
 
-	// Parse final states
-	std::istringstream final_stream(final_line.substr(6));	// Skip "final:" prefix
-	std::string final_state;
-	parser->getCurrentParser()->final_states.clear();
-	while (final_stream >> final_state) {
-		parser->getCurrentParser()->final_states.insert(final_state);	// Store them in SetStd<std::string> states;
-	}
+        final_line.erase(0, final_line.find_first_not_of(" \t"));
+        final_line.erase(final_line.find_last_not_of(" \t") + 1);
+
+        if (!final_line.empty()) break;
+    }
+
+    parseFinalStatesLine(final_line, parser->getCurrentParser());
 }
+
+// void readFinalStates(std::ifstream& file, Parser* parser, int line_counter) {
+// 	std::string final_line;
+// 	while (std::getline(file, final_line)) {
+// 		line_counter++;
+
+// 		// Remove comments and trim whitespace
+// 		size_t comment_pos = final_line.find('#');
+// 		if (comment_pos != std::string::npos) {
+// 			final_line = final_line.substr(0, comment_pos);
+// 		}
+// 		final_line.erase(0, final_line.find_first_not_of(" \t"));
+// 		final_line.erase(final_line.find_last_not_of(" \t") + 1);
+		
+// 		if (!final_line.empty()) break;
+// 	}
+	
+// 	// Syntax check
+// 	if (final_line.rfind("final:",0) != 0) {
+// 		abort("Expected 'final:' line after @CHILD header, got: " + final_line);
+// 	} 
+
+// 	// Parse final states
+// 	std::istringstream final_stream(final_line.substr(6));	// Skip "final:" prefix
+// 	std::string final_state;
+// 	parser->getCurrentParser()->final_states.clear();
+// 	while (final_stream >> final_state) {
+// 		parser->getCurrentParser()->final_states.insert(final_state);	// Store them in SetStd<std::string> states;
+// 	}
+// }
 
 // Parses a single line from the automata representation
 // Does syntactic check on the automata representation

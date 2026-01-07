@@ -492,12 +492,12 @@ void ChildAutomaton::print(std::ostream& out, bool full, bool bv_weights, bool b
     out << "Child Automaton (" << this->getName() << "):\n";
     Automaton::print(out);
 
-    out << "\tFinal states: ";
-    SetStd<State*>* finals = getFinalStates();
-    for (State* s : *finals) {
-        out << s->getName() << " ";
-    }
-    out << std::endl;
+    // out << "\tFinal states: ";
+    // SetStd<State*>* finals = getFinalStates();
+    // for (State* s : *finals) {
+    //     out << s->getName() << " ";
+    // }
+    // out << std::endl;
 }
 
 ChildAutomaton* hopcroftMinimizeDFA(ChildAutomaton* dfa, size_t i, weight_t j) {

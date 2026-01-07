@@ -528,7 +528,7 @@ void testTransformToBuchi(const std::string& filepath, value_function_t finVal, 
         std::cout << "\n--- Transforming to Büchi Automaton ---" << std::endl;
         std::cout << "Starting transformation..." << std::endl;
         
-        ChildAutomaton* buchi = nested->transformToBuchi(finVal, bound);
+        Automaton* buchi = nested->transformToBuchi(finVal, bound);
         
         // 3. Print the result (limit output if too large)
         std::cout << "\n--- Resulting Büchi Automaton ---" << std::endl;
@@ -545,7 +545,7 @@ void testTransformToBuchi(const std::string& filepath, value_function_t finVal, 
         std::cout << "✓ Büchi states: " << buchi_state_count << std::endl;
         std::cout << "✓ Büchi alphabet size: " << buchi->getAlphabetSize() << std::endl;
         std::cout << "✓ Büchi weights: " << buchi->getWeights()->size() << std::endl;
-        std::cout << "✓ Final states: " << buchi->getFinalStates()->size() << std::endl;
+        // std::cout << "✓ Final states: " << buchi->getFinalStates()->size() << std::endl; // TODO: THIS WORKS FOR CHILD AUTOMATA ONLY
         
         // Check initial state
         if (buchi->getInitial()) {

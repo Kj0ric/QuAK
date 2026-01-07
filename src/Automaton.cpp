@@ -6,6 +6,7 @@
 #include <limits>
 #include <algorithm>
 #include <stack>
+#include <queue>
 #include "Automaton.h"
 #include "Parser.h"
 #include "Edge.h"
@@ -264,6 +265,9 @@ Parser Automaton::parse_trim() {
 			continue;
 		}
 		parser.states.insert(this->getStates()->at(stateA_id)->getName());
+		if (this->getStates()->at(stateA_id)->getFinal()) {
+			parser.final_states.insert(this->getStates()->at(stateA_id)->getName());
+		}
         for (Symbol* symbol : *(this->getStates()->at(stateA_id)->getAlphabet())) {
 			parser.alphabet.insert(symbol->getName());
 			for (Edge* edgeA : *(this->getStates()->at(stateA_id)->getSuccessors(symbol->getId()))) {
@@ -549,9 +553,10 @@ void Automaton::compute_SCC (void) {
 	compute_SCC_dag(initial, spot, low, stackMem, this->SCCs);
 
 	for (unsigned int state_id = 0; state_id < size; ++state_id) {
-		this->final_SCCs[this->states->at(state_id)->getTag()] |= this->states->at(state_id)->getFinal();
+		if (this->states->at(state_id)->getTag() > -1) {
+			this->final_SCCs[this->states->at(state_id)->getTag()] |= this->states->at(state_id)->getFinal();
+		}
 	}
-
 
 	delete [] spot;
 	delete [] low;
@@ -1956,80 +1961,161 @@ weight_t Automaton::top_LimInf (weight_t* top_values) const {
 
 
 
+weight_t Automaton::top_LimAvg(weight_t* top_values) const {
+    unsigned int size = this->states->size();
+    if (size == 0) return this->min_domain; // avoids 0-sized matrix edge cases
 
-weight_t Automaton::top_LimAvg (weight_t* top_values) const {
-	unsigned int size = this->states->size();
-	weight_t distance[size + 1][size];
-	weight_t infinity = std::max(weight_t(1), -(weight_t(size)*this->min_domain) + 1); // TODO
+    weight_t infinity = std::max(weight_t(1), -(weight_t(size) * this->min_domain) + 1);
 
-	// O(n)
-	for (unsigned int length = 0; length <= size; ++length) {
-		for (unsigned int state_id = 0; state_id < size; ++state_id) {
-			distance[length][state_id] = infinity;
-		}
-	}
+    // HEAP allocation instead of stack VLA:
+    std::unique_ptr<weight_t[]> distance(new weight_t[(size + 1) * size]);
 
+    auto D = [&](unsigned int len, unsigned int state_id) -> weight_t& {
+        return distance[len * size + state_id];
+    };
 
-	//O(n)
-	auto initialize_distances = [] (SCC_Dag* dag, weight_t* distance, auto &rec) -> void {
-		distance[dag->origin->getId()] = 0;
-		for (auto iter = dag->nexts->begin(); iter != dag->nexts->end(); ++iter) {
-			rec(*iter, distance, rec);
-		}
-	};
-	initialize_distances(this->SCCs[this->initial->getTag()], distance[0], initialize_distances);
+    // O(n)
+    for (unsigned int length = 0; length <= size; ++length) {
+        for (unsigned int state_id = 0; state_id < size; ++state_id) {
+            D(length, state_id) = infinity;
+        }
+    }
 
+    // O(n)
+    auto initialize_distances = [] (SCC_Dag* dag, weight_t* dist_row, auto &rec) -> void {
+        dist_row[dag->origin->getId()] = 0;
+        for (auto iter = dag->nexts->begin(); iter != dag->nexts->end(); ++iter) {
+            rec(*iter, dist_row, rec);
+        }
+    };
+    initialize_distances(this->SCCs[this->initial->getTag()], distance.get() + 0 * size, initialize_distances);
 
-	// O(n.m)
-	for (unsigned int len = 1; len <= size; ++len) {
-		for (unsigned int state_id = 0; state_id < size; ++state_id)	{
-			for (Symbol* symbol : *(states->at(state_id)->getAlphabet())) {
-				for (Edge* edge : *(states->at(state_id)->getSuccessors(symbol->getId()))) {
-					if (edge->getFrom()->getTag() == edge->getTo()->getTag()) {
-						if (distance[len-1][edge->getFrom()->getId()] != infinity) {
-							weight_t value = distance[len-1][edge->getFrom()->getId()] - edge->getWeight()->getValue();
-							if (distance[len][edge->getTo()->getId()] == infinity) {
-								distance[len][edge->getTo()->getId()] = value;
-							}
-							else {
-								distance[len][edge->getTo()->getId()] =
-										std::min(value, distance[len][edge->getTo()->getId()]);
-							}
-						}
-					}
-				}
-			}
-		}
-	}
+    // O(n.m)
+    for (unsigned int len = 1; len <= size; ++len) {
+        for (unsigned int state_id = 0; state_id < size; ++state_id) {
+            for (Symbol* symbol : *(states->at(state_id)->getAlphabet())) {
+                for (Edge* edge : *(states->at(state_id)->getSuccessors(symbol->getId()))) {
+                    if (edge->getFrom()->getTag() == edge->getTo()->getTag()) {
+                        auto from = edge->getFrom()->getId();
+                        auto to   = edge->getTo()->getId();
+                        if (D(len - 1, from) != infinity) {
+                            weight_t value = D(len - 1, from) - edge->getWeight()->getValue();
+                            if (D(len, to) == infinity) D(len, to) = value;
+                            else D(len, to) = std::min(value, D(len, to));
+                        }
+                    }
+                }
+            }
+        }
+    }
 
-	//O(n.m)
-	bool done[this->nb_SCCs];
-	for (unsigned int scc_id = 0; scc_id < this->nb_SCCs; ++scc_id) {
-		done[scc_id] = false;
-		top_values[scc_id] = this->min_domain;
-	}
+    // Also avoid stack VLA here:
+    std::unique_ptr<bool[]> done(new bool[this->nb_SCCs]);
 
-	for (unsigned int state_id = 0; state_id < size; ++state_id) {
-		weight_t min_lenght_avg = this->max_domain;
-		bool len_flag = false;
-		if (distance[size][state_id] != infinity) { // => id has an ongoing edge (inside its SCC)
-			for (unsigned int lenght = 0; lenght < size; ++lenght) { // hence the nested loop is call at most O(m) times
-				if (distance[lenght][state_id] != infinity) {
-					weight_t avg = (distance[lenght][state_id] - distance[size][state_id] + 0.0) / weight_t(size - lenght + 0.0);
-					min_lenght_avg = std::min(min_lenght_avg, avg);
-					len_flag = true;
-				}
-			}
-		}
-		if (len_flag) {
-			top_values[this->states->at(state_id)->getTag()]
-				  = std::max(top_values[this->states->at(state_id)->getTag()], min_lenght_avg);
-		}
-	}
+    for (unsigned int scc_id = 0; scc_id < this->nb_SCCs; ++scc_id) {
+        done[scc_id] = false;
+        top_values[scc_id] = this->min_domain;
+    }
 
-	top_dag(this->SCCs[this->initial->getTag()], done, top_values);
-	return top_values[this->initial->getTag()];
+    for (unsigned int state_id = 0; state_id < size; ++state_id) {
+        weight_t min_lenght_avg = this->max_domain;
+        bool len_flag = false;
+
+        if (D(size, state_id) != infinity) {
+            for (unsigned int lenght = 0; lenght < size; ++lenght) {
+                if (D(lenght, state_id) != infinity) {
+                    weight_t avg =
+                        (D(lenght, state_id) - D(size, state_id) + 0.0) /
+                        weight_t(size - lenght + 0.0);
+                    min_lenght_avg = std::min(min_lenght_avg, avg);
+                    len_flag = true;
+                }
+            }
+        }
+
+        if (len_flag) {
+            top_values[this->states->at(state_id)->getTag()] =
+                std::max(top_values[this->states->at(state_id)->getTag()], min_lenght_avg);
+        }
+    }
+
+    top_dag(this->SCCs[this->initial->getTag()], done.get(), top_values);
+    return top_values[this->initial->getTag()];
 }
+
+// weight_t Automaton::top_LimAvg (weight_t* top_values) const {
+// 	unsigned int size = this->states->size();
+// 	weight_t distance[size + 1][size];
+// 	weight_t infinity = std::max(weight_t(1), -(weight_t(size)*this->min_domain) + 1); // TODO
+
+// 	// O(n)
+// 	for (unsigned int length = 0; length <= size; ++length) {
+// 		for (unsigned int state_id = 0; state_id < size; ++state_id) {
+// 			distance[length][state_id] = infinity;
+// 		}
+// 	}
+
+
+// 	//O(n)
+// 	auto initialize_distances = [] (SCC_Dag* dag, weight_t* distance, auto &rec) -> void {
+// 		distance[dag->origin->getId()] = 0;
+// 		for (auto iter = dag->nexts->begin(); iter != dag->nexts->end(); ++iter) {
+// 			rec(*iter, distance, rec);
+// 		}
+// 	};
+// 	initialize_distances(this->SCCs[this->initial->getTag()], distance[0], initialize_distances);
+
+
+// 	// O(n.m)
+// 	for (unsigned int len = 1; len <= size; ++len) {
+// 		for (unsigned int state_id = 0; state_id < size; ++state_id)	{
+// 			for (Symbol* symbol : *(states->at(state_id)->getAlphabet())) {
+// 				for (Edge* edge : *(states->at(state_id)->getSuccessors(symbol->getId()))) {
+// 					if (edge->getFrom()->getTag() == edge->getTo()->getTag()) {
+// 						if (distance[len-1][edge->getFrom()->getId()] != infinity) {
+// 							weight_t value = distance[len-1][edge->getFrom()->getId()] - edge->getWeight()->getValue();
+// 							if (distance[len][edge->getTo()->getId()] == infinity) {
+// 								distance[len][edge->getTo()->getId()] = value;
+// 							}
+// 							else {
+// 								distance[len][edge->getTo()->getId()] =
+// 										std::min(value, distance[len][edge->getTo()->getId()]);
+// 							}
+// 						}
+// 					}
+// 				}
+// 			}
+// 		}
+// 	}
+
+// 	//O(n.m)
+// 	bool done[this->nb_SCCs];
+// 	for (unsigned int scc_id = 0; scc_id < this->nb_SCCs; ++scc_id) {
+// 		done[scc_id] = false;
+// 		top_values[scc_id] = this->min_domain;
+// 	}
+
+// 	for (unsigned int state_id = 0; state_id < size; ++state_id) {
+// 		weight_t min_lenght_avg = this->max_domain;
+// 		bool len_flag = false;
+// 		if (distance[size][state_id] != infinity) { // => id has an ongoing edge (inside its SCC)
+// 			for (unsigned int lenght = 0; lenght < size; ++lenght) { // hence the nested loop is call at most O(m) times
+// 				if (distance[lenght][state_id] != infinity) {
+// 					weight_t avg = (distance[lenght][state_id] - distance[size][state_id] + 0.0) / weight_t(size - lenght + 0.0);
+// 					min_lenght_avg = std::min(min_lenght_avg, avg);
+// 					len_flag = true;
+// 				}
+// 			}
+// 		}
+// 		if (len_flag) {
+// 			top_values[this->states->at(state_id)->getTag()]
+// 				  = std::max(top_values[this->states->at(state_id)->getTag()], min_lenght_avg);
+// 		}
+// 	}
+
+// 	top_dag(this->SCCs[this->initial->getTag()], done, top_values);
+// 	return top_values[this->initial->getTag()];
+// }
 
 
 
@@ -2516,6 +2602,7 @@ void Automaton::constructWitness(value_function_t f, UltimatelyPeriodicWord** wi
 	}
 }
 
+
 weight_t Automaton::compute_Top (value_function_t f, weight_t* top_values, UltimatelyPeriodicWord** witness) const {
 	if (witness == nullptr) {
 		switch (f) {
@@ -2988,8 +3075,7 @@ void Automaton::write(std::ostream& out) const {
 
 
 //...................................................//
-//....... Extension emptiness with acceptance .......//
-//...................................................//
+
 
 
 
@@ -3045,7 +3131,7 @@ weight_t Automaton::top_LimInf_with_final () const {
 	}
 
 	for (unsigned int state_id = 0; state_id < this->states->size(); ++state_id) {
-		unsigned int scc_id = this->states->at(state_id)->getTag();
+		int scc_id = this->states->at(state_id)->getTag();
 		if (scc_id > -1) {
 			top_scc[scc_id] = std::max(top_scc[scc_id], values[state_id]);
 		}
@@ -3065,7 +3151,8 @@ weight_t Automaton::top_LimInf_with_final () const {
 
 weight_t Automaton::top_LimAvg_with_final () const {
 	unsigned int size = this->states->size();
-	weight_t distance[size + 1][size];
+	// weight_t distance[size + 1][size];
+	std::vector<std::vector<weight_t>> distance(size + 1, std::vector<weight_t>(size));
 	weight_t infinity = std::max(weight_t(1), -(weight_t(size)*this->min_domain) + 1); // TODO
 
 	// O(n)
@@ -3077,7 +3164,8 @@ weight_t Automaton::top_LimAvg_with_final () const {
 
 
 	//O(n)
-	auto initialize_distances = [] (SCC_Dag* dag, weight_t* distance, auto &rec) -> void {
+	// auto initialize_distances = [] (SCC_Dag* dag, weight_t* distance, auto &rec) -> void {
+	auto initialize_distances = [] (SCC_Dag* dag, std::vector<weight_t> &distance, auto &rec) -> void {
 		distance[dag->origin->getId()] = 0;
 		for (auto iter = dag->nexts->begin(); iter != dag->nexts->end(); ++iter) {
 			rec(*iter, distance, rec);
@@ -3142,162 +3230,335 @@ weight_t Automaton::top_LimAvg_with_final () const {
 }
 
 
-
-weight_t Automaton::compute_top_with_final (value_function_t f) const {
-        weight_t result;
-        switch (f) {
-            case Inf:
-		result = top_Inf_with_final ();
-                break;
-            case Sup:
-                result = top_Sup_with_final();
-                break;
-            case LimInf:
-                result = top_LimInf_with_final();
-                break;
-            case LimSup:
-                result = top_LimSup_with_final();
-                break;
-            case LimInfAvg: case LimSupAvg:
-                result = top_LimAvg_with_final();
-                break;
-            default:
-                QUAK_FAIL("automata top with acceptance");
-        }
-
-        return result;
+weight_t Automaton::compute_top_with_final(value_function_t f) const {
+	switch (f) {
+		case Inf:
+			return top_Inf_with_final();
+		case Sup:
+			return top_Sup_with_final();
+		case LimInf:
+			return top_LimInf_with_final();
+		case LimSup:
+			return top_LimSup_with_final();
+		case LimInfAvg: case LimSupAvg:
+			return top_LimAvg_with_final();
+		default:
+			QUAK_FAIL("automata top (with final)");
+	}
 }
 
 
 
 //...................................................//
-//..... Extension universality with acceptance ......//
-//...................................................//
 
 
-Automaton::Automaton(Automaton* other, value_function_t f, weight_t threshold) :
-	name(other->name),
-	min_domain(0),
-	max_domain(1),
-	nb_SCCs(0),
-	final_SCCs(nullptr),
-	SCCs(nullptr)
-{
-	State::RESET();
-	Symbol::RESET();
-	Weight::RESET();
 
 
-	// Alphabet
-	alphabet = new MapArray<Symbol*>(other->alphabet->size());
-	for (size_t i = 0; i < other->alphabet->size(); ++i) {
-		alphabet->insert(i, new Symbol(other->alphabet->at(i)));
-	}
+// Put this in an anonymous namespace or a .cpp file near Automaton methods.
+namespace {
 
-
-	// Weights
-	weights = new MapArray<Weight*>(2);
-	for (size_t weight_id = 0; weight_id < 2; ++weight_id) {
-		weights->insert(weight_id, new Weight(weight_id));
-	}
-
-
-	// States
-	states = new MapArray<State*>(other->states->size()*2);
-	for (size_t i = 0; i < other->states->size(); ++i) {
-		size_t j = i + other->states->size();
-		states->insert(i, new State("Left_" + other->states->at(i)->getName(), alphabet->size(), 0, 1));
-		//states->insert(j, new State("Right_" + other->states->at(i)->getName(), alphabet->size(), 0, 1));
-	}
+	// Local adjacency type inside an SCC
+	struct LocalEdge {
+		int to;        // local index
+		weight_t w;    // edge weight
+	};
 	
-
-	// Initial state
-	initial = states->at(other->initial->getId());
-
-	// Copy edges
-	for (unsigned int state_id = 0; state_id < other->states->size(); ++state_id) {
-		State* original_state = other->states->at(state_id);
-		State* left_state = states->at(state_id);
-		State* right_state = states->at(state_id + other->states->size());
-
-
-		for (Symbol* original_symbol : *(original_state->getAlphabet())) {
-			for (Edge* original_edge : *(original_state->getSuccessors(original_symbol->getId()))) {
-				Symbol* both_symbol = alphabet->at(original_edge->getSymbol()->getId());
-				Weight* both_weight;
-				if (original_edge->getWeight()->getValue() < threshold) {
-					both_weight = weights->at(0);
+	/**
+	 * Compute maximum mean cycle weight in a single SCC.
+	 *
+	 * @param A          The automaton (for access to states, edges, weights).
+	 * @param scc_states Global state IDs belonging to this SCC.
+	 * @param scc_id     ID (tag) of the SCC (as stored in State::getTag()).
+	 *
+	 * Preconditions:
+	 *   - scc_states is non-empty.
+	 *   - All states in scc_states have getTag() == scc_id.
+	 */
+	weight_t max_mean_cycle_on_scc(const Automaton* A,
+								   const std::vector<unsigned int>& scc_states,
+								   unsigned int scc_id)
+	{
+		using std::vector;
+		const unsigned int n = static_cast<unsigned int>(scc_states.size());
+		if (n == 0) {
+			// No states → no cycle, return lowest possible value.
+			return A->min_domain;
+		}
+	
+		// Map global state_id -> local index [0 .. n-1]
+		vector<int> global_to_local(A->states->size(), -1);
+		for (unsigned int i = 0; i < n; ++i) {
+			global_to_local[scc_states[i]] = static_cast<int>(i);
+		}
+	
+		// Build adjacency list of this SCC only.
+		vector<vector<LocalEdge>> adj(n);
+		bool has_cycle_edge = false;
+	
+		for (unsigned int i = 0; i < n; ++i) {
+			unsigned int sid = scc_states[i];
+			State* s = A->states->at(sid);
+	
+			for (Symbol* sym : *s->getAlphabet()) {
+				auto* succs = s->getSuccessors(sym->getId());
+				if (!succs) continue;
+	
+				for (Edge* e : *succs) {
+					State* to = e->getTo();
+					if (to->getTag() != scc_id) continue;  // outside SCC
+	
+					int j = global_to_local[to->getId()];
+					if (j < 0) continue;                   // safety
+	
+					adj[i].push_back(LocalEdge{ j, e->getWeight()->getValue() });
+	
+					// If there is at least one edge in this SCC, there is a cycle
+					// as soon as n > 1 or there is a self-loop.
+					if (n > 1 || j == static_cast<int>(i)) {
+						has_cycle_edge = true;
+					}
 				}
-				else {
-					both_weight = weights->at(1);
-				}
-
-				State* left_from = states->at(original_edge->getFrom()->getId());
-				State* left_to;
-				if (original_edge->getWeight()->getValue() < threshold) {
-					left_to = states->at(original_edge->getTo()->getId());
-				}
-				else {
-					left_to = states->at(original_edge->getTo()->getId()+other->states->size());
-				}
-				State* right_from = states->at(original_edge->getFrom()->getId()+other->states->size());
-				State* right_to;
-				if (original_edge->getFrom()->getFinal() == false) {
-					right_to = states->at(original_edge->getTo()->getId()+other->states->size());
-				}
-				else {
-					right_to = states->at(original_edge->getTo()->getId());
-				}
-
-
-				// Edge
-				Edge* left_edge = new Edge(both_symbol, both_weight, left_from, left_to);
-				left_from->addSuccessor(left_edge);
-				left_to->addPredecessor(left_edge);
-				Edge* right_edge = new Edge(both_symbol, both_weight, right_from, right_to);
-				right_from->addSuccessor(right_edge);
-				right_to->addPredecessor(right_edge);
-
 			}
 		}
-	}
-
-	// Set ownership and compute SCCs
-	appropriateStates();
-	compute_SCC();
-}
-
-
-weight_t Automaton::compute_bottom_with_final (value_function_t f) {
-	if (this->isDeterministic()) {
-		invert_weights();
-		value_function_t f_dual = getValueFunctionDual(f);
-		weight_t result = compute_top_with_final(f_dual);
-		result = -result;
-		invert_weights();
-		return result;
-	}
-	else if (f == Inf || f == Sup || f == LimInf || f == LimSup) {
-		bool found = false;
-		unsigned int weight_id = weights->size();
-		weight_t threshold;
-
-		while (!found && weight_id > 0) {
-			weight_id--;
-			threshold = this->weights->at(weight_id)->getValue();
-			Automaton* A = new Automaton(this, f, threshold);
-			found = A->isUniversal(f, threshold);
+	
+		if (!has_cycle_edge) {
+			// Single state without self-loop, or something degenerate:
+			// cannot form a cycle with length ≥ 1.
+			return A->min_domain;
 		}
+	
+		const unsigned int N = n;
+		const int src = 0;   // Choose any vertex in the SCC as source.
+	
+		// H_n[v] and its validity flag
+		vector<weight_t> Hn(N);
+		vector<char> Hn_valid(N, 0);
+	
+		// DP arrays (two layers) and validity bits.
+		vector<weight_t> dp_prev(N), dp_curr(N);
+		vector<char> valid_prev(N, 0), valid_curr(N, 0);
+	
+		// ---------- PASS 1: compute H_n[v] for all v ----------
+	
+		std::fill(valid_prev.begin(), valid_prev.end(), 0);
+		valid_prev[src] = 1;
+		dp_prev[src] = weight_t(0); // assuming weight_t(0) is valid
+	
+		for (unsigned int step = 1; step <= N; ++step) {
+			std::fill(valid_curr.begin(), valid_curr.end(), 0);
+	
+			for (unsigned int u = 0; u < N; ++u) {
+				if (!valid_prev[u]) continue;
+	
+				const weight_t base = dp_prev[u];
+				for (const LocalEdge& e : adj[u]) {
+					unsigned int v = static_cast<unsigned int>(e.to);
+					weight_t cand = base + e.w;
+	
+					if (!valid_curr[v]) {
+						dp_curr[v] = cand;
+						valid_curr[v] = 1;
+					}
+					else if (cand > dp_curr[v]) {
+						dp_curr[v] = cand;
+					}
+				}
+			}
+	
+			if (step == N) {
+				// Store H_n and validity.
+				Hn = dp_curr;
+				Hn_valid.assign(valid_curr.begin(), valid_curr.end());
+			}
+	
+			dp_prev.swap(dp_curr);
+			valid_prev.swap(valid_curr);
+		}
+	
+		// ---------- PASS 2: recompute H_k[v], accumulate min_k (H_n - H_k)/(n-k) ----------
+	
+		vector<weight_t> min_ratio(N);   // per-vertex min over k
+		vector<char> ratio_defined(N, 0);
+	
+		std::fill(valid_prev.begin(), valid_prev.end(), 0);
+		valid_prev[src] = 1;
+		dp_prev[src] = weight_t(0);
+	
+		// k = 0 case: H_0[src] = 0, others invalid.
+		{
+			const unsigned int k = 0;
+			for (unsigned int v = 0; v < N; ++v) {
+				if (!Hn_valid[v] || !valid_prev[v]) continue;
+	
+				weight_t num = Hn[v] - dp_prev[v];            // H_n(v) - H_0(v)
+				weight_t den = weight_t(N - k);               // n - 0 = n
+				weight_t frac = num / den;
+	
+				min_ratio[v] = frac;
+				ratio_defined[v] = 1;
+			}
+		}
+	
+		// k = 1..n-1
+		for (unsigned int k = 1; k < N; ++k) {
+			std::fill(valid_curr.begin(), valid_curr.end(), 0);
+	
+			for (unsigned int u = 0; u < N; ++u) {
+				if (!valid_prev[u]) continue;
+				const weight_t base = dp_prev[u];
+	
+				for (const LocalEdge& e : adj[u]) {
+					unsigned int v = static_cast<unsigned int>(e.to);
+					weight_t cand = base + e.w;
+	
+					if (!valid_curr[v]) {
+						dp_curr[v] = cand;
+						valid_curr[v] = 1;
+					}
+					else if (cand > dp_curr[v]) {
+						dp_curr[v] = cand;
+					}
+				}
+			}
+	
+			// Now dp_curr holds H_k[v]
+			for (unsigned int v = 0; v < N; ++v) {
+				if (!Hn_valid[v] || !valid_curr[v]) continue;
+	
+				weight_t num = Hn[v] - dp_curr[v];
+				weight_t den = weight_t(N - k);
+				weight_t frac = num / den;
+	
+				if (!ratio_defined[v]) {
+					min_ratio[v] = frac;
+					ratio_defined[v] = 1;
+				}
+				else if (frac < min_ratio[v]) {
+					min_ratio[v] = frac;
+				}
+			}
+	
+			dp_prev.swap(dp_curr);
+			valid_prev.swap(valid_curr);
+		}
+	
+		// µ_max = max_v min_ratio[v]
+		bool any = false;
+		weight_t best = A->min_domain; // lower bound
+	
+		for (unsigned int v = 0; v < N; ++v) {
+			if (!ratio_defined[v]) continue;
+			if (!any || min_ratio[v] > best) {
+				best = min_ratio[v];
+				any = true;
+			}
+		}
+	
+		if (!any) {
+			// Shouldn't happen for an SCC with at least one cycle, but be safe.
+			return A->min_domain;
+		}
+		return best;
+	}
+	
+	} // namespace
+	
 
-		return threshold;
-	}
-	else {
-		QUAK_FAIL("automata bottom with acceptance");
-	}
+
+bool Automaton::emptiness_LimAvg_with_final(weight_t threshold) const {
+    const unsigned int n = this->states->size();
+
+    // // 1) Reachable states and SCCs from the initial state
+    // std::vector<char> state_reachable(n, 0);
+    // std::vector<char> scc_reachable(this->nb_SCCs, 0);
+
+    // std::queue<unsigned int> q;
+    // unsigned int init_id = this->initial->getId();
+    // state_reachable[init_id] = 1;
+    // q.push(init_id);
+
+    // while (!q.empty()) {
+    //     unsigned int sid = q.front();
+    //     q.pop();
+
+    //     State* s = this->states->at(sid);
+    //     unsigned int tag = s->getTag();
+    //     scc_reachable[tag] = 1;
+
+    //     for (Symbol* sym : *s->getAlphabet()) {
+    //         auto* succs = s->getSuccessors(sym->getId());
+    //         if (!succs) continue;
+
+    //         for (Edge* e : *succs) {
+    //             unsigned int tid = e->getTo()->getId();
+    //             if (!state_reachable[tid]) {
+    //                 state_reachable[tid] = 1;
+    //                 q.push(tid);
+    //             }
+    //         }
+    //     }
+    // }
+
+    // 2) Collect states per SCC
+    std::vector<std::vector<unsigned int>> states_in_scc(this->nb_SCCs);
+    for (unsigned int sid = 0; sid < n; ++sid) {
+        // if (!state_reachable[sid]) continue;  // prune unreachable early
+        unsigned int tag = this->states->at(sid)->getTag();
+        states_in_scc[tag].push_back(sid);
+    }
+
+    // 3) For each reachable, final SCC: compute max mean cycle and compare
+    for (unsigned int scc_id = 0; scc_id < this->nb_SCCs; ++scc_id) {
+        if (!this->final_SCCs[scc_id]) continue;  // SCC not accepting
+        // if (!scc_reachable[scc_id]) continue;     // SCC not reachable
+        const auto& vec = states_in_scc[scc_id];
+        if (vec.empty()) continue;                // no reachable state in this SCC
+
+        weight_t mu_scc = max_mean_cycle_on_scc(this, vec, scc_id);
+
+        if (mu_scc >= threshold) {
+            // Witness found: there is a run with limavg ≥ threshold
+            // that stays in this accepting SCC.
+            return true;   // non-empty at threshold
+        }
+    }
+
+    return false; // no accepting SCC with mean ≥ threshold
+}
+
+unsigned int Automaton::getNbSCCs() const {
+    return this->nb_SCCs;;
 }
 
 
-//...................................................//
+unsigned int Automaton::getNbAcceptingSCCs() const {
+    unsigned int count = 0;
+    // Iterate through all SCCs using the pre-computed count
+    for (unsigned int scc_id = 0; scc_id < this->nb_SCCs; ++scc_id) {
+        // final_SCCs[i] is true if the SCC contains at least one final state
+        if (this->final_SCCs[scc_id]) {
+            count++;
+        }
+    }
+    return count;
+}
 
+unsigned int Automaton::getNbStates() const {
+    return this->states ? this->states->size() : 0;
+}
 
+unsigned int Automaton::getNbTransitions() const {
+    unsigned int m = 0;
+    if (!this->states) return 0;
 
+    for (unsigned int i = 0; i < this->states->size(); ++i) {
+        State* st = this->states->at(i);
+        if (!st) continue;
+
+        for (Symbol* sym : *(st->getAlphabet())) {
+            auto* succ = st->getSuccessors(sym->getId());
+            if (succ) m += succ->size();
+        }
+    }
+    return m;
+}

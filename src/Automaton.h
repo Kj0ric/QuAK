@@ -13,17 +13,20 @@
 class SCC_Dag; // Implementation in Automaton.cpp
 
 typedef enum {
+	//finite words
 	Max_f,
 	Min_f,
 	SumB,
-	Avg,
+	SumPlus,
+	SumMinus,
+	Avg, // only word monitoring
+	// infinite words
 	Inf,
 	Sup,
 	LimInf,
 	LimSup,
 	LimInfAvg,
-	LimSupAvg,
-    // only for monitoring
+	LimSupAvg
 } value_function_t;
 
 typedef enum {
@@ -49,7 +52,7 @@ struct UltimatelyPeriodicWord { // same as "lasso" word
 };
 
 class Automaton {
-protected:
+public:
 	std::string name;
 	MapArray<Symbol*>* alphabet;
 	MapArray<State*>* states;
@@ -97,10 +100,6 @@ private:
 	weight_t top_LimSup_with_final () const;
 	weight_t top_LimInf_with_final () const;
 	weight_t top_LimAvg_with_final () const;
-	weight_t compute_top_with_final (value_function_t f) const;
-	//...................................................//
-	Automaton(Automaton* other, value_function_t f, weight_t threshold); // booleanize and remove acceptance
-	weight_t compute_bottom_with_final (value_function_t f);
 	//...................................................//
 	
 
@@ -158,6 +157,11 @@ public:
 	static Automaton* product(const Automaton* A, aggregator_t aggregator, const Automaton* B);
 
 	static Automaton* removeSilentTransitions(const Automaton* A, value_function_t f);
+	bool emptiness_LimAvg_with_final(weight_t threshold) const;
+	unsigned int getNbSCCs() const;
+	unsigned int getNbAcceptingSCCs() const;
+	unsigned int getNbStates() const;
+	unsigned int getNbTransitions() const;
 
   // Generate a random automaton
   static Automaton *randomAutomaton(const std::string& name,
@@ -208,6 +212,8 @@ public:
 	weight_t getTopValue (value_function_t f, UltimatelyPeriodicWord** witness = nullptr) const;
 	weight_t getBottomValue (value_function_t f, UltimatelyPeriodicWord** witness = nullptr);
 	weight_t computeValue(value_function_t f, UltimatelyPeriodicWord* w);
+	weight_t compute_top_with_final(value_function_t f) const;
+
 
 	weight_t getMaxDomain () const;
 	weight_t getMinDomain () const;
