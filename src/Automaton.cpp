@@ -3100,6 +3100,7 @@ weight_t Automaton::top_Sup_with_final () const {
 weight_t Automaton::top_Inf_with_final () const {
 	Automaton* A = Automaton::toLimSup(this, Inf);
 	weight_t top = A->top_LimSup_with_final();
+	// A->print();
 	delete A;
 	return top;
 }
@@ -3131,7 +3132,7 @@ weight_t Automaton::top_LimSup_with_final () const {
 
 weight_t Automaton::top_LimInf_with_final () const {
 	Automaton* A = Automaton::toLimSup(this, LimInf);
-	A->print();
+	// A->print();
 	weight_t top = A->top_LimSup_with_final();
 	delete A;
 	return top;
