@@ -897,6 +897,11 @@ Automaton* Automaton::removeSilentTransitions(const Automaton* A, value_function
 	}
 }
 
+
+
+
+
+
 Automaton* Automaton::safetyClosure(Automaton* A, value_function_t f) {
 	if (f == Sup) {
 		std::unique_ptr<Automaton> AA = std::unique_ptr<Automaton>(Automaton::toLimSup(A, f));

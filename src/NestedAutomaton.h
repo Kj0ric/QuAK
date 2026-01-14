@@ -24,6 +24,14 @@ private:
 
 	// TODO: Decide if domain ranges are needed
 
+    bool emptiness_monotonic_nesting_supremum(value_function_t infinite_aggregator, value_function_t finite_aggregator, weight_t threshold);
+    bool emptiness_monotonic_nesting(value_function_t infinite_aggregator, value_function_t finite_aggregator, weight_t threshold);
+    bool emptiness_monotonic_nesting_min_max(value_function_t infinite_aggregator, value_function_t finite_aggregator, weight_t threshold);
+    bool emptiness_Avg_SumPlus (value_function_t infinite_aggregator, weight_t threshold);
+
+    bool allParentStatesFinal() const;
+
+
 public:
 	~NestedAutomaton();
 	NestedAutomaton(std::string name, Parser* parser, MapStd<std::string, Symbol*> sync_register);
@@ -40,12 +48,14 @@ public:
     std::unordered_set<MacroSymbol*, MacroSymbolPtrHash, MacroSymbolPtrEqual> generateMacroAlphabet();
     NestedAutomaton* determinizeWithMacroAlphabet(std::unordered_set<MacroSymbol*, MacroSymbolPtrHash, MacroSymbolPtrEqual>& macro_alphabet);
     NestedAutomaton* synchronizeChildren(std::unordered_set<MacroSymbol*, MacroSymbolPtrHash, MacroSymbolPtrEqual>& macro_alphabet);
-    bool emptiness_monotonic_nesting_supremum(value_function_t infinite_aggregator, value_function_t finite_aggregator, weight_t threshold);
-    bool emptiness_monotonic_nesting(value_function_t infinite_aggregator, value_function_t finite_aggregator, weight_t threshold);
-    bool emptiness_Avg_SumPlus (value_function_t infinite_aggregator, weight_t threshold);
-    Automaton* flatten();
+    Automaton* flatten_Avg_SumMinus();
+	Automaton* flatten_regular(value_function_t finVal, weight_t bound = -1);
 
-	Automaton* transformToBuchi(value_function_t finVal, weight_t bound = -1);
+
+    Automaton* flatten_regular_parent_trivial(value_function_t finVal, weight_t bound = -1);
+	Automaton* flatten_regular_parent_acceptance(value_function_t finVal, weight_t bound = -1);
+
+
 	// TODO: Decision problems
     // public:
     // SetStd<weight_t> debug_computeChildReturnValuesParentAware(
@@ -53,6 +63,9 @@ public:
     //     value_function_t finVal,
     //     weight_t bound
     // ) const;
+
+    bool isNonEmpty(value_function_t infVal, value_function_t finVal, weight_t x, weight_t bound = -1);
+    bool isUniversal(value_function_t infVal, value_function_t finVal, weight_t x, weight_t bound = -1);
 };
 
 // ------------------- Type definitions ----------------------
@@ -92,6 +105,48 @@ struct BuchiState {
             last_guess == other.last_guess && 
             P1 == other.P1 && 
             P2 == other.P2;
+    }
+};
+
+struct BuchiState_acceptance {
+    State* parent_state;	// Current state in the parent automaton
+    weight_t last_guess;	// Last guessed return value
+    SetStd<State*> P1;		// Set of active monitor states (current epoch)
+	SetStd<State*> P2;		// Set of active monitor states (previous epoch)
+    bool acceptance_flag;   // Tracking if parent state is accepting
+
+    BuchiState_acceptance() : parent_state(nullptr), last_guess(0), P1(), P2(), acceptance_flag(false) {}
+    BuchiState_acceptance(State* parent, weight_t guess, const SetStd<State*>& p1, const SetStd<State*>& p2, bool af)
+        : parent_state(parent), last_guess(guess), P1(p1), P2(p2), acceptance_flag(af) {}
+    
+    // Required for std::map - defines strict weak ordering
+    bool operator<(const BuchiState_acceptance& other) const {
+        // Compare all four fields lexicographically
+        if (parent_state != other.parent_state) {
+            return parent_state < other.parent_state;  // Compare pointers
+        }
+        
+        if (last_guess != other.last_guess) {
+            return last_guess < other.last_guess;  // weight_t has operator<
+        }
+        
+        if (P1 != other.P1) {
+            return P1 < other.P1;  // SetStd has operator< defined
+        }
+
+        if (P2 != other.P2) {
+            return P2 < other.P2;
+        }
+
+        return acceptance_flag < other.acceptance_flag;
+    }
+
+    bool operator==(const BuchiState_acceptance& other) const {
+        return parent_state == other.parent_state && 
+            last_guess == other.last_guess && 
+            P1 == other.P1 && 
+            P2 == other.P2 &&
+            acceptance_flag == other.acceptance_flag;
     }
 };
 

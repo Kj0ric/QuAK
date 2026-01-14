@@ -528,7 +528,7 @@ void testTransformToBuchi(const std::string& filepath, value_function_t finVal, 
         std::cout << "\n--- Transforming to Büchi Automaton ---" << std::endl;
         std::cout << "Starting transformation..." << std::endl;
         
-        Automaton* buchi = nested->transformToBuchi(finVal, bound);
+        Automaton* buchi = nested->flatten_regular(finVal, bound);
         
         // 3. Print the result (limit output if too large)
         std::cout << "\n--- Resulting Büchi Automaton ---" << std::endl;

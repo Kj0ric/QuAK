@@ -710,7 +710,7 @@ static SetStd<weight_t> computeSumBReturnValuesParentAware(
     return return_values;
 }
 
-// Convenience wrapper used from transformToBuchi:
+// Convenience wrapper used from flatten_regular:
 static SetStd<weight_t> computeChildReturnValuesParentAware(
     const NestedAutomaton* nwa,
     size_t child_index,
@@ -1273,7 +1273,7 @@ void processBuchiTransition(
 //      - input alphabet is the same for parent and children
 //      - single finVal function for all child automata
 // Ensures: Outputs a büchi automaton A' such that L(A') = L(A)
-Automaton* NestedAutomaton::transformToBuchi(value_function_t finVal, weight_t bound) {
+Automaton* NestedAutomaton::flatten_regular_parent_trivial(value_function_t finVal, weight_t bound) {
     State::RESET();
     Symbol::RESET();
     Weight::RESET();
@@ -1368,6 +1368,322 @@ Automaton* NestedAutomaton::transformToBuchi(value_function_t finVal, weight_t b
 
     return buchi;
 }
+
+bool NestedAutomaton::allParentStatesFinal() const {
+    for (State* q : *(this->getStates())) {   // adapt accessor to your codebase
+        if (!q->getFinal()) return false;
+    }
+    return true;
+}
+
+
+// On-the-fly generalized-buchi to buchi conversion:
+// first visit parent-accepting states, then visit states with P2 empty.
+// buchi accepting states in the flattened automaton are exactly those in phase WAIT_P2EMPTY with P2 empty.
+static constexpr bool ACC_WAIT_MASTER  = 0; // waiting to see parent in accepting state
+static constexpr bool ACC_WAIT_P2EMPTY = 1; // waiting to see P2 nonempty
+
+static inline bool advance_acc_phase(const BuchiState_acceptance& s) {
+    if (s.acceptance_flag == ACC_WAIT_MASTER) {
+        return (s.parent_state->getFinal()) ? ACC_WAIT_P2EMPTY : ACC_WAIT_MASTER;
+    } else {
+        return (s.P2.size() == 0) ? ACC_WAIT_MASTER : ACC_WAIT_P2EMPTY;
+    }
+}
+
+State* initializeBuchi_acceptance(
+    const NestedAutomaton* nwa,
+    MapArray<Symbol*>*& new_alphabet,
+    MapArray<Weight*>*& new_weights,
+    MapStd<weight_t, Weight*>& weight_register,
+    SetStd<weight_t>& global_return_values,
+    MapStd<BuchiState_acceptance, State*>& state_map,
+    BuchiState_acceptance init_buchi,
+    weight_t global_min,
+    weight_t global_max,
+    std::queue<BuchiState_acceptance>& worklist,
+    unsigned int& state_counter
+) {
+    State::RESET();
+    Symbol::RESET();
+    Weight::RESET();
+
+    // Copy alphabet from master
+    size_t alph_size = nwa->getAlphabetSize();
+    new_alphabet = new MapArray<Symbol*>(alph_size);
+    for (size_t i = 0; i < alph_size; ++i) {
+        Symbol* original = nwa->getAlphabet()->at(i);
+        Symbol* copy = new Symbol(original->getName());
+        new_alphabet->insert(i, copy);
+    }
+
+    // Create weights array and weight register
+    new_weights = new MapArray<Weight*>(global_return_values.size());
+    weight_register.clear();
+
+    for (weight_t value : global_return_values) {
+        Weight* w = new Weight(value);
+        new_weights->insert(w->getId(), w);
+        weight_register.insert(value, w);
+    }
+
+    // Initialize state counter to name the states of Buchi
+    state_counter = 0;
+
+    // Fill in Büchi state
+    init_buchi.parent_state = nwa->getInitial();
+    init_buchi.last_guess   = weight_t(INIT_BUCHI_VALUE);
+    init_buchi.P1           = SetStd<State*>();
+    init_buchi.P2           = SetStd<State*>();
+
+    // start in phase "wait for master accept"
+    init_buchi.acceptance_flag    = ACC_WAIT_MASTER;
+
+    std::ostringstream ss;
+    ss << "b_" << state_counter++;
+    State* init_state = new State(ss.str(), new_alphabet->size(), global_min, global_max);
+
+    // Map the state to the tuple
+    state_map[init_buchi] = init_state;
+
+    // Add init Büchi state to start exploration
+    worklist.push(init_buchi);
+
+    return init_state;
+}
+
+void processBuchiTransition_acceptance(
+    const BuchiState_acceptance& current_gs,
+    unsigned int symbol_id,
+    MapStd<BuchiState_acceptance, State*>& state_map,
+    MapArray<Symbol*>* new_alphabet,
+    MapArray<Weight*>* new_weights,
+    MapStd<weight_t, Weight*>& weight_register,
+    const MapStd<MonitorKey, ChildAutomaton*>& monitors,
+    const SetStd<State*>& F_S,
+    unsigned int& state_counter,
+    SetStd<weight_t>& global_return_values,
+    weight_t global_min,
+    weight_t global_max,
+    std::queue<BuchiState_acceptance>& worklist,
+    const std::vector<SetStd<weight_t>>& child_return_values
+) {
+    Symbol* symbol = new_alphabet->at(symbol_id);
+    State* current_state = state_map[current_gs];
+
+    uint8_t phase_after_current = advance_acc_phase(current_gs);
+
+    // Precompute P1next, P2next once per (BuchiState, symbol)
+    SetStd<State*> P1next = stepMonitors(current_gs.P1, symbol, F_S);
+    SetStd<State*> P2next = stepMonitors(current_gs.P2, symbol, F_S);
+
+    for (Edge* parent_edge : *(current_gs.parent_state)->getSuccessors(symbol_id)) {
+        State* q_prime = parent_edge->getTo();
+
+        bool is_silent = (parent_edge->getWeight()->getValue() == 0);
+
+        if (is_silent) {
+            // CASE (A): Silent transition
+            BuchiState_acceptance next_global(q_prime, SILENT, P1next, P2next, phase_after_current);
+
+            if (!state_map.contains(next_global)) {
+                std::ostringstream ss;
+                ss << "b_" << state_counter++;
+                State* next_state = new State(ss.str(), new_alphabet->size(), global_min, global_max);
+                state_map[next_global] = next_state;
+                worklist.push(next_global);
+            }
+
+            Weight* weight = weight_register.at(SILENT);
+            Edge* new_edge = new Edge(symbol, weight, current_state, state_map[next_global]);
+            current_state->addSuccessor(new_edge);
+            state_map[next_global]->addPredecessor(new_edge);
+
+        } else {
+            // CASE (B/C): Call transitions
+            weight_t parent_weight = parent_edge->getWeight()->getValue();
+            size_t child_index = static_cast<size_t>(parent_weight.to_float());
+
+            const SetStd<weight_t>& child_vals = child_return_values[child_index];
+
+            for (const weight_t& guess : child_vals) {
+                // child-specific guesses only, SILENT not in child_vals
+                MonitorKey key = {child_index, guess};
+                if (!monitors.contains(key)) continue;
+
+                ChildAutomaton* monitor = monitors.at(key);
+
+                // Step monitor on the call symbol
+                State* monitor_init = monitor->getInitial();
+                monitor_init = (*monitor_init->getSuccessors(symbol_id)->begin())->getTo();
+
+                SetStd<State*> P1new, P2new;
+
+                if (current_gs.P2.size() == 0) {
+                    // CASE (B)
+                    P1new.insert(monitor_init);
+                    P2new = P1next;
+                } else {
+                    // CASE (C)
+                    P1new = P1next;
+                    P1new.insert(monitor_init);
+                    removeFinalStates(P1new, F_S);
+                    P2new = P2next;
+                }
+
+                BuchiState_acceptance next_global(q_prime, guess, P1new, P2new, phase_after_current);
+
+                if (!state_map.contains(next_global)) {
+                    std::ostringstream ss;
+                    ss << "b_" << state_counter++;
+                    State* next_state = new State(ss.str(), new_alphabet->size(), global_min, global_max);
+                    state_map[next_global] = next_state;
+                    worklist.push(next_global);
+                }
+
+                Weight* weight = weight_register.at(guess);
+                Edge* new_edge = new Edge(symbol, weight, current_state, state_map[next_global]);
+                current_state->addSuccessor(new_edge);
+                state_map[next_global]->addPredecessor(new_edge);
+            }
+        }
+    }
+}
+
+Automaton* NestedAutomaton::flatten_regular_parent_acceptance(value_function_t finVal, weight_t bound) {
+    State::RESET();
+    Symbol::RESET();
+    Weight::RESET();
+
+    // Initialize containers for Büchi automaton
+    MapArray<Symbol*>* new_alphabet = nullptr;
+    MapArray<Weight*>* new_weights  = nullptr;
+
+    weight_t global_min, global_max;
+
+    // Helper containers
+    BuchiState_acceptance init_buchi;
+    MapStd<BuchiState_acceptance, State*> state_map;
+    std::queue<BuchiState_acceptance> worklist;
+    MapStd<weight_t, Weight*> weight_register;
+    unsigned int state_counter = 0;
+
+    // 1. Compute global return values for all children
+    size_t k = this->getChildrenSize();
+
+    // Per-child return values
+    std::vector<SetStd<weight_t>> child_return_values(k);
+
+    // Global union
+    SetStd<weight_t> global_return_values;
+    global_return_values.insert(weight_t(SILENT));  // silent always present
+
+    for (size_t i = 0; i < k; ++i) {
+        ChildAutomaton* child = this->getChild(i);
+        if (!child) continue;
+
+        // child_return_values[i] = computeChildReturnValues(child, finVal, bound);
+        child_return_values[i] = computeChildReturnValuesParentAware(this, i, finVal, bound);
+
+        for (const weight_t& v : child_return_values[i]) {
+            global_return_values.insert(v);
+        }
+    }
+
+    // Robust domain init (avoid UB if globals were uninitialized)
+    bool have_non_silent = false;
+    for (weight_t val : global_return_values) {
+        if (val == SILENT) continue;
+        if (!have_non_silent) {
+            global_min = val;
+            global_max = val;
+            have_non_silent = true;
+        } else {
+            global_min = std::min(global_min, val);
+            global_max = std::max(global_max, val);
+        }
+    }
+    if (!have_non_silent) {
+        global_min = weight_t(0);
+        global_max = weight_t(0);
+    }
+
+    // 2. Construct all S_ij and collect Q_S and F_S
+    MapStd<MonitorKey, ChildAutomaton*> monitors;
+    SetStd<State*> Q_S, F_S;
+    constructMonitors(this, global_return_values, monitors, Q_S, F_S, finVal, bound, child_return_values);
+
+    // 3. Initialize
+    State* init_state = initializeBuchi_acceptance(
+        this, new_alphabet, new_weights, weight_register, global_return_values,
+        state_map, init_buchi, global_min, global_max, worklist, state_counter
+    );
+
+    // 4. Build the product automaton on-the-fly
+    while (!worklist.empty()) {
+        BuchiState_acceptance current_gs = worklist.front();
+        worklist.pop();
+
+        for (unsigned symbol_id = 0; symbol_id < new_alphabet->size(); ++symbol_id) {
+            processBuchiTransition_acceptance(
+                current_gs, symbol_id, state_map,
+                new_alphabet, new_weights, weight_register,
+                monitors, F_S, state_counter, global_return_values,
+                global_min, global_max, worklist, child_return_values
+            );
+        }
+    }
+
+    // 5. Create state array and mark Büchi-accepting states
+    MapArray<State*>* new_states = new MapArray<State*>(state_map.size());
+
+    for (const auto& [global_state, state] : state_map) {
+        new_states->insert(state->getId(), state);
+
+        // Accept iff we're in phase WAIT_P2EMPTY and P2 is empty.
+        if (global_state.acceptance_flag == ACC_WAIT_P2EMPTY && global_state.P2.size() == 0) {
+            state->setFinal(true);
+        }
+    }
+
+    // 6. Construct and return the product automaton
+    std::string buchi_name = "Buchi(" + this->getName() + ")";
+    Automaton* buchi = new Automaton(
+        buchi_name,
+        new_alphabet,
+        new_states,
+        new_weights,
+        global_min,
+        global_max,
+        init_state
+    );
+
+    // 7. Cleanup
+    for (const auto& [key, monitor] : monitors) {
+        delete monitor;
+    }
+
+    return buchi;
+}
+
+
+Automaton* NestedAutomaton::flatten_regular(value_function_t finVal, weight_t bound) {
+    if (this->allParentStatesFinal()) {
+        return flatten_regular_parent_trivial(finVal, bound); // accept iff P2 empty
+    } else {
+        return flatten_regular_parent_acceptance(finVal, bound); // track + accept in (track==1 && P2 empty)
+    }
+}
+
+
+
+
+
+
+
+
+
+
 
 // TODO: Check correctness if completing is indeed necessary
 // Make the parent and all children complete by adding a sink state and sink-weight (value 0 by default).
@@ -2636,7 +2952,7 @@ NestedAutomaton* NestedAutomaton::synchronizeChildren(
 }
 
 // assuming the input NWA is pseudo-deterministic and children are synchronized
-Automaton* NestedAutomaton::flatten() {
+Automaton* NestedAutomaton::flatten_Avg_SumMinus() {
     using std::size_t;
 
     // ---------- helper: single outgoing edge after determinization ----------
@@ -4017,7 +4333,7 @@ bool NestedAutomaton::emptiness_Avg_SumPlus (value_function_t infinite_aggregato
     else {
         int numEdges;
 
-        Automaton* buchi = transformToBuchi(SumB, theoretical_bound); // Key Lemma construction
+        Automaton* buchi = flatten_regular(SumB, theoretical_bound); // Key Lemma construction
         numEdges = 0;
         for (size_t s = 0; s < buchi->getStates()->size(); ++s) {
             State* state = buchi->getStates()->at(s);
@@ -4714,4 +5030,78 @@ bool NestedAutomaton::emptiness_monotonic_nesting_min_max(value_function_t infin
 
     delete unnested;
     return result;
+}
+
+
+
+bool NestedAutomaton::isNonEmpty(value_function_t infVal, value_function_t finVal, weight_t x, weight_t bound) {
+    if (finVal == SumPlus) {
+        if (infVal == Sup || infVal == LimSup) {
+            return this->emptiness_monotonic_nesting_supremum(infVal, finVal, x);
+        }
+        else if (infVal == Inf || infVal == LimInf) {
+            return this->emptiness_monotonic_nesting(infVal, finVal, x);
+        }
+        else if (infVal == LimInf || infVal == LimSup) {
+            return this->emptiness_LimAvg_with_final(x);
+        }
+        else {
+            QUAK_FAIL("isNonEmpty: unsupported infinite aggregator with SumPlus");
+        }
+    }
+    else if (finVal == SumMinus) {
+        if (infVal == Sup || infVal == LimSup) {
+            return this->emptiness_monotonic_nesting_supremum(infVal, finVal, x);
+        }
+        else if (infVal == Inf || infVal == LimInf) {
+            return this->emptiness_monotonic_nesting(infVal, finVal, x);
+        }
+        else if (infVal == LimInfAvg || infVal == LimSupAvg) {
+            auto macro_alphabet = this->generateMacroAlphabet();
+            NestedAutomaton* det_nwa = this->determinizeWithMacroAlphabet(macro_alphabet);
+            NestedAutomaton* sync_nwa = det_nwa->synchronizeChildren(macro_alphabet);
+            Automaton* flat = sync_nwa->flatten_Avg_SumMinus();
+            auto topFlat = flat->getTopValue(infVal);
+            delete flat;
+            delete sync_nwa;
+            delete det_nwa;
+            return (topFlat >= x);
+        }
+        else {
+            QUAK_FAIL("isNonEmpty: unsupported infinite aggregator with SumMinus");
+        }
+    }
+    else if (finVal == Max_f || finVal == Min_f) {
+        if (infVal == Sup || infVal == LimSup || infVal == Inf || infVal == LimInf) {
+            return this->emptiness_monotonic_nesting_min_max(infVal, finVal, x);
+            // Automaton* flat = this->flatten_regular(finVal);
+            // Automaton* nonSilent = Automaton::removeSilentTransitions(flat, infVal);
+            // weight_t topFlat = nonSilent->getTopValue(infVal);
+            // delete nonSilent;
+            // delete flat;
+            // return (topFlat >= x);
+        }
+        else if (infVal == LimInfAvg || infVal == LimSupAvg) {
+            Automaton* flat = this->flatten_regular(finVal);
+            Automaton* nonSilent = Automaton::removeSilentTransitions(flat, infVal);
+            weight_t topFlat = nonSilent->getTopValue(infVal);
+            delete nonSilent;
+            delete flat;
+            return (topFlat >= x);
+        }
+        else {
+            QUAK_FAIL("isNonEmpty: unsupported infinite aggregator with Min_f/Max_f");
+        }
+    }
+    else if (finVal == SumB) {
+        Automaton* flat = this->flatten_regular(finVal, bound);
+        Automaton* nonSilent = Automaton::removeSilentTransitions(flat, infVal);
+        weight_t topFlat = nonSilent->getTopValue(infVal);
+        delete nonSilent;
+        delete flat;
+        return (topFlat >= x);
+    }
+    else {
+        QUAK_FAIL("isNonEmpty: unsupported finite aggregator");
+    }
 }
