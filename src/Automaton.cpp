@@ -183,6 +183,7 @@ void Automaton::build(std::string newname, Parser* parser, MapStd<std::string, S
 	}
 
 	// Create State objects from parser's state names
+	bool finalStatesGiven = false;
 	for (const std::string &statename : parser->states) {
 		State* state = new State(statename, this->alphabet->size(), this->min_domain, this->max_domain);
 		this->states->insert(state->getId(), state);
@@ -191,6 +192,14 @@ void Automaton::build(std::string newname, Parser* parser, MapStd<std::string, S
 		// Set final flag based on parser's final_states
 		if (parser->final_states.contains(statename)) {
 			state->setFinal(true);
+			finalStatesGiven = true;
+		}
+	}
+	
+	// If no final states were given, make all states final
+	if (!finalStatesGiven) {
+		for (unsigned int state_id = 0; state_id < this->states->size(); ++state_id) {
+			this->states->at(state_id)->setFinal(true);
 		}
 	}
 
@@ -2641,7 +2650,7 @@ weight_t Automaton::compute_Top (value_function_t f, weight_t* top_values, Ultim
 
         switch (f) {
             case Inf:
-		result = top_Inf_path(top_values, path, loop, witness);
+				result = top_Inf_path(top_values, path, loop, witness);
                 break;
             case Sup:
                 result = top_Sup_path(top_values, path, witness);
@@ -3141,30 +3150,6 @@ weight_t Automaton::top_LimInf_with_final () const {
 	weight_t top = A->top_LimSup_with_final();
 	delete A;
 	return top;
-
-	// weight_t values[this->states->size()];
-	// weight_t top_scc[this->nb_SCCs];
-	// top_safety_scc(values, true);
-
-	// for (unsigned int scc_id = 0; scc_id < this->nb_SCCs; ++scc_id) {
-	// 	top_scc[scc_id] = this->min_domain;
-	// }
-
-	// for (unsigned int state_id = 0; state_id < this->states->size(); ++state_id) {
-	// 	int scc_id = this->states->at(state_id)->getTag();
-	// 	if (scc_id > -1) {
-	// 		top_scc[scc_id] = std::max(top_scc[scc_id], values[state_id]);
-	// 	}
-	// }
-
-	// weight_t top = this->min_domain;
-	// for (unsigned int scc_id = 0; scc_id < this->nb_SCCs; ++scc_id) {
-	// 	if (final_SCCs[scc_id] == true) {
-	// 		top = std::max(top, top_scc[scc_id]);
-	// 	}
-	// }
-
-	// return top;
 }
 
 
@@ -3488,38 +3473,7 @@ namespace {
 bool Automaton::emptiness_LimAvg_with_final(weight_t threshold) const {
     const unsigned int n = this->states->size();
 
-    // // 1) Reachable states and SCCs from the initial state
-    // std::vector<char> state_reachable(n, 0);
-    // std::vector<char> scc_reachable(this->nb_SCCs, 0);
-
-    // std::queue<unsigned int> q;
-    // unsigned int init_id = this->initial->getId();
-    // state_reachable[init_id] = 1;
-    // q.push(init_id);
-
-    // while (!q.empty()) {
-    //     unsigned int sid = q.front();
-    //     q.pop();
-
-    //     State* s = this->states->at(sid);
-    //     unsigned int tag = s->getTag();
-    //     scc_reachable[tag] = 1;
-
-    //     for (Symbol* sym : *s->getAlphabet()) {
-    //         auto* succs = s->getSuccessors(sym->getId());
-    //         if (!succs) continue;
-
-    //         for (Edge* e : *succs) {
-    //             unsigned int tid = e->getTo()->getId();
-    //             if (!state_reachable[tid]) {
-    //                 state_reachable[tid] = 1;
-    //                 q.push(tid);
-    //             }
-    //         }
-    //     }
-    // }
-
-    // 2) Collect states per SCC
+    // Collect states per SCC
     std::vector<std::vector<unsigned int>> states_in_scc(this->nb_SCCs);
     for (unsigned int sid = 0; sid < n; ++sid) {
         // if (!state_reachable[sid]) continue;  // prune unreachable early
@@ -3527,7 +3481,7 @@ bool Automaton::emptiness_LimAvg_with_final(weight_t threshold) const {
         states_in_scc[tag].push_back(sid);
     }
 
-    // 3) For each reachable, final SCC: compute max mean cycle and compare
+    // For each reachable, final SCC: compute max mean cycle and compare
     for (unsigned int scc_id = 0; scc_id < this->nb_SCCs; ++scc_id) {
         if (!this->final_SCCs[scc_id]) continue;  // SCC not accepting
         // if (!scc_reachable[scc_id]) continue;     // SCC not reachable

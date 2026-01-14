@@ -161,8 +161,8 @@ ChildAutomaton* NestedAutomaton::getChild(std::size_t index) const {
 }
 
 
-/* ------------------------ Helper utilities ------------------------- */
-// Helper function to apply SumB bounding to a weight value
+
+
 weight_t applyBound(weight_t value, weight_t bound) {
     if (value > bound) {
         return bound;
@@ -173,295 +173,146 @@ weight_t applyBound(weight_t value, weight_t bound) {
     }
 }
 
-/* ------------------------ Büchi Transformation ----------------------- */
-// Key lemma:
-// Assumes: a NWA AA with regular WA children B_i
-// Ensures: a silf(f)-WA A' that is equivalent to A
-
-/* ------------------------ Parent-aware exact SumB return values ------------------------- */
-
-// Small helper to interpret "child index" stored in parent-edge weights.
-// Assumption (as in your code): weights on call edges are integer-like (0=silent, i>0=child i).
 static inline size_t edgeWeightToChildIndex(const weight_t& w) {
     float f = w.to_float();
     if (f <= 0.0f) return 0;
     return static_cast<size_t>(f);
 }
 
-// Compute "good" master states for existence of accepting runs:
-//
-// good[v]      = reachable from initial AND can reach an accepting SCC
-// good_reach[v]= reachable from initial while staying inside good[]
-//
-// Accepting SCC = SCC that contains at least one final state AND contains a directed cycle
-// (i.e., |SCC|>1 or a self-loop).
-struct MasterGoodMask {
-    std::vector<unsigned char> good;       // 0/1
-    std::vector<unsigned char> good_reach; // 0/1
-};
-
-static MasterGoodMask computeMasterGoodMask(const NestedAutomaton* nwa) {
-    MasterGoodMask mask;
-
-    if (!nwa || !nwa->getStates() || nwa->getStates()->size() == 0 || !nwa->getInitial()) {
-        return mask;
-    }
-
+static std::vector<bool> computeParentGoodMask(const NestedAutomaton* nwa) {
     MapArray<State*>* states = nwa->getStates();
     const size_t n = states->size();
     const size_t A = nwa->getAlphabetSize();
+    const unsigned int nbSCC = nwa->nb_SCCs;
 
-    // Build adjacency (ignoring labels) + reverse adjacency
-    std::vector<std::vector<int>> adj(n), radj(n);
-    std::vector<unsigned char> self_loop(n, 0);
+    std::vector<bool> good(n, false);
+
+    // Identify "proper accepting SCCs" = SCC with a final state AND a directed cycle
+    std::vector<int> proper_accepting_scc(nbSCC, -1);
 
     for (size_t sid = 0; sid < n; ++sid) {
         State* s = states->at(sid);
-        if (!s) continue;
+        int cid = s->getTag();
+
+        if (proper_accepting_scc[cid] > -1) continue;
+        if (!nwa->final_SCCs[cid]) continue;
 
         for (size_t a = 0; a < A; ++a) {
             SetStd<Edge*>* succs = s->getSuccessors(a);
-            if (!succs) continue;
+            for (Edge* e : *succs) {
+                int tid_i = e->getTo()->getTag();
+                if (tid_i == cid) {
+                    proper_accepting_scc[cid] = 1;
+                    break;
+                }
+            }
+            if (proper_accepting_scc[cid] > 0) break;
+        }
+
+        if (proper_accepting_scc[cid] < 0) {
+            proper_accepting_scc[cid] = 0;
+        }
+    }
+
+    // If there is no proper accepting SCC, nothing is "good"
+    bool any_acc = false;
+    for (unsigned int cid = 0; cid < nbSCC; ++cid) {
+        if (proper_accepting_scc[cid] > 0) { any_acc = true; break; }
+    }
+    if (!any_acc) return good;
+
+    // Build reverse SCC DAG
+    std::vector<std::vector<int>> radj_scc(nbSCC);
+    radj_scc.reserve(nbSCC);
+
+    for (size_t sid = 0; sid < n; ++sid) {
+        State* s = states->at(sid);
+        int cs = s->getTag();
+
+        for (size_t a = 0; a < A; ++a) {
+            SetStd<Edge*>* succs = s->getSuccessors(a);
 
             for (Edge* e : *succs) {
-                if (!e || !e->getTo()) continue;
                 int tid_i = e->getTo()->getId();
-                if (tid_i < 0) continue;
-                size_t tid = static_cast<size_t>(tid_i);
-                if (tid >= n) continue;
+                int ct = states->at(tid_i)->getTag();
 
-                adj[sid].push_back(static_cast<int>(tid));
-                radj[tid].push_back(static_cast<int>(sid));
-                if (tid == sid) self_loop[sid] = 1;
-            }
-        }
-    }
-
-    // Reachable from initial (in full graph)
-    std::vector<unsigned char> reach(n, 0);
-    {
-        int init_i = nwa->getInitial()->getId();
-        if (init_i >= 0 && static_cast<size_t>(init_i) < n) {
-            std::queue<int> q;
-            reach[static_cast<size_t>(init_i)] = 1;
-            q.push(init_i);
-            while (!q.empty()) {
-                int v = q.front(); q.pop();
-                for (int u : adj[static_cast<size_t>(v)]) {
-                    if (!reach[static_cast<size_t>(u)]) {
-                        reach[static_cast<size_t>(u)] = 1;
-                        q.push(u);
-                    }
+                if (ct != cs) {
+                    radj_scc[ct].push_back(cs);
                 }
             }
         }
     }
 
-    // Kosaraju SCC (iterative)
-    std::vector<unsigned char> vis(n, 0);
-    std::vector<int> order;
-    order.reserve(n);
+    // Mark SCCs that can reach a proper accepting SCC (reverse BFS on SCC DAG)
+    std::vector<unsigned char> can_reach_acc_scc(nbSCC, 0);
+    std::queue<int> q;
 
-    for (size_t v = 0; v < n; ++v) {
-        if (vis[v]) continue;
+    for (unsigned int cid = 0; cid < nbSCC; ++cid) {
+        if (!proper_accepting_scc[cid]) continue;
+        can_reach_acc_scc[cid] = 1;
+        q.push(static_cast<int>(cid));
+    }
 
-        // iterative DFS to compute finish order
-        std::vector<std::pair<int, size_t>> st;
-        st.reserve(64);
-        vis[v] = 1;
-        st.push_back({static_cast<int>(v), 0});
-
-        while (!st.empty()) {
-            int node = st.back().first;
-            size_t &idx = st.back().second;
-
-            if (idx < adj[static_cast<size_t>(node)].size()) {
-                int nei = adj[static_cast<size_t>(node)][idx++];
-                if (!vis[static_cast<size_t>(nei)]) {
-                    vis[static_cast<size_t>(nei)] = 1;
-                    st.push_back({nei, 0});
-                }
-            } else {
-                order.push_back(node);
-                st.pop_back();
+    while (!q.empty()) {
+        int cur = q.front(); q.pop();
+        const auto& preds = radj_scc[static_cast<size_t>(cur)];
+        for (int p : preds) {
+            if (!can_reach_acc_scc[p]) {
+                can_reach_acc_scc[p] = 1;
+                q.push(p);
             }
         }
     }
 
-    std::vector<int> comp_id(n, -1);
-    std::vector<std::vector<int>> comps;
-    comps.reserve(n);
-
-    for (int k = static_cast<int>(order.size()) - 1; k >= 0; --k) {
-        int v = order[static_cast<size_t>(k)];
-        if (comp_id[static_cast<size_t>(v)] != -1) continue;
-
-        int cid = static_cast<int>(comps.size());
-        comps.push_back({});
-        std::queue<int> q;
-        q.push(v);
-        comp_id[static_cast<size_t>(v)] = cid;
-
-        while (!q.empty()) {
-            int x = q.front(); q.pop();
-            comps.back().push_back(x);
-
-            for (int p : radj[static_cast<size_t>(x)]) {
-                if (comp_id[static_cast<size_t>(p)] == -1) {
-                    comp_id[static_cast<size_t>(p)] = cid;
-                    q.push(p);
-                }
-            }
+    // Lift SCC predicate back to states
+    for (size_t sid = 0; sid < n; ++sid) {
+        int cid = states->at(sid)->getTag();
+        if (can_reach_acc_scc[cid]) {
+            good[sid] = 1;
         }
     }
 
-    // Mark accepting SCCs
-    std::vector<unsigned char> acc_comp(comps.size(), 0);
-    for (size_t cid = 0; cid < comps.size(); ++cid) {
-        bool has_final = false;
-        bool has_cycle = false;
-
-        if (comps[cid].size() > 1) {
-            has_cycle = true;
-        } else if (comps[cid].size() == 1) {
-            int v = comps[cid][0];
-            if (v >= 0 && static_cast<size_t>(v) < n && self_loop[static_cast<size_t>(v)]) {
-                has_cycle = true;
-            }
-        }
-
-        for (int v : comps[cid]) {
-            State* s = states->at(static_cast<size_t>(v));
-            if (s && s->getFinal()) { has_final = true; break; }
-        }
-
-        if (has_final && has_cycle) acc_comp[cid] = 1;
-    }
-
-    // Co-reachable to accepting SCCs
-    std::vector<unsigned char> coreach(n, 0);
-    {
-        std::queue<int> q;
-        for (size_t cid = 0; cid < comps.size(); ++cid) {
-            if (!acc_comp[cid]) continue;
-            for (int v : comps[cid]) {
-                if (!coreach[static_cast<size_t>(v)]) {
-                    coreach[static_cast<size_t>(v)] = 1;
-                    q.push(v);
-                }
-            }
-        }
-
-        while (!q.empty()) {
-            int v = q.front(); q.pop();
-            for (int p : radj[static_cast<size_t>(v)]) {
-                if (!coreach[static_cast<size_t>(p)]) {
-                    coreach[static_cast<size_t>(p)] = 1;
-                    q.push(p);
-                }
-            }
-        }
-    }
-
-    mask.good.assign(n, 0);
-    for (size_t i = 0; i < n; ++i) {
-        if (reach[i] && coreach[i]) mask.good[i] = 1;
-    }
-
-    // Reachable from initial while staying inside good[]
-    mask.good_reach.assign(n, 0);
-    {
-        int init_i = nwa->getInitial()->getId();
-        if (init_i >= 0 && static_cast<size_t>(init_i) < n && mask.good[static_cast<size_t>(init_i)]) {
-            std::queue<int> q;
-            mask.good_reach[static_cast<size_t>(init_i)] = 1;
-            q.push(init_i);
-
-            while (!q.empty()) {
-                int v = q.front(); q.pop();
-                for (int u : adj[static_cast<size_t>(v)]) {
-                    size_t uu = static_cast<size_t>(u);
-                    if (!mask.good[uu]) continue;
-                    if (!mask.good_reach[uu]) {
-                        mask.good_reach[uu] = 1;
-                        q.push(u);
-                    }
-                }
-            }
-        }
-    }
-
-    return mask;
+    return good;
 }
 
-static SetStd<weight_t> computeMinMaxReturnValuesParentAware(
-    const NestedAutomaton* nwa,
-    size_t child_index,
-    value_function_t finVal
-) {
+static SetStd<weight_t> computeMinMaxReturnValuesParentAware(const NestedAutomaton* nwa, size_t child_index, value_function_t finVal) {
     SetStd<weight_t> return_values;
-
-    if (!nwa) return return_values;
-    if (child_index >= nwa->getChildrenSize()) return return_values;
-    if (!(finVal == Min_f || finVal == Max_f)) return return_values;
-
     ChildAutomaton* child = nwa->getChild(child_index);
-    if (!child) return return_values;
 
     // Treat size==1 children as "dummy/silent"
-    if (!child->getStates() || child->getStates()->size() <= 1) return return_values;
+    if (child->getStates()->size() <= 1) return return_values;
 
     MapArray<State*>* mstates = nwa->getStates();
-    if (!mstates || mstates->size() == 0) return return_values;
 
     const size_t M = mstates->size();
     const size_t A = nwa->getAlphabetSize();
 
-    MasterGoodMask mg = computeMasterGoodMask(nwa);
-    if (mg.good.size() != M || mg.good_reach.size() != M) return return_values;
+    std::vector<bool> good = computeParentGoodMask(nwa);
 
     State* cinit = child->getInitial();
-    if (!cinit) return return_values;
 
-    using ProdState = std::tuple<State*, State*, weight_t>; // (master_state, child_state, current_value)
+    using ProdState = std::tuple<State*, State*, weight_t>; // (parent_state, child_state, current_value)
     std::queue<ProdState> worklist;
     SetStd<ProdState> visited;
 
     // Seed: pick a call edge p -a-> q that calls child_index, and make the child consume 'a' immediately
     for (size_t pid = 0; pid < M; ++pid) {
-        if (!mg.good_reach[pid]) continue;
-
         State* p = mstates->at(pid);
-        if (!p) continue;
 
         for (size_t a = 0; a < A; ++a) {
             SetStd<Edge*>* msuccs = p->getSuccessors(a);
-            if (!msuccs) continue;
 
             for (Edge* me : *msuccs) {
-                if (!me || !me->getTo()) continue;
-
                 size_t idx = edgeWeightToChildIndex(me->getWeight()->getValue());
                 if (idx != child_index) continue;
 
-                // require it is a real (non-dummy) call
-                ChildAutomaton* called = nwa->getChild(idx);
-                if (!called || !called->getStates() || called->getStates()->size() <= 1) continue;
-
                 int qid_i = me->getTo()->getId();
-                if (qid_i < 0) continue;
-                size_t qid = static_cast<size_t>(qid_i);
-                if (qid >= M) continue;
-                if (!mg.good[qid]) continue; // must stay in extendable-to-acceptance region
-
+                if (!good[qid_i]) continue; // must stay in extendable-to-acceptance region
                 State* m_after = me->getTo();
 
                 SetStd<Edge*>* cs0 = cinit->getSuccessors(a);
-                if (!cs0) continue;
 
                 for (Edge* ce0 : *cs0) {
-                    if (!ce0 || !ce0->getTo()) continue;
-
                     State* c1 = ce0->getTo();
                     weight_t w0 = ce0->getWeight()->getValue();
 
@@ -480,7 +331,7 @@ static SetStd<weight_t> computeMinMaxReturnValuesParentAware(
         }
     }
 
-    // BFS on synchronized master×child (master must remain in mg.good)
+    // BFS on synchronized master x child (master must remain in good)
     while (!worklist.empty()) {
         ProdState cur = worklist.front(); worklist.pop();
 
@@ -495,25 +346,15 @@ static SetStd<weight_t> computeMinMaxReturnValuesParentAware(
 
         for (size_t a = 0; a < A; ++a) {
             SetStd<Edge*>* msuccs = mcur->getSuccessors(a);
-            if (!msuccs) continue;
-
             SetStd<Edge*>* csuccs = ccur->getSuccessors(a);
-            if (!csuccs) continue;
 
             for (Edge* me : *msuccs) {
-                if (!me || !me->getTo()) continue;
-
                 int mid_i = me->getTo()->getId();
-                if (mid_i < 0) continue;
                 size_t mid = static_cast<size_t>(mid_i);
-                if (mid >= M) continue;
-                if (!mg.good[mid]) continue;
+                if (!good[mid_i]) continue;
 
                 State* m2 = me->getTo();
-
                 for (Edge* ce : *csuccs) {
-                    if (!ce || !ce->getTo()) continue;
-
                     State* c2 = ce->getTo();
                     weight_t w = ce->getWeight()->getValue();
 
@@ -536,92 +377,60 @@ static SetStd<weight_t> computeMinMaxReturnValuesParentAware(
     return return_values;
 }
 
-static SetStd<weight_t> computeSumBReturnValuesParentAware(
-    const NestedAutomaton* nwa,
-    size_t child_index,
-    weight_t bound
-) {
+static SetStd<weight_t> computeSumBReturnValuesParentAware(const NestedAutomaton* nwa, size_t child_index, weight_t bound) {
     SetStd<weight_t> return_values;
-
-    if (!nwa) return return_values;
-    if (child_index >= nwa->getChildrenSize()) return return_values;
-
     ChildAutomaton* child = nwa->getChild(child_index);
-    if (!child) return return_values;
 
     // Treat size==1 children as "dummy/silent"
-    if (!child->getStates() || child->getStates()->size() <= 1) return return_values;
+    if (child->getStates()->size() <= 1) return return_values;
 
     if (bound < 0) QUAK_FAIL("SumB requires a non-negative bound");
 
-    MasterGoodMask mg = computeMasterGoodMask(nwa);
-    if (mg.good.empty() || mg.good_reach.empty()) return return_values;
-
     MapArray<State*>* mstates = nwa->getStates();
+
     const size_t M = mstates->size();
     const size_t A = nwa->getAlphabetSize();
 
-    // Collect all possible synchronized starts at a call site:
-    // master takes the call edge on symbol a, and child consumes the SAME symbol a as its 1st letter.
-    using ProdState = std::tuple<State*, State*, weight_t, weight_t>;
+    std::vector<bool> good = computeParentGoodMask(nwa);
+
+    State* cinit = child->getInitial();
+
+    using ProdState = std::tuple<State*, State*, weight_t, weight_t>; // (parent_state, child_state, sum, hit)
     std::queue<ProdState> worklist;
     SetStd<ProdState> visited;
 
-    State* cinit = child->getInitial();
-    if (!cinit) return return_values;
-
-    bool any_seed = false;
-
+    // Seed: pick a call edge p -a-> q that calls child_index, and make the child consume 'a' immediately
     for (size_t pid = 0; pid < M; ++pid) {
-        if (!mg.good_reach[pid]) continue;
         State* p = mstates->at(pid);
-        if (!p) continue;
 
         for (size_t a = 0; a < A; ++a) {
-            SetStd<Edge*>* succs = p->getSuccessors(a);
-            if (!succs) continue;
+            SetStd<Edge*>* msuccs = p->getSuccessors(a);
 
-            for (Edge* e : *succs) {
-                if (!e || !e->getTo()) continue;
-
-                size_t idx = edgeWeightToChildIndex(e->getWeight()->getValue());
+            for (Edge* me : *msuccs) {
+                size_t idx = edgeWeightToChildIndex(me->getWeight()->getValue());
                 if (idx != child_index) continue;
 
-                ChildAutomaton* called = nwa->getChild(idx);
-                if (!called || !called->getStates() || called->getStates()->size() <= 1) continue;
+                int qid_i = me->getTo()->getId();
+                if (!good[qid_i]) continue; // must stay in extendable-to-acceptance region
+                State* m_after = me->getTo();
 
-                State* m_after = e->getTo();
-
-                int to_i = m_after->getId();
-                if (to_i < 0) continue;
-                size_t to = static_cast<size_t>(to_i);
-                if (to >= M) continue;
-                if (!mg.good[to]) continue; // accepting runs cannot enter non-good
-
-                // Child must consume the call symbol a immediately.
                 SetStd<Edge*>* cs0 = cinit->getSuccessors(a);
-                if (!cs0) continue;
 
                 for (Edge* ce0 : *cs0) {
-                    if (!ce0 || !ce0->getTo()) continue;
-
-                    State*   c1  = ce0->getTo();
-                    weight_t w0  = ce0->getWeight()->getValue();
-                    weight_t raw = w0;
+                    State* c1 = ce0->getTo();
+                    weight_t w0 = ce0->getWeight()->getValue();
 
                     weight_t sum1;
                     weight_t hit1 = weight_t(0);
 
-                    if (raw > bound)      { sum1 = bound;  hit1 = bound; }
-                    else if (raw < -bound){ sum1 = -bound; hit1 = -bound; }
-                    else                  { sum1 = raw; }
+                    if (w0 > bound)       { sum1 = bound;  hit1 = bound; }
+                    else if (w0 < -bound) { sum1 = -bound; hit1 = -bound; }
+                    else                  { sum1 = w0; }
 
                     ProdState init = { m_after, c1, sum1, hit1 };
 
                     if (!visited.contains(init)) {
                         visited.insert(init);
-                        any_seed = true;
-
                         if (child->isFinal(c1)) {
                             return_values.insert(hit1 != weight_t(0) ? hit1 : sum1);
                         } else {
@@ -633,9 +442,7 @@ static SetStd<weight_t> computeSumBReturnValuesParentAware(
         }
     }
 
-    if (!any_seed) return return_values;
-
-
+    // BFS on synchronized master x child (master must remain in good)
     while (!worklist.empty()) {
         ProdState cur = worklist.front(); worklist.pop();
 
@@ -644,35 +451,21 @@ static SetStd<weight_t> computeSumBReturnValuesParentAware(
         weight_t sum = std::get<2>(cur);
         weight_t hit = std::get<3>(cur);
 
-        // child final => record value and stop
         if (child->isFinal(ccur)) {
             return_values.insert(hit != weight_t(0) ? hit : sum);
             continue;
         }
 
-        // step by one input symbol
         for (size_t a = 0; a < A; ++a) {
             SetStd<Edge*>* msuccs = mcur->getSuccessors(a);
-            if (!msuccs) continue;
-
             SetStd<Edge*>* csuccs = ccur->getSuccessors(a);
-            if (!csuccs) continue;
 
             for (Edge* me : *msuccs) {
-                if (!me || !me->getTo()) continue;
+                int mid_i = me->getTo()->getId();
+                if (!good[mid_i]) continue;
+
                 State* m2 = me->getTo();
-
-                int m2i = m2->getId();
-                if (m2i < 0) continue;
-                size_t m2id = static_cast<size_t>(m2i);
-                if (m2id >= M) continue;
-
-                // Must stay in good region to be extendable to acceptance
-                if (!mg.good[m2id]) continue;
-
                 for (Edge* ce : *csuccs) {
-                    if (!ce || !ce->getTo()) continue;
-
                     State* c2 = ce->getTo();
                     weight_t w = ce->getWeight()->getValue();
                     weight_t raw = sum + w;
@@ -711,23 +504,17 @@ static SetStd<weight_t> computeSumBReturnValuesParentAware(
 }
 
 // Convenience wrapper used from flatten_regular:
-static SetStd<weight_t> computeChildReturnValuesParentAware(
-    const NestedAutomaton* nwa,
-    size_t child_index,
-    value_function_t finVal,
-    weight_t bound
-) {
+SetStd<weight_t> NestedAutomaton::computeChildReturnValuesParentAware(size_t child_index, value_function_t finVal, weight_t bound) {
     SetStd<weight_t> return_values;
-    if (!nwa) return return_values;
 
-    ChildAutomaton* child = nwa->getChild(child_index);
+    ChildAutomaton* child = this->getChild(child_index);
     if (!child) return return_values;
 
     if (finVal == Min_f || finVal == Max_f) {
-        return computeMinMaxReturnValuesParentAware(nwa, child_index, finVal);
+        return computeMinMaxReturnValuesParentAware(this, child_index, finVal);
     }
     if (finVal == SumB) {
-        return computeSumBReturnValuesParentAware(nwa, child_index, bound);
+        return computeSumBReturnValuesParentAware(this, child_index, bound);
     }
 
     QUAK_FAIL("Unsupported value function for child automaton");
@@ -785,7 +572,196 @@ bool isDominatedState(const SetStd<std::pair<State*, weight_t>>& visited, State*
     return false;
 }
 
-SetStd<weight_t> computeMinMaxReturnValues(ChildAutomaton* child, value_function_t finVal) {
+static SetStd<weight_t> computeMinMaxReturnValues(ChildAutomaton* child, value_function_t finVal) {
+    SetStd<weight_t> return_values;
+
+    if (!child) return return_values;
+    if (!(finVal == Min_f || finVal == Max_f)) return return_values;
+
+    // Treat size<=1 children as "dummy/silent"
+    if (!child->getStates() || child->getStates()->size() <= 1) return return_values;
+
+    State* init = child->getInitial();
+    if (!init) return return_values;
+
+    const size_t A = child->getAlphabetSize();
+
+    // We must compute ALL possible return values, so we track (state, current_value).
+    using ChildValState = std::pair<State*, weight_t>;
+    std::queue<ChildValState> worklist;
+    SetStd<ChildValState> visited;
+
+    // Seed by consuming the FIRST input letter immediately:
+    // for any symbol a and any edge init -a/w-> q, start at (q, w).
+    for (size_t a = 0; a < A; ++a) {
+        SetStd<Edge*>* succs = init->getSuccessors(a);
+        if (!succs) continue;
+
+        for (Edge* e0 : *succs) {
+            if (!e0 || !e0->getTo() || !e0->getWeight()) continue;
+
+            State* q = e0->getTo();
+            weight_t w0 = e0->getWeight()->getValue();
+
+            ChildValState seed = { q, w0 };
+            if (visited.contains(seed)) continue;
+            visited.insert(seed);
+
+            if (child->isFinal(q)) {
+                return_values.insert(w0);   // return after consuming exactly one letter
+            } else {
+                worklist.push(seed);
+            }
+        }
+    }
+
+    // BFS/graph exploration on (child-state x current min/max value)
+    while (!worklist.empty()) {
+        ChildValState cur = worklist.front();
+        worklist.pop();
+
+        State* s = cur.first;
+        weight_t val = cur.second;
+
+        for (size_t a = 0; a < A; ++a) {
+            SetStd<Edge*>* succs = s->getSuccessors(a);
+            if (!succs) continue;
+
+            for (Edge* e : *succs) {
+                if (!e || !e->getTo() || !e->getWeight()) continue;
+
+                State* t = e->getTo();
+                weight_t w = e->getWeight()->getValue();
+
+                weight_t next_val = (finVal == Min_f) ? std::min(val, w) : std::max(val, w);
+                ChildValState nxt = { t, next_val };
+
+                if (visited.contains(nxt)) continue;
+                visited.insert(nxt);
+
+                if (child->isFinal(t)) {
+                    return_values.insert(next_val);
+                } else {
+                    worklist.push(nxt);
+                }
+            }
+        }
+    }
+
+    return return_values;
+}
+
+static SetStd<weight_t> computeSumBReturnValues(ChildAutomaton* child, weight_t bound) {
+    SetStd<weight_t> return_values;
+
+    if (!child) return return_values;
+
+    // Treat size<=1 children as "dummy/silent"
+    if (!child->getStates() || child->getStates()->size() <= 1) return return_values;
+
+    State* init = child->getInitial();
+    if (!init) return return_values;
+
+    const size_t A = child->getAlphabetSize();
+
+    // State: (automaton_state, accumulated_sum, bound_value_hit)
+    // bound_value_hit: 0 = never exceeded, +bound = hit upper bound first, -bound = hit lower bound first
+    using SumState = std::tuple<State*, weight_t, weight_t>;
+    std::queue<SumState> worklist;
+    SetStd<SumState> visited;
+
+    auto record_return = [&](weight_t sum, weight_t bound_hit) {
+        if (bound_hit != weight_t(0)) return_values.insert(bound_hit);
+        else return_values.insert(sum);
+    };
+
+    auto push_or_record = [&](State* st, weight_t sum, weight_t bound_hit) {
+        SumState s = {st, sum, bound_hit};
+        if (visited.contains(s)) return;
+        visited.insert(s);
+
+        if (child->isFinal(st)) {
+            // Finals are sinks: record and do not enqueue
+            record_return(sum, bound_hit);
+        } else {
+            worklist.push(s);
+        }
+    };
+
+    auto step = [&](weight_t curr_sum, weight_t bound_hit, weight_t edge_w,
+                    weight_t& next_sum, weight_t& next_bound_hit) {
+        weight_t raw_sum = curr_sum + edge_w;
+
+        next_bound_hit = bound_hit;
+
+        if (bound_hit == weight_t(0)) {
+            // First time we might cross a bound
+            if (raw_sum > bound) {
+                next_sum = bound;
+                next_bound_hit = bound;
+            } else if (raw_sum < -bound) {
+                next_sum = -bound;
+                next_bound_hit = -bound;
+            } else {
+                next_sum = raw_sum;
+                // next_bound_hit stays 0
+            }
+        } else {
+            // Already hit a bound earlier; keep bounded accumulator
+            next_sum = applyBound(raw_sum, bound);
+            // next_bound_hit stays the same
+        }
+    };
+
+    // Seed by consuming ONE symbol immediately from init
+    for (size_t sym_id = 0; sym_id < A; ++sym_id) {
+        SetStd<Edge*>* succs = init->getSuccessors(sym_id);
+        if (!succs) continue;
+
+        for (Edge* e0 : *succs) {
+            if (!e0 || !e0->getTo() || !e0->getWeight()) continue;
+
+            State* s1 = e0->getTo();
+            weight_t w0 = e0->getWeight()->getValue();
+
+            weight_t next_sum, next_hit;
+            step(weight_t(0), weight_t(0), w0, next_sum, next_hit);
+
+            push_or_record(s1, next_sum, next_hit);
+        }
+    }
+
+    // Continue exploration
+    while (!worklist.empty()) {
+        SumState cur = worklist.front();
+        worklist.pop();
+
+        State* curr_state = std::get<0>(cur);
+        weight_t curr_sum = std::get<1>(cur);
+        weight_t bound_hit = std::get<2>(cur);
+
+        for (size_t sym_id = 0; sym_id < A; ++sym_id) {
+            SetStd<Edge*>* succs = curr_state->getSuccessors(sym_id);
+            if (!succs) continue;
+
+            for (Edge* edge : *succs) {
+                if (!edge || !edge->getTo() || !edge->getWeight()) continue;
+
+                State* next_state = edge->getTo();
+                weight_t edge_weight = edge->getWeight()->getValue();
+
+                weight_t next_sum, next_hit;
+                step(curr_sum, bound_hit, edge_weight, next_sum, next_hit);
+
+                push_or_record(next_state, next_sum, next_hit);
+            }
+        }
+    }
+
+    return return_values;
+}
+
+/*SetStd<weight_t> computeMinMaxReturnValues(ChildAutomaton* child, value_function_t finVal) {
     SetStd<weight_t> return_values;
 
     using ValueState = std::pair<State*, weight_t>;
@@ -797,9 +773,9 @@ SetStd<weight_t> computeMinMaxReturnValues(ChildAutomaton* child, value_function
     // Set initial value
     weight_t initial_value;
     if (finVal == Min_f) {
-        initial_value = weight_t(std::numeric_limits<float>::max());     // +∞
+        initial_value = weight_t(std::numeric_limits<float>::max());     // +infty
     } else { // Max_f
-        initial_value = weight_t(std::numeric_limits<float>::lowest());  // -∞
+        initial_value = weight_t(std::numeric_limits<float>::lowest());  // -infty
     }
 
     State* init = child->getInitial();
@@ -863,9 +839,9 @@ SetStd<weight_t> computeMinMaxReturnValues(ChildAutomaton* child, value_function
     }
 
     return return_values;
-}
+}*/
 
-SetStd<weight_t> computeSumBReturnValues(ChildAutomaton* child, weight_t bound) {
+/*SetStd<weight_t> computeSumBReturnValues(ChildAutomaton* child, weight_t bound) {
     SetStd<weight_t> return_values;
 
     // BFS to explore all possible sums
@@ -957,10 +933,10 @@ SetStd<weight_t> computeSumBReturnValues(ChildAutomaton* child, weight_t bound) 
     }
 
     return return_values;
-}
+}*/
 
 // Helper: Compute all possible return values for a single child automaton
-SetStd<weight_t> computeChildReturnValues(ChildAutomaton* child, value_function_t finVal, weight_t bound) {
+SetStd<weight_t> NestedAutomaton::computeChildReturnValues(ChildAutomaton* child, value_function_t finVal, weight_t bound) {
     SetStd<weight_t> return_values;
     
     if (!child) {
@@ -998,7 +974,7 @@ SetStd<weight_t> computeChildReturnValues(ChildAutomaton* child, value_function_
     return return_values;
 }
 
-// Compute the global set of all possible return values across all children
+// Compute the global set of all possible return values across all children -- used only for debugging
 SetStd<weight_t> computeGlobalReturnValues(const NestedAutomaton* nwa, value_function_t finVal, weight_t bound) {
     SetStd<weight_t> global_values;
     
@@ -1153,7 +1129,7 @@ State* initializeBuchi(
     // Initialize state counter to name the states of Buchi
     state_counter = 0;
     
-    // Fill in Büchi state
+    // Fill in Buchi state
     init_buchi.parent_state = nwa->getInitial();
     init_buchi.last_guess = weight_t(INIT_BUCHI_VALUE); 
     init_buchi.P1 = SetStd<State*>();
@@ -1165,7 +1141,7 @@ State* initializeBuchi(
 
     // Map the state to the tuple
     state_map[init_buchi] = init_state;
-    // Add init Büchi state to start exploration
+    // Add init Buchi state to start exploration
     worklist.push(init_buchi);
 
     return init_state;
@@ -1278,7 +1254,7 @@ Automaton* NestedAutomaton::flatten_regular_parent_trivial(value_function_t finV
     Symbol::RESET();
     Weight::RESET();
 
-    // Initialize containers for Büchi automaton
+    // Initialize containers for Buchi automaton
     MapArray<Symbol*>* new_alphabet;
     MapArray<Weight*>* new_weights;
     weight_t global_min, global_max;
@@ -1305,7 +1281,7 @@ Automaton* NestedAutomaton::flatten_regular_parent_trivial(value_function_t finV
         if (!child) continue;
         
         // child_return_values[i] = computeChildReturnValues(child, finVal, bound);
-        child_return_values[i] = computeChildReturnValuesParentAware(this, i, finVal, bound);
+        child_return_values[i] = this->computeChildReturnValuesParentAware(i, finVal, bound);
 
         for (const weight_t& v : child_return_values[i]) {
             global_return_values.insert(v);
@@ -1370,7 +1346,7 @@ Automaton* NestedAutomaton::flatten_regular_parent_trivial(value_function_t finV
 }
 
 bool NestedAutomaton::allParentStatesFinal() const {
-    for (State* q : *(this->getStates())) {   // adapt accessor to your codebase
+    for (State* q : *(this->getStates())) {
         if (!q->getFinal()) return false;
     }
     return true;
@@ -1378,8 +1354,8 @@ bool NestedAutomaton::allParentStatesFinal() const {
 
 
 // On-the-fly generalized-buchi to buchi conversion:
-// first visit parent-accepting states, then visit states with P2 empty.
-// buchi accepting states in the flattened automaton are exactly those in phase WAIT_P2EMPTY with P2 empty.
+// first visit parent-accepting states, then visit states with P2 empty
+// buchi accepting states in the flattened automaton are exactly those in phase WAIT_P2EMPTY with P2 empty
 static constexpr bool ACC_WAIT_MASTER  = 0; // waiting to see parent in accepting state
 static constexpr bool ACC_WAIT_P2EMPTY = 1; // waiting to see P2 nonempty
 
@@ -1430,7 +1406,7 @@ State* initializeBuchi_acceptance(
     // Initialize state counter to name the states of Buchi
     state_counter = 0;
 
-    // Fill in Büchi state
+    // Fill in Buchi state
     init_buchi.parent_state = nwa->getInitial();
     init_buchi.last_guess   = weight_t(INIT_BUCHI_VALUE);
     init_buchi.P1           = SetStd<State*>();
@@ -1446,7 +1422,7 @@ State* initializeBuchi_acceptance(
     // Map the state to the tuple
     state_map[init_buchi] = init_state;
 
-    // Add init Büchi state to start exploration
+    // Add init Buchi state to start exploration
     worklist.push(init_buchi);
 
     return init_state;
@@ -1555,7 +1531,7 @@ Automaton* NestedAutomaton::flatten_regular_parent_acceptance(value_function_t f
     Symbol::RESET();
     Weight::RESET();
 
-    // Initialize containers for Büchi automaton
+    // Initialize containers for Buchi automaton
     MapArray<Symbol*>* new_alphabet = nullptr;
     MapArray<Weight*>* new_weights  = nullptr;
 
@@ -1583,7 +1559,7 @@ Automaton* NestedAutomaton::flatten_regular_parent_acceptance(value_function_t f
         if (!child) continue;
 
         // child_return_values[i] = computeChildReturnValues(child, finVal, bound);
-        child_return_values[i] = computeChildReturnValuesParentAware(this, i, finVal, bound);
+        child_return_values[i] = this->computeChildReturnValuesParentAware(i, finVal, bound);
 
         for (const weight_t& v : child_return_values[i]) {
             global_return_values.insert(v);
@@ -1634,7 +1610,7 @@ Automaton* NestedAutomaton::flatten_regular_parent_acceptance(value_function_t f
         }
     }
 
-    // 5. Create state array and mark Büchi-accepting states
+    // 5. Create state array and mark Buchi-accepting states
     MapArray<State*>* new_states = new MapArray<State*>(state_map.size());
 
     for (const auto& [global_state, state] : state_map) {
@@ -2654,9 +2630,7 @@ Automaton* NestedAutomaton::flatten() {
 }
 */
 
-NestedAutomaton* NestedAutomaton::synchronizeChildren(
-    std::unordered_set<MacroSymbol*, MacroSymbolPtrHash, MacroSymbolPtrEqual>& /*macro_alphabet*/)
-{
+NestedAutomaton* NestedAutomaton::synchronizeChildren(std::unordered_set<MacroSymbol*, MacroSymbolPtrHash, MacroSymbolPtrEqual>& /*macro_alphabet*/) {
     // --------- Compute X = 2 * conf(A) (master + all non-trivial slaves) ---------
     // See skeleton: X = 2 × n1 × ... × nk (excluding trivial 1-state automata). :contentReference[oaicite:2]{index=2}
     auto sat_mul_u64 = [](uint64_t a, uint64_t b) -> uint64_t {
@@ -4317,7 +4291,7 @@ bool NestedAutomaton::emptiness_monotonic_nesting(value_function_t infinite_aggr
 /////////////////////////////////////////
 
 
-bool NestedAutomaton::emptiness_Avg_SumPlus (value_function_t infinite_aggregator, weight_t threshold) {
+bool NestedAutomaton::emptiness_Avg_SumPlus (weight_t threshold) {
     unsigned int theoretical_bound = 0;
     for (unsigned int i = 0; i < this->children_->size(); i++) {
         theoretical_bound = std::max(theoretical_bound, (unsigned int)this->getChild(i)->getStates()->size());
@@ -4325,54 +4299,51 @@ bool NestedAutomaton::emptiness_Avg_SumPlus (value_function_t infinite_aggregato
     theoretical_bound = theoretical_bound * this->getStates()->size(); 
 
     // Fast path: if supremum is unbounded, threshold is always achievable
-    bool is_top_infinite = emptiness_monotonic_nesting_supremum(LimSup, SumPlus, theoretical_bound);
-
-    if (is_top_infinite) {
+    if (emptiness_monotonic_nesting_supremum(LimSup, SumPlus, theoretical_bound)) {
         return true;
     }
     else {
-        int numEdges;
-
         Automaton* buchi = flatten_regular(SumB, theoretical_bound); // Key Lemma construction
-        numEdges = 0;
-        for (size_t s = 0; s < buchi->getStates()->size(); ++s) {
-            State* state = buchi->getStates()->at(s);
-            if (state) {
-                for (size_t a = 0; a < buchi->getAlphabet()->size(); ++a) {
-                    SetStd<Edge*>* succs = state->getSuccessors(a);
-                    if (succs) {
-                        numEdges += succs->size();
-                    }
-                }
-            }
-        }
-        std::cout << "buchi: " << buchi->getStates()->size() << " states and " << numEdges << " edges" << std::endl;
-        std::cout << buchi->getNbSCCs() << " SCCs" << std::endl;
-        std::cout << buchi->getNbAcceptingSCCs() << " accepting SCCs" << std::endl;
-        // buchi->print();
+        // int numEdges = 0;
+        // for (size_t s = 0; s < buchi->getStates()->size(); ++s) {
+        //     State* state = buchi->getStates()->at(s);
+        //     if (state) {
+        //         for (size_t a = 0; a < buchi->getAlphabet()->size(); ++a) {
+        //             SetStd<Edge*>* succs = state->getSuccessors(a);
+        //             if (succs) {
+        //                 numEdges += succs->size();
+        //             }
+        //         }
+        //     }
+        // }
+        // std::cout << "buchi: " << buchi->getStates()->size() << " states and " << numEdges << " edges" << std::endl;
+        // std::cout << buchi->getNbSCCs() << " SCCs" << std::endl;
+        // std::cout << buchi->getNbAcceptingSCCs() << " accepting SCCs" << std::endl;
+        // // buchi->print();
 
-        Automaton* modBuchi = Automaton::removeSilentTransitions(buchi, infinite_aggregator);
-        numEdges = 0;
-        for (size_t s = 0; s < modBuchi->getStates()->size(); ++s) {
-            State* state = modBuchi->getStates()->at(s);
-            if (state) {
-                for (size_t a = 0; a < modBuchi->getAlphabet()->size(); ++a) {
-                    SetStd<Edge*>* succs = state->getSuccessors(a);
-                    if (succs) {
-                        numEdges += succs->size();
-                    }
-                }
-            }
-        }
-        std::cout << "modBuchi: " << modBuchi->getStates()->size() << " states and " << numEdges << " edges" << std::endl;
-        std::cout << modBuchi->getNbSCCs() << " SCCs" << std::endl;
-        std::cout << modBuchi->getNbAcceptingSCCs() << " accepting SCCs" << std::endl;
-        // modBuchi->print();
-        delete buchi;
+        Automaton* modBuchi = Automaton::removeSilentTransitions(buchi, LimInfAvg);
+        // int numEdges2 = 0;
+        // for (size_t s = 0; s < modBuchi->getStates()->size(); ++s) {
+        //     State* state = modBuchi->getStates()->at(s);
+        //     if (state) {
+        //         for (size_t a = 0; a < modBuchi->getAlphabet()->size(); ++a) {
+        //             SetStd<Edge*>* succs = state->getSuccessors(a);
+        //             if (succs) {
+        //                 numEdges2 += succs->size();
+        //             }
+        //         }
+        //     }
+        // }
+        // std::cout << "modBuchi: " << modBuchi->getStates()->size() << " states and " << numEdges2 << " edges" << std::endl;
+        // std::cout << modBuchi->getNbSCCs() << " SCCs" << std::endl;
+        // std::cout << modBuchi->getNbAcceptingSCCs() << " accepting SCCs" << std::endl;
+        // // modBuchi->print();
         
-        bool res = modBuchi->emptiness_LimAvg_with_final(threshold);
+        // bool res = modBuchi->emptiness_LimAvg_with_final(threshold);
+        auto top = modBuchi->compute_top_with_final(LimInfAvg);
         delete modBuchi;
-        return res;
+        delete buchi;
+        return (top >= threshold);
 
         // weight_t top = modBuchi->compute_top_with_final(infinite_aggregator);
         // // weight_t top = modBuchi->getTopValue(infinite_aggregator);
@@ -5042,8 +5013,8 @@ bool NestedAutomaton::isNonEmpty(value_function_t infVal, value_function_t finVa
         else if (infVal == Inf || infVal == LimInf) {
             return this->emptiness_monotonic_nesting(infVal, finVal, x);
         }
-        else if (infVal == LimInf || infVal == LimSup) {
-            return this->emptiness_LimAvg_with_final(x);
+        else if (infVal == LimInfAvg || infVal == LimSupAvg) {
+            return this->emptiness_Avg_SumPlus(x);
         }
         else {
             QUAK_FAIL("isNonEmpty: unsupported infinite aggregator with SumPlus");
