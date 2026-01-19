@@ -55,6 +55,9 @@ public:
   explicit operator float() const { return value; }
 
   float to_float() const { return value; }
+  int to_int() const { return static_cast<int>(value); }
+  unsigned int to_uint() const { return static_cast<unsigned int>(value); }
+  uint64_t to_uint64() const { return static_cast<uint64_t>(value); }
   uint32_t to_bv() const;
 
 

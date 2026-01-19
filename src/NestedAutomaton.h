@@ -27,18 +27,16 @@ private:
     bool emptiness_monotonic_nesting_supremum(value_function_t infinite_aggregator, value_function_t finite_aggregator, weight_t threshold);
     bool emptiness_monotonic_nesting(value_function_t infinite_aggregator, value_function_t finite_aggregator, weight_t threshold);
     bool emptiness_monotonic_nesting_min_max(value_function_t infinite_aggregator, value_function_t finite_aggregator, weight_t threshold);
+    bool emptiness_monotonic_nesting_min_max_supremum(value_function_t infinite_aggregator, value_function_t finite_aggregator, weight_t threshold);
     bool emptiness_Avg_SumPlus (weight_t threshold);
 
     bool allParentStatesFinal() const;
     SetStd<weight_t> computeChildReturnValuesParentAware(size_t child_index, value_function_t finVal, weight_t bound);
     SetStd<weight_t> computeChildReturnValues(ChildAutomaton* child, value_function_t finVal, weight_t bound);
+    SetStd<weight_t> computeGlobalReturnValues(value_function_t finVal, weight_t bound);
 
 public:
- bool emptiness_monotonic_nesting_min_max(value_function_t infinite_aggregator, value_function_t finite_aggregator, weight_t threshold);
-
-
-
-	~NestedAutomaton();
+	virtual ~NestedAutomaton();
 	NestedAutomaton(std::string name, Parser* parser, MapStd<std::string, Symbol*> sync_register);
 	NestedAutomaton(std::string filename, Automaton* other = nullptr);
     NestedAutomaton(std::string name, MapArray<Symbol*>* alphabet, MapArray<State*>* states, MapArray<Weight*>* weights, weight_t min_domain, weight_t max_domain, State* initial, MapArray<ChildAutomaton*>* children);
@@ -51,13 +49,20 @@ public:
 	ChildAutomaton* getChild(std::size_t index) const;
 
     std::unordered_set<MacroSymbol*, MacroSymbolPtrHash, MacroSymbolPtrEqual> generateMacroAlphabet();
-    NestedAutomaton* determinizeWithMacroAlphabet(std::unordered_set<MacroSymbol*, MacroSymbolPtrHash, MacroSymbolPtrEqual>& macro_alphabet);
-    NestedAutomaton* synchronizeChildren(std::unordered_set<MacroSymbol*, MacroSymbolPtrHash, MacroSymbolPtrEqual>& macro_alphabet);
+    NestedAutomaton* determinizeWithMacroAlphabet();
+    NestedAutomaton* synchronizeChildren();
     Automaton* flatten_Avg_SumMinus();
 	Automaton* flatten_regular(value_function_t finVal, weight_t bound = -1);
     Automaton* flatten_regular_parent_trivial(value_function_t finVal, weight_t bound = -1);
 	Automaton* flatten_regular_parent_acceptance(value_function_t finVal, weight_t bound = -1);
+    Automaton* flattenNestedAutomaton();
+    NestedAutomaton* synchronizeChildren_LimAvg_SumPlus() const;
 
+    NestedAutomaton* makeCompleteNested(std::vector<bool>* complete_flags = nullptr, weight_t parent_sink_w = weight_t(0), weight_t child_sink_w = weight_t(0)) const;
+
+    bool isDeterministicNested() const;
+    bool isCompleteNested(std::vector<bool>* complete_flags = nullptr) const;
+    bool isDeterministicAndCompleteNested() const;
     bool isNonEmpty(value_function_t infVal, value_function_t finVal, weight_t x, weight_t bound = -1);
     bool isUniversal(value_function_t infVal, value_function_t finVal, weight_t x, weight_t bound = -1);
 };

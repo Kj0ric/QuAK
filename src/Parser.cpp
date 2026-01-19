@@ -47,6 +47,9 @@ Parser::Parser(std::string path, MapStd<std::string, Symbol*>* symbol_register) 
 }
 
 Parser::~Parser() {
+	for (unsigned int i = 0; i < child_parsers.size(); i++) {
+		delete child_parsers[i];
+	}
 	delete_verbose("@Detail: 4 SetStd will be deleted (parser)\n");
 }
 
@@ -119,6 +122,12 @@ void readNonNestedFile(std::ifstream& file, Parser* parser) {
 	// Read the rest and update the Parser object
 	while (getline(file, line)) { 
 		line_counter++;
+
+		if (line.rfind("final:", 0) == 0) {
+            parseFinalStatesLine(line, parser);
+            continue;
+        }
+		
 		readLine(line, parser);
 	}
 
@@ -345,8 +354,6 @@ void readNestedFile(std::ifstream& file, Parser* parser) {
 }
 
 std::string readLine (std::string line, Parser* parser) {
-	
-
 	if (line.empty()) return "";
 
 	size_t index = line.find("--");

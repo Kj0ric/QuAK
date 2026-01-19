@@ -1,0 +1,265 @@
+@PARENT
+# Resource-consumption NWA: n=4 processes, k=1 resources
+# Single-state parent: on s_i it calls child i, otherwise SILENT.
+final: q0
+
+s1 : 1, q0 -> q0     # Call child 1
+s2 : 2, q0 -> q0     # Call child 2
+s3 : 3, q0 -> q0     # Call child 3
+s4 : 4, q0 -> q0     # Call child 4
+t1 : 0, q0 -> q0     # Silent transition
+t2 : 0, q0 -> q0     # Silent transition
+t3 : 0, q0 -> q0     # Silent transition
+t4 : 0, q0 -> q0     # Silent transition
+a1_1 : 0, q0 -> q0   # Silent transition
+a2_1 : 0, q0 -> q0   # Silent transition
+a3_1 : 0, q0 -> q0   # Silent transition
+a4_1 : 0, q0 -> q0   # Silent transition
+
+@CHILD 0
+# Silent/dummy child used by SILENT parent edges.
+# Intended to accept epsilon immediately (no letter consumed).
+
+@CHILD 1
+# Resource-tracking child for process 1 with k=1 resources
+# FIXED SEMANTICS: this child consumes the call letter s_i immediately.
+# States: init + 2 tracking subsets + rej + acc = 5
+final: acc1
+
+s1 : 0, init1 -> track1_0   # consume call letter, start tracking
+s2 : 0, init1 -> rej1
+s3 : 0, init1 -> rej1
+s4 : 0, init1 -> rej1
+t1 : 0, init1 -> rej1
+t2 : 0, init1 -> rej1
+t3 : 0, init1 -> rej1
+t4 : 0, init1 -> rej1
+a1_1 : 0, init1 -> rej1
+a2_1 : 0, init1 -> rej1
+a3_1 : 0, init1 -> rej1
+a4_1 : 0, init1 -> rej1
+
+# Tracking state track1_0: mask=0 (popcount=0)
+s1 : 0, track1_0 -> rej1
+s2 : 0, track1_0 -> track1_0
+s3 : 0, track1_0 -> track1_0
+s4 : 0, track1_0 -> track1_0
+t1 : 0, track1_0 -> acc1
+t2 : 0, track1_0 -> track1_0
+t3 : 0, track1_0 -> track1_0
+t4 : 0, track1_0 -> track1_0
+a1_1 : 0, track1_0 -> track1_1
+a2_1 : 0, track1_0 -> track1_0
+a3_1 : 0, track1_0 -> track1_0
+a4_1 : 0, track1_0 -> track1_0
+
+# Tracking state track1_1: mask=1 (popcount=1)
+s1 : 0, track1_1 -> rej1
+s2 : 0, track1_1 -> track1_1
+s3 : 0, track1_1 -> track1_1
+s4 : 0, track1_1 -> track1_1
+t1 : 1, track1_1 -> acc1
+t2 : 0, track1_1 -> track1_1
+t3 : 0, track1_1 -> track1_1
+t4 : 0, track1_1 -> track1_1
+a1_1 : 0, track1_1 -> track1_1
+a2_1 : 0, track1_1 -> track1_1
+a3_1 : 0, track1_1 -> track1_1
+a4_1 : 0, track1_1 -> track1_1
+
+# Reject sink rej1: loops on all symbols with weight 0
+s1 : 0, rej1 -> rej1
+s2 : 0, rej1 -> rej1
+s3 : 0, rej1 -> rej1
+s4 : 0, rej1 -> rej1
+t1 : 0, rej1 -> rej1
+t2 : 0, rej1 -> rej1
+t3 : 0, rej1 -> rej1
+t4 : 0, rej1 -> rej1
+a1_1 : 0, rej1 -> rej1
+a2_1 : 0, rej1 -> rej1
+a3_1 : 0, rej1 -> rej1
+a4_1 : 0, rej1 -> rej1
+
+@CHILD 2
+# Resource-tracking child for process 2 with k=1 resources
+# FIXED SEMANTICS: this child consumes the call letter s_i immediately.
+# States: init + 2 tracking subsets + rej + acc = 5
+final: acc2
+
+s2 : 0, init2 -> track2_0   # consume call letter, start tracking
+s1 : 0, init2 -> rej2
+s3 : 0, init2 -> rej2
+s4 : 0, init2 -> rej2
+t1 : 0, init2 -> rej2
+t2 : 0, init2 -> rej2
+t3 : 0, init2 -> rej2
+t4 : 0, init2 -> rej2
+a1_1 : 0, init2 -> rej2
+a2_1 : 0, init2 -> rej2
+a3_1 : 0, init2 -> rej2
+a4_1 : 0, init2 -> rej2
+
+# Tracking state track2_0: mask=0 (popcount=0)
+s1 : 0, track2_0 -> track2_0
+s2 : 0, track2_0 -> rej2
+s3 : 0, track2_0 -> track2_0
+s4 : 0, track2_0 -> track2_0
+t1 : 0, track2_0 -> track2_0
+t2 : 0, track2_0 -> acc2
+t3 : 0, track2_0 -> track2_0
+t4 : 0, track2_0 -> track2_0
+a1_1 : 0, track2_0 -> track2_0
+a2_1 : 0, track2_0 -> track2_1
+a3_1 : 0, track2_0 -> track2_0
+a4_1 : 0, track2_0 -> track2_0
+
+# Tracking state track2_1: mask=1 (popcount=1)
+s1 : 0, track2_1 -> track2_1
+s2 : 0, track2_1 -> rej2
+s3 : 0, track2_1 -> track2_1
+s4 : 0, track2_1 -> track2_1
+t1 : 0, track2_1 -> track2_1
+t2 : 1, track2_1 -> acc2
+t3 : 0, track2_1 -> track2_1
+t4 : 0, track2_1 -> track2_1
+a1_1 : 0, track2_1 -> track2_1
+a2_1 : 0, track2_1 -> track2_1
+a3_1 : 0, track2_1 -> track2_1
+a4_1 : 0, track2_1 -> track2_1
+
+# Reject sink rej2: loops on all symbols with weight 0
+s1 : 0, rej2 -> rej2
+s2 : 0, rej2 -> rej2
+s3 : 0, rej2 -> rej2
+s4 : 0, rej2 -> rej2
+t1 : 0, rej2 -> rej2
+t2 : 0, rej2 -> rej2
+t3 : 0, rej2 -> rej2
+t4 : 0, rej2 -> rej2
+a1_1 : 0, rej2 -> rej2
+a2_1 : 0, rej2 -> rej2
+a3_1 : 0, rej2 -> rej2
+a4_1 : 0, rej2 -> rej2
+
+@CHILD 3
+# Resource-tracking child for process 3 with k=1 resources
+# FIXED SEMANTICS: this child consumes the call letter s_i immediately.
+# States: init + 2 tracking subsets + rej + acc = 5
+final: acc3
+
+s3 : 0, init3 -> track3_0   # consume call letter, start tracking
+s1 : 0, init3 -> rej3
+s2 : 0, init3 -> rej3
+s4 : 0, init3 -> rej3
+t1 : 0, init3 -> rej3
+t2 : 0, init3 -> rej3
+t3 : 0, init3 -> rej3
+t4 : 0, init3 -> rej3
+a1_1 : 0, init3 -> rej3
+a2_1 : 0, init3 -> rej3
+a3_1 : 0, init3 -> rej3
+a4_1 : 0, init3 -> rej3
+
+# Tracking state track3_0: mask=0 (popcount=0)
+s1 : 0, track3_0 -> track3_0
+s2 : 0, track3_0 -> track3_0
+s3 : 0, track3_0 -> rej3
+s4 : 0, track3_0 -> track3_0
+t1 : 0, track3_0 -> track3_0
+t2 : 0, track3_0 -> track3_0
+t3 : 0, track3_0 -> acc3
+t4 : 0, track3_0 -> track3_0
+a1_1 : 0, track3_0 -> track3_0
+a2_1 : 0, track3_0 -> track3_0
+a3_1 : 0, track3_0 -> track3_1
+a4_1 : 0, track3_0 -> track3_0
+
+# Tracking state track3_1: mask=1 (popcount=1)
+s1 : 0, track3_1 -> track3_1
+s2 : 0, track3_1 -> track3_1
+s3 : 0, track3_1 -> rej3
+s4 : 0, track3_1 -> track3_1
+t1 : 0, track3_1 -> track3_1
+t2 : 0, track3_1 -> track3_1
+t3 : 1, track3_1 -> acc3
+t4 : 0, track3_1 -> track3_1
+a1_1 : 0, track3_1 -> track3_1
+a2_1 : 0, track3_1 -> track3_1
+a3_1 : 0, track3_1 -> track3_1
+a4_1 : 0, track3_1 -> track3_1
+
+# Reject sink rej3: loops on all symbols with weight 0
+s1 : 0, rej3 -> rej3
+s2 : 0, rej3 -> rej3
+s3 : 0, rej3 -> rej3
+s4 : 0, rej3 -> rej3
+t1 : 0, rej3 -> rej3
+t2 : 0, rej3 -> rej3
+t3 : 0, rej3 -> rej3
+t4 : 0, rej3 -> rej3
+a1_1 : 0, rej3 -> rej3
+a2_1 : 0, rej3 -> rej3
+a3_1 : 0, rej3 -> rej3
+a4_1 : 0, rej3 -> rej3
+
+@CHILD 4
+# Resource-tracking child for process 4 with k=1 resources
+# FIXED SEMANTICS: this child consumes the call letter s_i immediately.
+# States: init + 2 tracking subsets + rej + acc = 5
+final: acc4
+
+s4 : 0, init4 -> track4_0   # consume call letter, start tracking
+s1 : 0, init4 -> rej4
+s2 : 0, init4 -> rej4
+s3 : 0, init4 -> rej4
+t1 : 0, init4 -> rej4
+t2 : 0, init4 -> rej4
+t3 : 0, init4 -> rej4
+t4 : 0, init4 -> rej4
+a1_1 : 0, init4 -> rej4
+a2_1 : 0, init4 -> rej4
+a3_1 : 0, init4 -> rej4
+a4_1 : 0, init4 -> rej4
+
+# Tracking state track4_0: mask=0 (popcount=0)
+s1 : 0, track4_0 -> track4_0
+s2 : 0, track4_0 -> track4_0
+s3 : 0, track4_0 -> track4_0
+s4 : 0, track4_0 -> rej4
+t1 : 0, track4_0 -> track4_0
+t2 : 0, track4_0 -> track4_0
+t3 : 0, track4_0 -> track4_0
+t4 : 0, track4_0 -> acc4
+a1_1 : 0, track4_0 -> track4_0
+a2_1 : 0, track4_0 -> track4_0
+a3_1 : 0, track4_0 -> track4_0
+a4_1 : 0, track4_0 -> track4_1
+
+# Tracking state track4_1: mask=1 (popcount=1)
+s1 : 0, track4_1 -> track4_1
+s2 : 0, track4_1 -> track4_1
+s3 : 0, track4_1 -> track4_1
+s4 : 0, track4_1 -> rej4
+t1 : 0, track4_1 -> track4_1
+t2 : 0, track4_1 -> track4_1
+t3 : 0, track4_1 -> track4_1
+t4 : 1, track4_1 -> acc4
+a1_1 : 0, track4_1 -> track4_1
+a2_1 : 0, track4_1 -> track4_1
+a3_1 : 0, track4_1 -> track4_1
+a4_1 : 0, track4_1 -> track4_1
+
+# Reject sink rej4: loops on all symbols with weight 0
+s1 : 0, rej4 -> rej4
+s2 : 0, rej4 -> rej4
+s3 : 0, rej4 -> rej4
+s4 : 0, rej4 -> rej4
+t1 : 0, rej4 -> rej4
+t2 : 0, rej4 -> rej4
+t3 : 0, rej4 -> rej4
+t4 : 0, rej4 -> rej4
+a1_1 : 0, rej4 -> rej4
+a2_1 : 0, rej4 -> rej4
+a3_1 : 0, rej4 -> rej4
+a4_1 : 0, rej4 -> rej4

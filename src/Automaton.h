@@ -134,7 +134,6 @@ private:
 	static Automaton* removeSilentTransitionsHelperLimitAverage(const Automaton* A);
 
 protected:
-	Automaton(const Automaton* A, value_function_t f);
 	weight_t compute_Top (value_function_t f, weight_t* top_values, UltimatelyPeriodicWord** witness = nullptr) const;
 	weight_t compute_Bottom (value_function_t f, weight_t* bot_values, UltimatelyPeriodicWord** witness = nullptr);
 	void setMaxDomain (weight_t x);
@@ -145,6 +144,7 @@ protected:
 public:
 	~Automaton ();
 	Automaton(std::string filename, Automaton* other = nullptr);	// Creates an automaton out of a file
+	Automaton(const Automaton* A, value_function_t f);
 	//Automaton(std::string filename, value_function_t f, Automaton* other = nullptr);
 	Automaton(const Automaton& other);	// CC
 

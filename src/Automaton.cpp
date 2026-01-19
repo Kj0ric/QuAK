@@ -56,6 +56,7 @@ Automaton::~Automaton () {
 		delete this->SCCs[scc_id];
 	}
 	delete[] this->SCCs;
+	delete[] this->final_SCCs;
 }
 // -------------------------------- Constructors -------------------------------- //
 // To construct from parsed data (file)
@@ -483,58 +484,212 @@ Automaton* Automaton::copy_trim_complete(const Automaton* A, value_function_t f)
 
 // -------------------------------- SCCs -------------------------------- //
 
-// Build DAGs (SCC_Dag object) 
-void compute_SCC_dag (State* state, int* spot, int* low, bool* stackMem, SCC_Dag** SCCs) {
-	if (stackMem[state->getId()] == true) return;
-	stackMem[state->getId()] = true;
-
-	if (spot[state->getId()] == low[state->getId()]) {
-		SCCs[state->getTag()]->origin = state;
-	}
-
-	// printf("state: %s\n", state->getName().c_str());
-	for (Symbol* symbol : *(state->getAlphabet())) {
-		for (Edge* edge : *(state->getSuccessors(symbol->getId()))) {
-			compute_SCC_dag(edge->getTo(), spot, low, stackMem, SCCs);
-			if (state->getTag() != edge->getTo()->getTag()) {
-				SCCs[state->getTag()]->addNext(SCCs[edge->getTo()->getTag()]);
-			}
-		}
-	}
+void compute_SCC_dag(State* startState, int* spot, int* low, bool* stackMem, SCC_Dag** SCCs) {
+    
+    struct Frame {
+        State* state;
+        std::vector<Edge*> successors;
+        size_t succIndex;
+        bool initialized;
+    };
+    
+    auto collectSuccessors = [](State* s) {
+        std::vector<Edge*> result;
+        for (Symbol* symbol : *(s->getAlphabet())) {
+            for (Edge* edge : *(s->getSuccessors(symbol->getId()))) {
+                result.push_back(edge);
+            }
+        }
+        return result;
+    };
+    
+    std::vector<Frame> callStack;
+    callStack.push_back({startState, {}, 0, false});
+    
+    while (!callStack.empty()) {
+        Frame& frame = callStack.back();
+        State* state = frame.state;
+        
+        // Phase 1: Initialize
+        if (!frame.initialized) {
+            if (stackMem[state->getId()] == true) {
+                callStack.pop_back();
+                continue;
+            }
+            stackMem[state->getId()] = true;
+            
+            if (spot[state->getId()] == low[state->getId()]) {
+                SCCs[state->getTag()]->origin = state;
+            }
+            
+            frame.successors = collectSuccessors(state);
+            frame.succIndex = 0;
+            frame.initialized = true;
+        }
+        
+        // Phase 2: Process successors one at a time
+        if (frame.succIndex < frame.successors.size()) {
+            Edge* edge = frame.successors[frame.succIndex];
+            State* child = edge->getTo();
+            frame.succIndex++;
+            
+            // Add DAG edge (this happens regardless of whether child was visited)
+            if (state->getTag() != child->getTag()) {
+                SCCs[state->getTag()]->addNext(SCCs[child->getTag()]);
+            }
+            
+            // Push child if not yet visited
+            if (stackMem[child->getId()] != true) {
+                callStack.push_back({child, {}, 0, false});
+            }
+            continue;
+        }
+        
+        // Phase 3: All successors processed, pop frame
+        callStack.pop_back();
+    }
 }
 
-void compute_SCC_tag (State* state, int* tag, int* time, int* spot, int* low, SetList<State*>* stack, bool* stackMem) {
-	spot[state->getId()] = *time;
-	low[state->getId()] = *time;
-	(*time)++;
-	stack->push(state);
-	stackMem[state->getId()] = true;
+// // Build DAGs (SCC_Dag object) 
+// void compute_SCC_dag (State* state, int* spot, int* low, bool* stackMem, SCC_Dag** SCCs) {
+// 	if (stackMem[state->getId()] == true) return;
+// 	stackMem[state->getId()] = true;
 
-	for (Symbol* symbol : *(state->getAlphabet())) {
-		for (Edge* edge : *(state->getSuccessors(symbol->getId()))) {
-			if (spot[edge->getTo()->getId()] == -1) {
-				compute_SCC_tag(edge->getTo(), tag, time, spot, low, stack, stackMem);
-				low[state->getId()] = std::min(low[state->getId()], low[edge->getTo()->getId()]);
-			}
-			else if (stackMem[edge->getTo()->getId()] == true) {
-				low[state->getId()] = std::min(low[state->getId()], spot[edge->getTo()-> getId()]);
-			}
-		}
-	}
+// 	if (spot[state->getId()] == low[state->getId()]) {
+// 		SCCs[state->getTag()]->origin = state;
+// 	}
 
-	if (spot[state->getId()] == low[state->getId()]) {
-		while (stack->head() != state) {
-			stack->head()->setTag(*tag);
-			stackMem[stack->head()->getId()] = false;
-			stack->pop();
-		}
-		state->setTag(*tag);
-		// printf("state %s, tag %d\n", state->getName().c_str(), *tag);
-		(*tag)++;
-		stackMem[state->getId()] = false;
-		stack->pop();
-	}
+// 	// printf("state: %s\n", state->getName().c_str());
+// 	for (Symbol* symbol : *(state->getAlphabet())) {
+// 		for (Edge* edge : *(state->getSuccessors(symbol->getId()))) {
+// 			compute_SCC_dag(edge->getTo(), spot, low, stackMem, SCCs);
+// 			if (state->getTag() != edge->getTo()->getTag()) {
+// 				SCCs[state->getTag()]->addNext(SCCs[edge->getTo()->getTag()]);
+// 			}
+// 		}
+// 	}
+// }
+
+void compute_SCC_tag(State* startState, int* tag, int* time, int* spot, int* low, SetList<State*>* stack, bool* stackMem) {
+    
+    struct Frame {
+        State* state;
+        std::vector<Edge*> successors;
+        size_t succIndex;
+        bool initialized;
+    };
+    
+    std::vector<Frame> callStack;
+    
+    // Collect all successors for a state
+    auto collectSuccessors = [](State* s) {
+        std::vector<Edge*> result;
+        for (Symbol* symbol : *(s->getAlphabet())) {
+            for (Edge* edge : *(s->getSuccessors(symbol->getId()))) {
+                result.push_back(edge);
+            }
+        }
+        return result;
+    };
+    
+    callStack.push_back({startState, {}, 0, false});
+    
+    while (!callStack.empty()) {
+        Frame& frame = callStack.back();
+        State* state = frame.state;
+        
+        // Phase 1: Initialize (equivalent to start of recursive function)
+        if (!frame.initialized) {
+            spot[state->getId()] = *time;
+            low[state->getId()] = *time;
+            (*time)++;
+            stack->push(state);
+            stackMem[state->getId()] = true;
+            
+            frame.successors = collectSuccessors(state);
+            frame.succIndex = 0;
+            frame.initialized = true;
+        }
+        
+        // Phase 2: Process successors
+        bool pushedChild = false;
+        while (frame.succIndex < frame.successors.size()) {
+            Edge* edge = frame.successors[frame.succIndex];
+            State* child = edge->getTo();
+            
+            if (spot[child->getId()] == -1) {
+                // Will "recurse" - but first advance index so we continue after return
+                frame.succIndex++;
+                callStack.push_back({child, {}, 0, false});
+                pushedChild = true;
+                break;
+            } 
+            else if (stackMem[child->getId()] == true) {
+                low[state->getId()] = std::min(low[state->getId()], spot[child->getId()]);
+            }
+            frame.succIndex++;
+        }
+        
+        if (pushedChild) {
+            continue;  // Process the child frame
+        }
+        
+        // Phase 3: Post-processing (after all successors handled)
+        // Update parent's low value (simulates return from recursion)
+        if (callStack.size() > 1) {
+            Frame& parent = callStack[callStack.size() - 2];
+            low[parent.state->getId()] = std::min(low[parent.state->getId()], low[state->getId()]);
+        }
+        
+        // Check if this state is an SCC root
+        if (spot[state->getId()] == low[state->getId()]) {
+            while (stack->head() != state) {
+                stack->head()->setTag(*tag);
+                stackMem[stack->head()->getId()] = false;
+                stack->pop();
+            }
+            state->setTag(*tag);
+            (*tag)++;
+            stackMem[state->getId()] = false;
+            stack->pop();
+        }
+        
+        callStack.pop_back();
+    }
 }
+
+// void compute_SCC_tag (State* state, int* tag, int* time, int* spot, int* low, SetList<State*>* stack, bool* stackMem) {
+// 	spot[state->getId()] = *time;
+// 	low[state->getId()] = *time;
+// 	(*time)++;
+// 	stack->push(state);
+// 	stackMem[state->getId()] = true;
+
+// 	for (Symbol* symbol : *(state->getAlphabet())) {
+// 		for (Edge* edge : *(state->getSuccessors(symbol->getId()))) {
+// 			if (spot[edge->getTo()->getId()] == -1) {
+// 				compute_SCC_tag(edge->getTo(), tag, time, spot, low, stack, stackMem);
+// 				low[state->getId()] = std::min(low[state->getId()], low[edge->getTo()->getId()]);
+// 			}
+// 			else if (stackMem[edge->getTo()->getId()] == true) {
+// 				low[state->getId()] = std::min(low[state->getId()], spot[edge->getTo()-> getId()]);
+// 			}
+// 		}
+// 	}
+
+// 	if (spot[state->getId()] == low[state->getId()]) {
+// 		while (stack->head() != state) {
+// 			stack->head()->setTag(*tag);
+// 			stackMem[stack->head()->getId()] = false;
+// 			stack->pop();
+// 		}
+// 		state->setTag(*tag);
+// 		// printf("state %s, tag %d\n", state->getName().c_str(), *tag);
+// 		(*tag)++;
+// 		stackMem[state->getId()] = false;
+// 		stack->pop();
+// 	}
+// }
 
 
 // Compute Strongly Connected Components using Tarjan's algorithm
@@ -753,7 +908,207 @@ Automaton* Automaton::removeSilentTransitionsHelperStandard(const Automaton* A, 
 	return new Automaton(newname, newalphabet, newstates, newweights, newmin_domain, newmax_domain, newinitial);
 }
 
+Automaton* Automaton::removeSilentTransitionsHelperLimitAverage(const Automaton* A) {
+    // Remove ONLY silent transitions that are INTERNAL to ACCEPTING SCCs.
+    // All other silent transitions are kept as-is.
 
+    State::RESET();
+    Symbol::RESET();
+    Weight::RESET();
+
+    // -------- 1. copy alphabet & states ----------------------------
+    MapArray<Symbol*>* newalphabet = new MapArray<Symbol*>(A->alphabet->size());
+    for (unsigned int sid = 0; sid < A->alphabet->size(); ++sid) {
+        newalphabet->insert(sid, new Symbol(A->alphabet->at(sid)));
+    }
+
+    MapArray<State*>* newstates = new MapArray<State*>(A->states->size());
+    for (unsigned int stid = 0; stid < A->states->size(); ++stid) {
+        newstates->insert(stid, new State(A->states->at(stid)));
+    }
+    State* newinitial = newstates->at(A->initial->getId());
+
+    const unsigned int n = A->states->size();
+
+    // Preconditions: SCC tags and A->final_SCCs must be available.
+    const unsigned int nbSCC = A->nb_SCCs;
+
+    auto is_accepting_scc_id = [&](int cid) -> bool {
+        if (cid < 0) return false;
+        unsigned int ucid = static_cast<unsigned int>(cid);
+        if (ucid >= nbSCC) return false;
+        return A->final_SCCs[ucid];
+    };
+
+    auto in_accepting_scc = [&](const State* s) -> bool {
+        return is_accepting_scc_id(s->getTag());
+    };
+
+    auto silent_edge_is_internal_to_accepting_scc =
+        [&](const State* u, const State* v, weight_t w) -> bool
+    {
+        if (w != SILENT) return false;
+        int cu = u->getTag();
+        int cv = v->getTag();
+        if (cu < 0 || cv < 0) return false;
+        if (cu != cv) return false;                 // must stay inside the SCC
+        return is_accepting_scc_id(cu);             // SCC must be accepting
+    };
+
+    // -------- 2. restricted ε-closure (only within accepting SCCs) ----------
+    std::vector< SetStd<State*> > silentSucc(n);
+
+    for (unsigned int i = 0; i < n; ++i) {
+        State* root = A->states->at(i);
+        silentSucc[i].insert(root);
+
+        // If root is not in an accepting SCC, we do NOT remove any silent edges from it.
+        if (!in_accepting_scc(root)) continue;
+
+        const int root_cid = root->getTag();
+
+        std::stack<State*> st;
+        st.push(root);
+
+        while (!st.empty()) {
+            State* u = st.top();
+            st.pop();
+
+            // Only expand from states that stay in the same accepting SCC as root.
+            if (u->getTag() != root_cid) continue;
+
+            for (Symbol* sym : *(u->getAlphabet())) {
+                SetStd<Edge*>* succs = u->getSuccessors(sym->getId());
+                if (!succs) continue;
+
+                for (Edge* e : *succs) {
+                    weight_t w = e->getWeight()->getValue();
+                    if (w != SILENT) continue;
+
+                    State* v = e->getTo();
+                    if (!v) continue;
+
+                    // Follow silent edges ONLY if they are internal to the same accepting SCC.
+                    if (!silent_edge_is_internal_to_accepting_scc(u, v, w)) continue;
+                    // (Equivalent here to: v->getTag() == root_cid and SCC is accepting.)
+
+                    if (!silentSucc[i].contains(v)) {
+                        silentSucc[i].insert(v);
+                        st.push(v);
+                    }
+                }
+            }
+        }
+    }
+
+    // -------- 3. gather best compressed NON-silent edges -------------
+    // (p, a, r) ↦ max weight among paths p -(silent*)-> s -a,w-> t -(silent*)-> r
+    std::map< std::tuple<unsigned int, unsigned int, unsigned int>, weight_t > best;
+
+    for (unsigned int pId = 0; pId < n; ++pId) {
+        for (State* s : silentSucc[pId]) {
+            for (Symbol* sym : *(s->getAlphabet())) {
+                SetStd<Edge*>* succs = s->getSuccessors(sym->getId());
+                if (!succs) continue;
+
+                for (Edge* e : *succs) {
+                    weight_t w = e->getWeight()->getValue();
+                    if (w == SILENT) continue; // only compress around a REAL step
+
+                    State* t = e->getTo();
+                    if (!t) continue;
+
+                    for (State* r : silentSucc[t->getId()]) {
+                        auto key = std::make_tuple(pId, sym->getId(), r->getId());
+                        auto it = best.find(key);
+                        if (it == best.end() || w > it->second) {
+                            best[key] = w;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // -------- 4. build final transition set: keep originals except removed silents,
+    //             plus the compressed edges ------------------------------------
+    std::map< std::tuple<unsigned int, unsigned int, unsigned int>, weight_t > final_edges;
+    SetSorted<weight_t> weight_vals;
+
+    // 4a) keep original edges unless they are silent AND internal to an accepting SCC
+    for (unsigned int uid = 0; uid < n; ++uid) {
+        State* u = A->states->at(uid);
+
+        for (Symbol* sym : *(u->getAlphabet())) {
+            SetStd<Edge*>* succs = u->getSuccessors(sym->getId());
+            if (!succs) continue;
+
+            for (Edge* e : *succs) {
+                State* v = e->getTo();
+                if (!v) continue;
+
+                weight_t w = e->getWeight()->getValue();
+
+                // Drop only silent edges that are internal to an accepting SCC.
+                if (silent_edge_is_internal_to_accepting_scc(u, v, w)) {
+                    continue;
+                }
+
+                auto key = std::make_tuple(u->getId(), sym->getId(), v->getId());
+                auto it = final_edges.find(key);
+                if (it == final_edges.end() || w > it->second) {
+                    final_edges[key] = w;
+                }
+            }
+        }
+    }
+
+    // 4b) add compressed edges (also keeping max if duplicates arise)
+    for (const auto& kv : best) {
+        const auto& key = kv.first;
+        weight_t w = kv.second;
+        auto it = final_edges.find(key);
+        if (it == final_edges.end() || w > it->second) {
+            final_edges[key] = w;
+        }
+    }
+
+    for (const auto& kv : final_edges) {
+        weight_vals.insert(kv.second);
+    }
+
+    // -------- 5. materialise the new weight objects -------------------------
+    MapArray<Weight*>* newweights = new MapArray<Weight*>(weight_vals.size());
+    MapStd<weight_t, Weight*> wreg;
+    for (weight_t v : weight_vals) {
+        Weight* w = new Weight(v);
+        newweights->insert(w->getId(), w);
+        wreg.insert(v, w);
+    }
+
+    // -------- 6. create the new transition relation -------------------------
+    for (const auto& kv : final_edges) {
+        unsigned int pId, symId, rId;
+        std::tie(pId, symId, rId) = kv.first;
+
+        Symbol* sym  = newalphabet->at(symId);
+        State*  from = newstates->at(pId);
+        State*  to   = newstates->at(rId);
+        Weight* w    = wreg.at(kv.second);
+
+        Edge* e = new Edge(sym, w, from, to);
+        from->addSuccessor(e);
+        to->addPredecessor(e);
+    }
+
+    // -------- 7. wrap-up ----------------------------------------------------
+    std::string newname = "NonSilentAccSCC(" + A->getName() + ")";
+    return new Automaton(
+        newname, newalphabet, newstates, newweights,
+        A->min_domain, A->max_domain, newinitial
+    );
+}
+/*
 Automaton* Automaton::removeSilentTransitionsHelperLimitAverage(const Automaton* A) {
 	//  --------  A_fix : compress every ε* ­ a ­ ε* pattern  --------
 	State::RESET();
@@ -842,13 +1197,13 @@ Automaton* Automaton::removeSilentTransitionsHelperLimitAverage(const Automaton*
 	}
 
 	// -------- 6. wrap-up ------------------------------------------
-	std::string newname = "A_fix(" + A->getName() + ")";
+	std::string newname = "NonSilent(" + A->getName() + ")";
 	return new Automaton(
 		newname, newalphabet, newstates, newweights,
 		A->min_domain, A->max_domain, newinitial
 	);
 }
-
+*/
 Automaton* Automaton::removeSilentTransitions(const Automaton* A, value_function_t f) {
 	if (f == Inf || f == LimInf) {
 		// idea: Replace all SILENT values with MAXIMAL weight value appears in the run
@@ -1744,22 +2099,98 @@ void Automaton::top_dag (SCC_Dag* dag, bool* done, weight_t* top_values) const {
 }
 
 
-void Automaton::top_reachably_scc (State* state, bool in_scc, bool* spot, weight_t* values) const {
-	if (spot[state->getId()] == true) return;
-	spot[state->getId()] = true;
-	for (Symbol* symbol : *(state->getAlphabet())) {
-		for (Edge* edge : *(state->getSuccessors(symbol->getId()))) {
-			if (edge->getTo()->getTag() == state->getTag()) {
-				top_reachably_scc(edge->getTo(), in_scc, spot, values);
-				values[state->getId()] = std::max(values[state->getId()], edge->getWeight()->getValue());
-				values[state->getId()] = std::max(values[state->getId()], values[edge->getTo()->getId()]);
-			}
-			else if (in_scc == false) {
-				values[state->getId()] = std::max(values[state->getId()], edge->getWeight()->getValue());
-			}
-		}
-	}
+void Automaton::top_reachably_scc(State* startState, bool in_scc, bool* spot, weight_t* values) const {
+    
+    struct Frame {
+        State* state;
+        std::vector<Edge*> successors;
+        size_t succIndex;
+        bool initialized;
+    };
+    
+    auto collectSuccessors = [](State* s) {
+        std::vector<Edge*> result;
+        for (Symbol* symbol : *(s->getAlphabet())) {
+            for (Edge* edge : *(s->getSuccessors(symbol->getId()))) {
+                result.push_back(edge);
+            }
+        }
+        return result;
+    };
+    
+    std::vector<Frame> callStack;
+    callStack.push_back({startState, {}, 0, false});
+    
+    while (!callStack.empty()) {
+        Frame& frame = callStack.back();
+        State* state = frame.state;
+        
+        // Phase 1: Initialize
+        if (!frame.initialized) {
+            if (spot[state->getId()] == true) {
+                callStack.pop_back();
+                continue;
+            }
+            spot[state->getId()] = true;
+            
+            frame.successors = collectSuccessors(state);
+            frame.succIndex = 0;
+            frame.initialized = true;
+        }
+        
+        // Phase 2: Process successors
+        bool pushedChild = false;
+        while (frame.succIndex < frame.successors.size()) {
+            Edge* edge = frame.successors[frame.succIndex];
+            State* child = edge->getTo();
+            
+            if (child->getTag() == state->getTag()) {
+                // Same SCC
+                if (spot[child->getId()] != true) {
+                    // Need to recurse - don't advance index yet
+                    // We'll process this edge again after child returns
+                    callStack.push_back({child, {}, 0, false});
+                    pushedChild = true;
+                    break;
+                } 
+                else {
+                    // Child already visited - do the value updates
+                    values[state->getId()] = std::max(values[state->getId()], edge->getWeight()->getValue());
+                    values[state->getId()] = std::max(values[state->getId()], values[child->getId()]);
+                }
+            }
+            else if (in_scc == false) {
+                // Different SCC and not in_scc mode
+                values[state->getId()] = std::max(values[state->getId()], edge->getWeight()->getValue());
+            }
+            frame.succIndex++;
+        }
+        
+        if (pushedChild) {
+            continue;
+        }
+        
+        // Phase 3: All successors done, pop frame
+        callStack.pop_back();
+    }
 }
+
+// void Automaton::top_reachably_scc (State* state, bool in_scc, bool* spot, weight_t* values) const {
+// 	if (spot[state->getId()] == true) return;
+// 	spot[state->getId()] = true;
+// 	for (Symbol* symbol : *(state->getAlphabet())) {
+// 		for (Edge* edge : *(state->getSuccessors(symbol->getId()))) {
+// 			if (edge->getTo()->getTag() == state->getTag()) {
+// 				top_reachably_scc(edge->getTo(), in_scc, spot, values);
+// 				values[state->getId()] = std::max(values[state->getId()], edge->getWeight()->getValue());
+// 				values[state->getId()] = std::max(values[state->getId()], values[edge->getTo()->getId()]);
+// 			}
+// 			else if (in_scc == false) {
+// 				values[state->getId()] = std::max(values[state->getId()], edge->getWeight()->getValue());
+// 			}
+// 		}
+// 	}
+// }
 
 
 weight_t Automaton::top_reachably (bool in_scc, weight_t* values, weight_t* top_values) const {
@@ -3279,9 +3710,12 @@ namespace {
 	 *   - scc_states is non-empty.
 	 *   - All states in scc_states have getTag() == scc_id.
 	 */
-	weight_t max_mean_cycle_on_scc(const Automaton* A,
-								   const std::vector<unsigned int>& scc_states,
-								   unsigned int scc_id)
+	weight_t max_mean_cycle_on_scc(
+		const Automaton* A,
+		const std::vector<unsigned int>& scc_states,
+		unsigned int scc_id,
+		std::vector<int>& global_to_local,
+		std::vector<unsigned int>& touched)
 	{
 		using std::vector;
 		const unsigned int n = static_cast<unsigned int>(scc_states.size());
@@ -3291,9 +3725,13 @@ namespace {
 		}
 	
 		// Map global state_id -> local index [0 .. n-1]
-		vector<int> global_to_local(A->states->size(), -1);
+		touched.clear();
+		touched.reserve(n);
+
 		for (unsigned int i = 0; i < n; ++i) {
-			global_to_local[scc_states[i]] = static_cast<int>(i);
+			const unsigned int sid = scc_states[i];
+			global_to_local[sid] = static_cast<int>(i);
+			touched.push_back(sid);
 		}
 	
 		// Build adjacency list of this SCC only.
@@ -3329,7 +3767,8 @@ namespace {
 		if (!has_cycle_edge) {
 			// Single state without self-loop, or something degenerate:
 			// cannot form a cycle with length ≥ 1.
-			return A->min_domain;
+			// return A->min_domain;
+			return std::numeric_limits<weight_t>::lowest();
 		}
 	
 		const unsigned int N = n;
@@ -3458,10 +3897,16 @@ namespace {
 				any = true;
 			}
 		}
+
+		for (unsigned int sid : touched) {
+			global_to_local[sid] = -1;
+		}
+		touched.clear();
 	
 		if (!any) {
 			// Shouldn't happen for an SCC with at least one cycle, but be safe.
-			return A->min_domain;
+			// return A->min_domain;
+			return std::numeric_limits<weight_t>::lowest();
 		}
 		return best;
 	}
@@ -3488,7 +3933,12 @@ bool Automaton::emptiness_LimAvg_with_final(weight_t threshold) const {
         const auto& vec = states_in_scc[scc_id];
         if (vec.empty()) continue;                // no reachable state in this SCC
 
-        weight_t mu_scc = max_mean_cycle_on_scc(this, vec, scc_id);
+        // weight_t mu_scc = max_mean_cycle_on_scc(this, vec, scc_id);
+		std::vector<int> global_to_local(n, -1);
+		std::vector<unsigned int> touched;
+		weight_t mu_scc = max_mean_cycle_on_scc(this, vec, scc_id, global_to_local, touched);
+
+		if (mu_scc == std::numeric_limits<weight_t>::lowest()) continue;
 
         if (mu_scc >= threshold) {
             // Witness found: there is a run with limavg ≥ threshold

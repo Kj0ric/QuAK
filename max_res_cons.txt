@@ -1,0 +1,68 @@
+
+=== n=1 k=1 | resource_n1_k1.txt ===
+nonempty
+exit=0 | 1.13128 ms
+
+=== n=1 k=2 | resource_n1_k2.txt ===
+nonempty
+exit=0 | 0.960292 ms
+
+=== n=1 k=3 | resource_n1_k3.txt ===
+nonempty
+exit=0 | 1.89092 ms
+
+=== n=1 k=4 | resource_n1_k4.txt ===
+nonempty
+exit=0 | 5.07803 ms
+
+=== n=1 k=5 | resource_n1_k5.txt ===
+nonempty
+exit=0 | 9.83613 ms
+
+=== n=2 k=1 | resource_n2_k1.txt ===
+nonempty
+exit=0 | 4.74588 ms
+
+=== n=2 k=2 | resource_n2_k2.txt ===
+nonempty
+exit=0 | 19.2151 ms
+
+=== n=2 k=3 | resource_n2_k3.txt ===
+nonempty
+exit=0 | 100.051 ms
+
+=== n=2 k=4 | resource_n2_k4.txt ===
+nonempty
+exit=0 | 644.741 ms
+
+=== n=2 k=5 | resource_n2_k5.txt ===
+nonempty
+exit=0 | 4134.41 ms
+
+=== n=3 k=1 | resource_n3_k1.txt ===
+nonempty
+exit=0 | 96.1604 ms
+
+=== n=3 k=2 | resource_n3_k2.txt ===
+nonempty
+exit=0 | 839.614 ms
+
+=== n=3 k=3 | resource_n3_k3.txt ===
+nonempty
+exit=0 | 8269.15 ms
+
+=== n=3 k=4 | resource_n3_k4.txt ===
+nonempty
+exit=0 | 96431.7 ms
+
+=== n=4 k=1 | resource_n4_k1.txt ===
+nonempty
+exit=0 | 2081.53 ms
+
+=== n=4 k=2 | resource_n4_k2.txt ===
+nonempty
+exit=0 | 26608.5 ms
+
+=== n=5 k=1 | resource_n5_k1.txt ===
+nonempty
+exit=0 | 30991 ms

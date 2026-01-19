@@ -624,7 +624,7 @@ ChildAutomaton* hopcroftMinimizeDFA(ChildAutomaton* dfa, size_t i, weight_t j) {
     }
 
     // Copy states to min_states in remapped order
-    min_states = new MapArray<State*>(partition.size());
+    // min_states = new MapArray<State*>(partition.size());
     for (size_t i = 0; i < remapped_states->size(); ++i) {
         min_states->insert(i, remapped_states->at(i));
     }

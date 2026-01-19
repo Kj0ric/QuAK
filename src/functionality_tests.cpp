@@ -161,8 +161,6 @@ void testComputeChildReturnValues(const std::string& filepath, value_function_t 
     delete nested;
 }
 
-
-/*
 void testConstructMonitors(const std::string& filepath, value_function_t finVal, weight_t bound = -1) {
     std::cout << "=== Testing constructMonitors Function ===" << std::endl;
     std::cout << "File: " << filepath << std::endl;
@@ -327,7 +325,6 @@ void testAllMonitorsConstruction(const std::string& filepath, value_function_t f
         std::cout << "Test failed with unknown exception" << std::endl;
     }
 }
-*/
 
 /*
 void testCompareOldVsNewReturnValues(const std::string& filepath, value_function_t finVal, weight_t bound = -1) {
@@ -432,7 +429,6 @@ void testCompareOldVsNewReturnValues(const std::string& filepath, value_function
 }
 */
 
-/*
 void testTransformToBuchi(const std::string& filepath, value_function_t finVal, weight_t bound = -1) {
     std::cout << "=== Testing transformToBuchi Function ===" << std::endl;
     std::cout << "File: " << filepath << std::endl;
@@ -611,7 +607,6 @@ void testTransformToBuchi(const std::string& filepath, value_function_t finVal, 
         std::cout << "❌ Test failed with unknown exception" << std::endl;
     }
 }
-*/
 
 void testGenerateMacro(const std::string& filepath) {
     std::cout << "=== Testing generateMacro function ===" << std::endl;

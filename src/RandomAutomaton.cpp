@@ -41,6 +41,8 @@ Automaton *Automaton::randomAutomaton(const std::string& name,
     }
   }
 
+  std::bernoulli_distribution rand_is_final(0.5);
+
   auto alphabet_size = alphabet->size();
   assert(alphabet_size > 0);
 
@@ -119,6 +121,11 @@ Automaton *Automaton::randomAutomaton(const std::string& name,
                             alphabet_size,
                             real_min,
                             real_max);
+
+    if (rand_is_final(reng)) {
+        state->setFinal(true);
+    }
+
     states->insert(n, state);
   }
 
@@ -134,5 +141,8 @@ Automaton *Automaton::randomAutomaton(const std::string& name,
     dest->addPredecessor(edge);
   }
 
-  return new Automaton(name, new_alphabet, states, weights, real_min, real_max, states->at(0));
+  auto A = new Automaton(name, new_alphabet, states, weights, real_min, real_max, states->at(0));
+  auto B = copy_trim_complete(A, LimInfAvg);
+  delete A;
+  return B;
 }

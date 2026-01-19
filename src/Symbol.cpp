@@ -73,8 +73,13 @@ void generateResolvers(
 ) {
     // Base case: all automata have been processed for the current symbol
     if (automaton_id >= automata_list.size()) {
+        // MacroSymbol* macroSymbol = new MacroSymbol(symbol_list[symbol_id], resolver);
+        // alphabet.insert(macroSymbol);
         MacroSymbol* macroSymbol = new MacroSymbol(symbol_list[symbol_id], resolver);
-        alphabet.insert(macroSymbol);
+        auto [it, inserted] = alphabet.insert(macroSymbol);
+        if (!inserted) {
+            delete macroSymbol; // avoid leak on duplicate
+        }
         return;
     }
 
