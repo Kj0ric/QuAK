@@ -26,13 +26,14 @@ private:
 
     bool emptiness_monotonic_nesting_supremum(value_function_t infinite_aggregator, value_function_t finite_aggregator, weight_t threshold);
     bool emptiness_monotonic_nesting(value_function_t infinite_aggregator, value_function_t finite_aggregator, weight_t threshold);
-    bool emptiness_monotonic_nesting_min_max(value_function_t infinite_aggregator, value_function_t finite_aggregator, weight_t threshold);
     bool emptiness_Avg_SumPlus (value_function_t infinite_aggregator, weight_t threshold);
 
     bool allParentStatesFinal() const;
-
-
 public:
+ bool emptiness_monotonic_nesting_min_max(value_function_t infinite_aggregator, value_function_t finite_aggregator, weight_t threshold);
+
+
+
 	~NestedAutomaton();
 	NestedAutomaton(std::string name, Parser* parser, MapStd<std::string, Symbol*> sync_register);
 	NestedAutomaton(std::string filename, Automaton* other = nullptr);

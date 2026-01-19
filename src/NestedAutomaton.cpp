@@ -4127,7 +4127,7 @@ void explore_global_master_transition (data_all_t* data) {
 
     for (Edge* edge : *succs) {
         data->master_state_id_to = edge->getTo()->getId();
-        unsigned int child_id = (edge->getWeight()->getValue()).to_uint();  // edge weight encodes summoned child
+        unsigned int child_id = (int) (edge->getWeight()->getValue());  // edge weight encodes summoned child //NICOLAS CAST %%%%unsigned int child_id = (edge->getWeight()->getValue()).to_uint();
 
         data->master_tracking_to = data->master_tracking_from;
 
@@ -4820,8 +4820,7 @@ static void explore_global_master_transition_min_max(data_min_max_t* data) {
     for (Edge* edge : *succs) {
         data->master_state_id_to = (unsigned int)edge->getTo()->getId();
 
-        const unsigned int child_id =
-            (unsigned int)edge->getWeight()->getValue().to_uint();
+        const unsigned int child_id = (int) (edge->getWeight()->getValue()); //NICOLAS CAST %%%%const unsigned int child_id = (edge->getWeight()->getValue()).to_uint();
 
         // // Default: preserve master tracking unless we take non-silent.
         // data->master_tracking_to = data->master_tracking_from;

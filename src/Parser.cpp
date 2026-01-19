@@ -345,6 +345,8 @@ void readNestedFile(std::ifstream& file, Parser* parser) {
 }
 
 std::string readLine (std::string line, Parser* parser) {
+	
+
 	if (line.empty()) return "";
 
 	size_t index = line.find("--");

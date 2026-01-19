@@ -31,13 +31,15 @@ void testComputeChildReturnValues(const std::string& filepath, value_function_t 
 void testCompareOldVsNewReturnValues(const std::string& filepath, value_function_t finVal, weight_t bound = -1);
 
 
+
+/*
 // Monitor construction and testing functions
 void testConstructMonitors(const std::string& filepath, value_function_t finVal, weight_t bound = -1);
 void testAllMonitorsConstruction(const std::string& filepath, value_function_t finVal, weight_t bound = -1);
 
 // Büchi transformation testing function
 void testTransformToBuchi(const std::string& filepath, value_function_t finVal, weight_t bound = -1);
-
+*/
 void testGenerateMacro(const std::string& filepath);
 
 #endif /* QUAK_FUNCTIONALITY_TESTS_H_ */

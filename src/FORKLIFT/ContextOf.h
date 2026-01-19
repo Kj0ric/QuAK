@@ -8,9 +8,10 @@
 #include "../Symbol.h"
 
 
-
-class ContextOf : protected MapArray<StateRelation*> {
+// FRESH: inheritance from pair of maps instead of a single map
+class ContextOf : protected std::pair<MapArray<StateRelation*>*,MapArray<StateRelation*>*> {
 private:
+	unsigned int capacity; // FRESH: new atribute
 	int nb_ref = 0;
 public:
 	~ContextOf();
@@ -23,10 +24,17 @@ public:
 
 	//void print ();
 
-	void add (State* fromB, State* toB, unsigned int weight_id);
-	unsigned int size() const {return MapArray<StateRelation*>::size(); };
+	void add (State* fromB, State* toB, unsigned int weight_id, bool acceptance); // FRESH: now parameterized with a boolean
 	bool smaller_than (ContextOf* other, weight_t weight_this, weight_t weight_other);
-	StateRelation* at (unsigned int weight_id) const { return MapArray<StateRelation*>::at(weight_id); }
+	StateRelation* at (unsigned int weight_id, bool acceptance) const { // FRESH: now parameterized with a boolean
+		if (acceptance == false) {
+			return (this->first)->at(weight_id);
+		}
+		else {
+			return (this->second)->at(weight_id);
+		}
+	};
+	unsigned int size () const { return capacity; }; // FRESH: unsigned int size() const {return MapArray<StateRelation*>::size(); };
 };
 
 #endif /* CONTEXTOF_H_ */

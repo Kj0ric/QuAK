@@ -15,15 +15,16 @@ FixpointLoop::FixpointLoop (Symbol* initSymbol, State* initA, TargetOf* initB, u
 	this->updates = new PostContextVariable();
 	this->buffer = new PostContextVariable();
 
-
-	ContextOf* init_setB = new ContextOf(this->capacity);
+	ContextOf* init_setB = new ContextOf(capacity);
 
 	for (State* fromB : *initB) {
+
 		for (Edge* edgeB : *(fromB->getSuccessors(initSymbol->getId()))) {
-		  // #ifdef INCLUSION_SCC_SEARCH_ACTIVE
-		  // 	if (edgeB->getFrom()->getTag() != edgeB->getTo()->getTag()) continue;
-		  // #endif
-			init_setB->add(fromB, edgeB->getTo(), edgeB->getWeight()->getId());
+			// #ifdef INCLUSION_SCC_SEARCH_ACTIVE
+			// 	if (edgeB->getFrom()->getTag() != edgeB->getTo()->getTag()) continue;
+			// #endif
+			
+			init_setB->add(fromB, edgeB->getTo(), edgeB->getWeight()->getId(), fromB->getFinal() || edgeB->getTo()->getFinal()); // FRESH: handles acceptance
 		}
 	}
 
@@ -54,10 +55,17 @@ bool FixpointLoop::addIfExtreme (State* stateA, ContextOf* setB, Word* word, wei
 bool FixpointLoop::apply () {
 	auto iterA = this->updates->begin();
 	for(; iterA != this->updates->end(); ++iterA) {
+		// iterA->first is a State*
+		// iterA->second is a SetStd<std::pair<ContextOf*,std::pair<Word*, weight_t>>>*
+
 		auto iter_symbol = iterA->first->getAlphabet()->begin();
 		for (; iter_symbol != iterA->first->getAlphabet()->end(); ++iter_symbol) {
 			auto iterB = iterA->second->begin();
 			for (; iterB != iterA->second->end(); ++iterB) {
+				// iterB->first is a ContextOf*
+				// iterB->second.first is a Word*
+				// iterB->second.second is a weight_t
+				
 				ContextOf* postB = new ContextOf(iterB->first, *iter_symbol);
 				Word* word = new Word(iterB->second.first, *iter_symbol);
 				weight_t value = iterB->second.second;

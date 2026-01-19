@@ -25,6 +25,69 @@ struct TestConfig {
 };
 
 int main(int argc, char* argv[]) {
+	std::string myfilepathA(argv[1]);
+	Automaton* A = new Automaton(myfilepathA);
+	
+	A->getStates()->at(2)->setFinal(true);
+	A->getStates()->at(3)->setFinal(true);
+	A->print();
+
+	Word* stem = new Word(new Word(A->getAlphabet()->at(0)), A->getAlphabet()->at(0));
+	Word* period = new Word(A->getAlphabet()->at(0));
+	bool member = membership(A, stem, period, 0);
+
+	if (member == true) {
+		std::cout << "THE WORD " << stem->toString() << "(" << period->toString() << ") IS MEMBER with threshold 0\n";
+	}
+	else {
+		std::cout << "THE WORD " << stem->toString() << "(" << period->toString() << ") IS NOT MEMBER with threshold 0\n";
+	}
+
+
+	Word* stem_ = new Word(new Word(A->getAlphabet()->at(0)), A->getAlphabet()->at(0));
+	Word* period_ = new Word(A->getAlphabet()->at(1));
+	bool member_ = membership(A, stem_, period_, 1);
+
+	if (member_ == true) {
+		std::cout << "THE WORD " << stem_->toString() << "(" << period_->toString() << ") IS MEMBER  with threshold 1\n";
+	}
+	else {
+		std::cout << "THE WORD " << stem_->toString() << "(" << period_->toString() << ") IS NOT MEMBER with threshold 1\n";
+	}
+
+	
+	std::string myfilepathB(argv[2]);
+	Automaton* B = new Automaton(myfilepathB);
+	
+	B->getStates()->at(3)->setFinal(true);
+	B->getStates()->at(4)->setFinal(true);
+	B->getStates()->at(5)->setFinal(true);
+	B->getStates()->at(6)->setFinal(true);
+	B->print();
+
+	bool included = inclusion(A, B);
+	if (included == true) {
+		std::cout << "L(A) IN L(B)\n";
+	}
+	else {
+		std::cout << "L(A) NOT IN L(B)\n";
+	}
+
+	bool rev_included = inclusion(B, A);
+	if (rev_included == true) {
+		std::cout << "L(B) IN L(A)\n";
+	}
+	else {
+		std::cout << "L(B) NOT IN L(A)\n";
+	}
+
+
+	return 0;
+	
+
+
+
+
     // // std::string filepath = "/home/ege/Desktop/QuAK-playground/samples/nested/avg_resp/avg_resp_5_5.txt";
     // std::string filepath = "/home/ege/Desktop/QuAK-playground/samples/nested/test_liminf/test3.txt";
     // NestedAutomaton* nested = new NestedAutomaton(filepath);
