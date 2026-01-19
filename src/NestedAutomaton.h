@@ -26,9 +26,19 @@ private:
 
     bool emptiness_monotonic_nesting_supremum(value_function_t infinite_aggregator, value_function_t finite_aggregator, weight_t threshold);
     bool emptiness_monotonic_nesting(value_function_t infinite_aggregator, value_function_t finite_aggregator, weight_t threshold);
+<<<<<<< HEAD
     bool emptiness_Avg_SumPlus (value_function_t infinite_aggregator, weight_t threshold);
 
     bool allParentStatesFinal() const;
+=======
+    bool emptiness_monotonic_nesting_min_max(value_function_t infinite_aggregator, value_function_t finite_aggregator, weight_t threshold);
+    bool emptiness_Avg_SumPlus (weight_t threshold);
+
+    bool allParentStatesFinal() const;
+    SetStd<weight_t> computeChildReturnValuesParentAware(size_t child_index, value_function_t finVal, weight_t bound);
+    SetStd<weight_t> computeChildReturnValues(ChildAutomaton* child, value_function_t finVal, weight_t bound);
+
+>>>>>>> 03c9f7b5fe6f908942863ea598db007cb95f4c0f
 public:
  bool emptiness_monotonic_nesting_min_max(value_function_t infinite_aggregator, value_function_t finite_aggregator, weight_t threshold);
 
@@ -51,19 +61,8 @@ public:
     NestedAutomaton* synchronizeChildren(std::unordered_set<MacroSymbol*, MacroSymbolPtrHash, MacroSymbolPtrEqual>& macro_alphabet);
     Automaton* flatten_Avg_SumMinus();
 	Automaton* flatten_regular(value_function_t finVal, weight_t bound = -1);
-
-
     Automaton* flatten_regular_parent_trivial(value_function_t finVal, weight_t bound = -1);
 	Automaton* flatten_regular_parent_acceptance(value_function_t finVal, weight_t bound = -1);
-
-
-	// TODO: Decision problems
-    // public:
-    // SetStd<weight_t> debug_computeChildReturnValuesParentAware(
-    //     size_t child_index,
-    //     value_function_t finVal,
-    //     weight_t bound
-    // ) const;
 
     bool isNonEmpty(value_function_t infVal, value_function_t finVal, weight_t x, weight_t bound = -1);
     bool isUniversal(value_function_t infVal, value_function_t finVal, weight_t x, weight_t bound = -1);
