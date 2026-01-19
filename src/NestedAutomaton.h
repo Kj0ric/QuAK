@@ -26,11 +26,6 @@ private:
 
     bool emptiness_monotonic_nesting_supremum(value_function_t infinite_aggregator, value_function_t finite_aggregator, weight_t threshold);
     bool emptiness_monotonic_nesting(value_function_t infinite_aggregator, value_function_t finite_aggregator, weight_t threshold);
-<<<<<<< HEAD
-    bool emptiness_Avg_SumPlus (value_function_t infinite_aggregator, weight_t threshold);
-
-    bool allParentStatesFinal() const;
-=======
     bool emptiness_monotonic_nesting_min_max(value_function_t infinite_aggregator, value_function_t finite_aggregator, weight_t threshold);
     bool emptiness_Avg_SumPlus (weight_t threshold);
 
@@ -38,7 +33,6 @@ private:
     SetStd<weight_t> computeChildReturnValuesParentAware(size_t child_index, value_function_t finVal, weight_t bound);
     SetStd<weight_t> computeChildReturnValues(ChildAutomaton* child, value_function_t finVal, weight_t bound);
 
->>>>>>> 03c9f7b5fe6f908942863ea598db007cb95f4c0f
 public:
  bool emptiness_monotonic_nesting_min_max(value_function_t infinite_aggregator, value_function_t finite_aggregator, weight_t threshold);
 
