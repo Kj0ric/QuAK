@@ -1,0 +1,667 @@
+@PARENT
+# Bounded-pending NWA: n=8 max pending, k=16 max wait time
+# q0  : no pending requests
+# q_i : some (pending_count, age_of_oldest) for i >= 1
+# s   : violation (too many pending or some request waited >= k steps)
+final: q0
+
+o : 0, q0 -> q0
+g : 0, q0 -> q0
+r : 1, q0 -> q1   # Call child 1
+
+# State q1: pending=1, oldest_age=0
+o : 0, q1 -> q2
+g : 0, q1 -> q0
+r : 1, q1 -> q18   # Call child 1
+
+# State q2: pending=1, oldest_age=1
+o : 0, q2 -> q3
+g : 0, q2 -> q0
+r : 1, q2 -> q19   # Call child 1
+
+# State q3: pending=1, oldest_age=2
+o : 0, q3 -> q4
+g : 0, q3 -> q0
+r : 1, q3 -> q20   # Call child 1
+
+# State q4: pending=1, oldest_age=3
+o : 0, q4 -> q5
+g : 0, q4 -> q0
+r : 1, q4 -> q21   # Call child 1
+
+# State q5: pending=1, oldest_age=4
+o : 0, q5 -> q6
+g : 0, q5 -> q0
+r : 1, q5 -> q22   # Call child 1
+
+# State q6: pending=1, oldest_age=5
+o : 0, q6 -> q7
+g : 0, q6 -> q0
+r : 1, q6 -> q23   # Call child 1
+
+# State q7: pending=1, oldest_age=6
+o : 0, q7 -> q8
+g : 0, q7 -> q0
+r : 1, q7 -> q24   # Call child 1
+
+# State q8: pending=1, oldest_age=7
+o : 0, q8 -> q9
+g : 0, q8 -> q0
+r : 1, q8 -> q25   # Call child 1
+
+# State q9: pending=1, oldest_age=8
+o : 0, q9 -> q10
+g : 0, q9 -> q0
+r : 1, q9 -> q26   # Call child 1
+
+# State q10: pending=1, oldest_age=9
+o : 0, q10 -> q11
+g : 0, q10 -> q0
+r : 1, q10 -> q27   # Call child 1
+
+# State q11: pending=1, oldest_age=10
+o : 0, q11 -> q12
+g : 0, q11 -> q0
+r : 1, q11 -> q28   # Call child 1
+
+# State q12: pending=1, oldest_age=11
+o : 0, q12 -> q13
+g : 0, q12 -> q0
+r : 1, q12 -> q29   # Call child 1
+
+# State q13: pending=1, oldest_age=12
+o : 0, q13 -> q14
+g : 0, q13 -> q0
+r : 1, q13 -> q30   # Call child 1
+
+# State q14: pending=1, oldest_age=13
+o : 0, q14 -> q15
+g : 0, q14 -> q0
+r : 1, q14 -> q31   # Call child 1
+
+# State q15: pending=1, oldest_age=14
+o : 0, q15 -> q16
+g : 0, q15 -> q0
+r : 1, q15 -> q32   # Call child 1
+
+# State q16: pending=1, oldest_age=15
+o : 0, q16 -> s
+g : 0, q16 -> q0
+r : 0, q16 -> s
+
+# State q17: pending=2, oldest_age=0
+o : 0, q17 -> q18
+g : 0, q17 -> q0
+r : 1, q17 -> q34   # Call child 1
+
+# State q18: pending=2, oldest_age=1
+o : 0, q18 -> q19
+g : 0, q18 -> q0
+r : 1, q18 -> q35   # Call child 1
+
+# State q19: pending=2, oldest_age=2
+o : 0, q19 -> q20
+g : 0, q19 -> q0
+r : 1, q19 -> q36   # Call child 1
+
+# State q20: pending=2, oldest_age=3
+o : 0, q20 -> q21
+g : 0, q20 -> q0
+r : 1, q20 -> q37   # Call child 1
+
+# State q21: pending=2, oldest_age=4
+o : 0, q21 -> q22
+g : 0, q21 -> q0
+r : 1, q21 -> q38   # Call child 1
+
+# State q22: pending=2, oldest_age=5
+o : 0, q22 -> q23
+g : 0, q22 -> q0
+r : 1, q22 -> q39   # Call child 1
+
+# State q23: pending=2, oldest_age=6
+o : 0, q23 -> q24
+g : 0, q23 -> q0
+r : 1, q23 -> q40   # Call child 1
+
+# State q24: pending=2, oldest_age=7
+o : 0, q24 -> q25
+g : 0, q24 -> q0
+r : 1, q24 -> q41   # Call child 1
+
+# State q25: pending=2, oldest_age=8
+o : 0, q25 -> q26
+g : 0, q25 -> q0
+r : 1, q25 -> q42   # Call child 1
+
+# State q26: pending=2, oldest_age=9
+o : 0, q26 -> q27
+g : 0, q26 -> q0
+r : 1, q26 -> q43   # Call child 1
+
+# State q27: pending=2, oldest_age=10
+o : 0, q27 -> q28
+g : 0, q27 -> q0
+r : 1, q27 -> q44   # Call child 1
+
+# State q28: pending=2, oldest_age=11
+o : 0, q28 -> q29
+g : 0, q28 -> q0
+r : 1, q28 -> q45   # Call child 1
+
+# State q29: pending=2, oldest_age=12
+o : 0, q29 -> q30
+g : 0, q29 -> q0
+r : 1, q29 -> q46   # Call child 1
+
+# State q30: pending=2, oldest_age=13
+o : 0, q30 -> q31
+g : 0, q30 -> q0
+r : 1, q30 -> q47   # Call child 1
+
+# State q31: pending=2, oldest_age=14
+o : 0, q31 -> q32
+g : 0, q31 -> q0
+r : 1, q31 -> q48   # Call child 1
+
+# State q32: pending=2, oldest_age=15
+o : 0, q32 -> s
+g : 0, q32 -> q0
+r : 0, q32 -> s
+
+# State q33: pending=3, oldest_age=0
+o : 0, q33 -> q34
+g : 0, q33 -> q0
+r : 1, q33 -> q50   # Call child 1
+
+# State q34: pending=3, oldest_age=1
+o : 0, q34 -> q35
+g : 0, q34 -> q0
+r : 1, q34 -> q51   # Call child 1
+
+# State q35: pending=3, oldest_age=2
+o : 0, q35 -> q36
+g : 0, q35 -> q0
+r : 1, q35 -> q52   # Call child 1
+
+# State q36: pending=3, oldest_age=3
+o : 0, q36 -> q37
+g : 0, q36 -> q0
+r : 1, q36 -> q53   # Call child 1
+
+# State q37: pending=3, oldest_age=4
+o : 0, q37 -> q38
+g : 0, q37 -> q0
+r : 1, q37 -> q54   # Call child 1
+
+# State q38: pending=3, oldest_age=5
+o : 0, q38 -> q39
+g : 0, q38 -> q0
+r : 1, q38 -> q55   # Call child 1
+
+# State q39: pending=3, oldest_age=6
+o : 0, q39 -> q40
+g : 0, q39 -> q0
+r : 1, q39 -> q56   # Call child 1
+
+# State q40: pending=3, oldest_age=7
+o : 0, q40 -> q41
+g : 0, q40 -> q0
+r : 1, q40 -> q57   # Call child 1
+
+# State q41: pending=3, oldest_age=8
+o : 0, q41 -> q42
+g : 0, q41 -> q0
+r : 1, q41 -> q58   # Call child 1
+
+# State q42: pending=3, oldest_age=9
+o : 0, q42 -> q43
+g : 0, q42 -> q0
+r : 1, q42 -> q59   # Call child 1
+
+# State q43: pending=3, oldest_age=10
+o : 0, q43 -> q44
+g : 0, q43 -> q0
+r : 1, q43 -> q60   # Call child 1
+
+# State q44: pending=3, oldest_age=11
+o : 0, q44 -> q45
+g : 0, q44 -> q0
+r : 1, q44 -> q61   # Call child 1
+
+# State q45: pending=3, oldest_age=12
+o : 0, q45 -> q46
+g : 0, q45 -> q0
+r : 1, q45 -> q62   # Call child 1
+
+# State q46: pending=3, oldest_age=13
+o : 0, q46 -> q47
+g : 0, q46 -> q0
+r : 1, q46 -> q63   # Call child 1
+
+# State q47: pending=3, oldest_age=14
+o : 0, q47 -> q48
+g : 0, q47 -> q0
+r : 1, q47 -> q64   # Call child 1
+
+# State q48: pending=3, oldest_age=15
+o : 0, q48 -> s
+g : 0, q48 -> q0
+r : 0, q48 -> s
+
+# State q49: pending=4, oldest_age=0
+o : 0, q49 -> q50
+g : 0, q49 -> q0
+r : 1, q49 -> q66   # Call child 1
+
+# State q50: pending=4, oldest_age=1
+o : 0, q50 -> q51
+g : 0, q50 -> q0
+r : 1, q50 -> q67   # Call child 1
+
+# State q51: pending=4, oldest_age=2
+o : 0, q51 -> q52
+g : 0, q51 -> q0
+r : 1, q51 -> q68   # Call child 1
+
+# State q52: pending=4, oldest_age=3
+o : 0, q52 -> q53
+g : 0, q52 -> q0
+r : 1, q52 -> q69   # Call child 1
+
+# State q53: pending=4, oldest_age=4
+o : 0, q53 -> q54
+g : 0, q53 -> q0
+r : 1, q53 -> q70   # Call child 1
+
+# State q54: pending=4, oldest_age=5
+o : 0, q54 -> q55
+g : 0, q54 -> q0
+r : 1, q54 -> q71   # Call child 1
+
+# State q55: pending=4, oldest_age=6
+o : 0, q55 -> q56
+g : 0, q55 -> q0
+r : 1, q55 -> q72   # Call child 1
+
+# State q56: pending=4, oldest_age=7
+o : 0, q56 -> q57
+g : 0, q56 -> q0
+r : 1, q56 -> q73   # Call child 1
+
+# State q57: pending=4, oldest_age=8
+o : 0, q57 -> q58
+g : 0, q57 -> q0
+r : 1, q57 -> q74   # Call child 1
+
+# State q58: pending=4, oldest_age=9
+o : 0, q58 -> q59
+g : 0, q58 -> q0
+r : 1, q58 -> q75   # Call child 1
+
+# State q59: pending=4, oldest_age=10
+o : 0, q59 -> q60
+g : 0, q59 -> q0
+r : 1, q59 -> q76   # Call child 1
+
+# State q60: pending=4, oldest_age=11
+o : 0, q60 -> q61
+g : 0, q60 -> q0
+r : 1, q60 -> q77   # Call child 1
+
+# State q61: pending=4, oldest_age=12
+o : 0, q61 -> q62
+g : 0, q61 -> q0
+r : 1, q61 -> q78   # Call child 1
+
+# State q62: pending=4, oldest_age=13
+o : 0, q62 -> q63
+g : 0, q62 -> q0
+r : 1, q62 -> q79   # Call child 1
+
+# State q63: pending=4, oldest_age=14
+o : 0, q63 -> q64
+g : 0, q63 -> q0
+r : 1, q63 -> q80   # Call child 1
+
+# State q64: pending=4, oldest_age=15
+o : 0, q64 -> s
+g : 0, q64 -> q0
+r : 0, q64 -> s
+
+# State q65: pending=5, oldest_age=0
+o : 0, q65 -> q66
+g : 0, q65 -> q0
+r : 1, q65 -> q82   # Call child 1
+
+# State q66: pending=5, oldest_age=1
+o : 0, q66 -> q67
+g : 0, q66 -> q0
+r : 1, q66 -> q83   # Call child 1
+
+# State q67: pending=5, oldest_age=2
+o : 0, q67 -> q68
+g : 0, q67 -> q0
+r : 1, q67 -> q84   # Call child 1
+
+# State q68: pending=5, oldest_age=3
+o : 0, q68 -> q69
+g : 0, q68 -> q0
+r : 1, q68 -> q85   # Call child 1
+
+# State q69: pending=5, oldest_age=4
+o : 0, q69 -> q70
+g : 0, q69 -> q0
+r : 1, q69 -> q86   # Call child 1
+
+# State q70: pending=5, oldest_age=5
+o : 0, q70 -> q71
+g : 0, q70 -> q0
+r : 1, q70 -> q87   # Call child 1
+
+# State q71: pending=5, oldest_age=6
+o : 0, q71 -> q72
+g : 0, q71 -> q0
+r : 1, q71 -> q88   # Call child 1
+
+# State q72: pending=5, oldest_age=7
+o : 0, q72 -> q73
+g : 0, q72 -> q0
+r : 1, q72 -> q89   # Call child 1
+
+# State q73: pending=5, oldest_age=8
+o : 0, q73 -> q74
+g : 0, q73 -> q0
+r : 1, q73 -> q90   # Call child 1
+
+# State q74: pending=5, oldest_age=9
+o : 0, q74 -> q75
+g : 0, q74 -> q0
+r : 1, q74 -> q91   # Call child 1
+
+# State q75: pending=5, oldest_age=10
+o : 0, q75 -> q76
+g : 0, q75 -> q0
+r : 1, q75 -> q92   # Call child 1
+
+# State q76: pending=5, oldest_age=11
+o : 0, q76 -> q77
+g : 0, q76 -> q0
+r : 1, q76 -> q93   # Call child 1
+
+# State q77: pending=5, oldest_age=12
+o : 0, q77 -> q78
+g : 0, q77 -> q0
+r : 1, q77 -> q94   # Call child 1
+
+# State q78: pending=5, oldest_age=13
+o : 0, q78 -> q79
+g : 0, q78 -> q0
+r : 1, q78 -> q95   # Call child 1
+
+# State q79: pending=5, oldest_age=14
+o : 0, q79 -> q80
+g : 0, q79 -> q0
+r : 1, q79 -> q96   # Call child 1
+
+# State q80: pending=5, oldest_age=15
+o : 0, q80 -> s
+g : 0, q80 -> q0
+r : 0, q80 -> s
+
+# State q81: pending=6, oldest_age=0
+o : 0, q81 -> q82
+g : 0, q81 -> q0
+r : 1, q81 -> q98   # Call child 1
+
+# State q82: pending=6, oldest_age=1
+o : 0, q82 -> q83
+g : 0, q82 -> q0
+r : 1, q82 -> q99   # Call child 1
+
+# State q83: pending=6, oldest_age=2
+o : 0, q83 -> q84
+g : 0, q83 -> q0
+r : 1, q83 -> q100   # Call child 1
+
+# State q84: pending=6, oldest_age=3
+o : 0, q84 -> q85
+g : 0, q84 -> q0
+r : 1, q84 -> q101   # Call child 1
+
+# State q85: pending=6, oldest_age=4
+o : 0, q85 -> q86
+g : 0, q85 -> q0
+r : 1, q85 -> q102   # Call child 1
+
+# State q86: pending=6, oldest_age=5
+o : 0, q86 -> q87
+g : 0, q86 -> q0
+r : 1, q86 -> q103   # Call child 1
+
+# State q87: pending=6, oldest_age=6
+o : 0, q87 -> q88
+g : 0, q87 -> q0
+r : 1, q87 -> q104   # Call child 1
+
+# State q88: pending=6, oldest_age=7
+o : 0, q88 -> q89
+g : 0, q88 -> q0
+r : 1, q88 -> q105   # Call child 1
+
+# State q89: pending=6, oldest_age=8
+o : 0, q89 -> q90
+g : 0, q89 -> q0
+r : 1, q89 -> q106   # Call child 1
+
+# State q90: pending=6, oldest_age=9
+o : 0, q90 -> q91
+g : 0, q90 -> q0
+r : 1, q90 -> q107   # Call child 1
+
+# State q91: pending=6, oldest_age=10
+o : 0, q91 -> q92
+g : 0, q91 -> q0
+r : 1, q91 -> q108   # Call child 1
+
+# State q92: pending=6, oldest_age=11
+o : 0, q92 -> q93
+g : 0, q92 -> q0
+r : 1, q92 -> q109   # Call child 1
+
+# State q93: pending=6, oldest_age=12
+o : 0, q93 -> q94
+g : 0, q93 -> q0
+r : 1, q93 -> q110   # Call child 1
+
+# State q94: pending=6, oldest_age=13
+o : 0, q94 -> q95
+g : 0, q94 -> q0
+r : 1, q94 -> q111   # Call child 1
+
+# State q95: pending=6, oldest_age=14
+o : 0, q95 -> q96
+g : 0, q95 -> q0
+r : 1, q95 -> q112   # Call child 1
+
+# State q96: pending=6, oldest_age=15
+o : 0, q96 -> s
+g : 0, q96 -> q0
+r : 0, q96 -> s
+
+# State q97: pending=7, oldest_age=0
+o : 0, q97 -> q98
+g : 0, q97 -> q0
+r : 1, q97 -> q114   # Call child 1
+
+# State q98: pending=7, oldest_age=1
+o : 0, q98 -> q99
+g : 0, q98 -> q0
+r : 1, q98 -> q115   # Call child 1
+
+# State q99: pending=7, oldest_age=2
+o : 0, q99 -> q100
+g : 0, q99 -> q0
+r : 1, q99 -> q116   # Call child 1
+
+# State q100: pending=7, oldest_age=3
+o : 0, q100 -> q101
+g : 0, q100 -> q0
+r : 1, q100 -> q117   # Call child 1
+
+# State q101: pending=7, oldest_age=4
+o : 0, q101 -> q102
+g : 0, q101 -> q0
+r : 1, q101 -> q118   # Call child 1
+
+# State q102: pending=7, oldest_age=5
+o : 0, q102 -> q103
+g : 0, q102 -> q0
+r : 1, q102 -> q119   # Call child 1
+
+# State q103: pending=7, oldest_age=6
+o : 0, q103 -> q104
+g : 0, q103 -> q0
+r : 1, q103 -> q120   # Call child 1
+
+# State q104: pending=7, oldest_age=7
+o : 0, q104 -> q105
+g : 0, q104 -> q0
+r : 1, q104 -> q121   # Call child 1
+
+# State q105: pending=7, oldest_age=8
+o : 0, q105 -> q106
+g : 0, q105 -> q0
+r : 1, q105 -> q122   # Call child 1
+
+# State q106: pending=7, oldest_age=9
+o : 0, q106 -> q107
+g : 0, q106 -> q0
+r : 1, q106 -> q123   # Call child 1
+
+# State q107: pending=7, oldest_age=10
+o : 0, q107 -> q108
+g : 0, q107 -> q0
+r : 1, q107 -> q124   # Call child 1
+
+# State q108: pending=7, oldest_age=11
+o : 0, q108 -> q109
+g : 0, q108 -> q0
+r : 1, q108 -> q125   # Call child 1
+
+# State q109: pending=7, oldest_age=12
+o : 0, q109 -> q110
+g : 0, q109 -> q0
+r : 1, q109 -> q126   # Call child 1
+
+# State q110: pending=7, oldest_age=13
+o : 0, q110 -> q111
+g : 0, q110 -> q0
+r : 1, q110 -> q127   # Call child 1
+
+# State q111: pending=7, oldest_age=14
+o : 0, q111 -> q112
+g : 0, q111 -> q0
+r : 1, q111 -> q128   # Call child 1
+
+# State q112: pending=7, oldest_age=15
+o : 0, q112 -> s
+g : 0, q112 -> q0
+r : 0, q112 -> s
+
+# State q113: pending=8, oldest_age=0
+o : 0, q113 -> q114
+g : 0, q113 -> q0
+r : 0, q113 -> s
+
+# State q114: pending=8, oldest_age=1
+o : 0, q114 -> q115
+g : 0, q114 -> q0
+r : 0, q114 -> s
+
+# State q115: pending=8, oldest_age=2
+o : 0, q115 -> q116
+g : 0, q115 -> q0
+r : 0, q115 -> s
+
+# State q116: pending=8, oldest_age=3
+o : 0, q116 -> q117
+g : 0, q116 -> q0
+r : 0, q116 -> s
+
+# State q117: pending=8, oldest_age=4
+o : 0, q117 -> q118
+g : 0, q117 -> q0
+r : 0, q117 -> s
+
+# State q118: pending=8, oldest_age=5
+o : 0, q118 -> q119
+g : 0, q118 -> q0
+r : 0, q118 -> s
+
+# State q119: pending=8, oldest_age=6
+o : 0, q119 -> q120
+g : 0, q119 -> q0
+r : 0, q119 -> s
+
+# State q120: pending=8, oldest_age=7
+o : 0, q120 -> q121
+g : 0, q120 -> q0
+r : 0, q120 -> s
+
+# State q121: pending=8, oldest_age=8
+o : 0, q121 -> q122
+g : 0, q121 -> q0
+r : 0, q121 -> s
+
+# State q122: pending=8, oldest_age=9
+o : 0, q122 -> q123
+g : 0, q122 -> q0
+r : 0, q122 -> s
+
+# State q123: pending=8, oldest_age=10
+o : 0, q123 -> q124
+g : 0, q123 -> q0
+r : 0, q123 -> s
+
+# State q124: pending=8, oldest_age=11
+o : 0, q124 -> q125
+g : 0, q124 -> q0
+r : 0, q124 -> s
+
+# State q125: pending=8, oldest_age=12
+o : 0, q125 -> q126
+g : 0, q125 -> q0
+r : 0, q125 -> s
+
+# State q126: pending=8, oldest_age=13
+o : 0, q126 -> q127
+g : 0, q126 -> q0
+r : 0, q126 -> s
+
+# State q127: pending=8, oldest_age=14
+o : 0, q127 -> q128
+g : 0, q127 -> q0
+r : 0, q127 -> s
+
+# State q128: pending=8, oldest_age=15
+o : 0, q128 -> s
+g : 0, q128 -> q0
+r : 0, q128 -> s
+
+# Sink state s: violation detected
+o : 0, s -> s
+g : 0, s -> s
+r : 0, s -> s
+
+@CHILD 0
+# Silent/dummy child used by weight-0 parent edges.
+
+@CHILD 1
+# Response-time tracking child
+# Counts steps (r or o) until a 'g' is seen, then accepts.
+final: s1
+
+r : 1, s0 -> s0   # increment count on request
+o : 1, s0 -> s0   # increment count on other
+g : 0, s0 -> s1   # grant seen, accept
