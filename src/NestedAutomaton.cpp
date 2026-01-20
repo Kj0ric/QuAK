@@ -4827,10 +4827,13 @@ bool NestedAutomaton::emptiness_monotonic_nesting(value_function_t infinite_aggr
 
 bool NestedAutomaton::emptiness_Avg_SumPlus (weight_t threshold) {
     unsigned int theoretical_bound = 0;
+    unsigned int max_weight = 1;
     for (unsigned int i = 0; i < this->children_->size(); i++) {
         theoretical_bound = std::max(theoretical_bound, (unsigned int)this->getChild(i)->getStates()->size());
+        max_weight = std::max(max_weight, this->getChild(i)->getMaxDomain().to_uint()); // TODO: CHECK
     } 
-    theoretical_bound = theoretical_bound * this->getStates()->size(); 
+    theoretical_bound = theoretical_bound * max_weight * this->getStates()->size();
+
 
     // Fast path: if supremum is unbounded, threshold is always achievable
     if (emptiness_monotonic_nesting_supremum(LimSup, SumPlus, theoretical_bound)) {
@@ -4850,9 +4853,8 @@ bool NestedAutomaton::emptiness_Avg_SumPlus (weight_t threshold) {
                 }
             }
         }
-        std::cout << "buchi: " << buchi->getStates()->size() << " states and " << numEdges << " edges" << std::endl;
-        std::cout << buchi->getNbSCCs() << " SCCs" << std::endl;
-        std::cout << buchi->getNbAcceptingSCCs() << " accepting SCCs" << std::endl;
+        std::cout << "buchi: " << buchi->getStates()->size() << " states, " << numEdges << " edges" << std::endl;
+        std::cout << buchi->getNbSCCs() << " SCCs (" << buchi->getNbAcceptingSCCs() << " accepting)" << std::endl;
         // buchi->print();
 
         Automaton* modBuchi = Automaton::removeSilentTransitions(buchi, LimInfAvg);
@@ -4868,9 +4870,8 @@ bool NestedAutomaton::emptiness_Avg_SumPlus (weight_t threshold) {
                 }
             }
         }
-        std::cout << "modBuchi: " << modBuchi->getStates()->size() << " states and " << numEdges2 << " edges" << std::endl;
-        std::cout << modBuchi->getNbSCCs() << " SCCs" << std::endl;
-        std::cout << modBuchi->getNbAcceptingSCCs() << " accepting SCCs" << std::endl;
+        std::cout << "modBuchi: " << modBuchi->getStates()->size() << " states, " << numEdges2 << " edges" << std::endl;
+        std::cout << modBuchi->getNbSCCs() << " SCCs (" << modBuchi->getNbAcceptingSCCs() << " accepting)" << std::endl;
         // modBuchi->print();
         
         bool res = modBuchi->emptiness_LimAvg_with_final(threshold);
@@ -4910,568 +4911,414 @@ bool NestedAutomaton::emptiness_Avg_SumPlus (weight_t threshold) {
 
 
 
+static std::string vec_to_string(const std::vector<unsigned int>& v) {
+    std::string s;
+    for (size_t i = 0; i < v.size(); ++i) {
+        if (i > 0) s.push_back(',');
+        s.append(std::to_string(v[i] & 3u));
+    }
+    return s;
+}
+
+
+// Worklist item for Min_f/Max_f under Sup/LimSup: track ONE distinguished child-token,
+// and represent activation/tracking as variable-length vectors (no fixed-size bitmasks).
+struct min_max_sup_work_item {
+    std::string global_from;
+    unsigned int master_state_id_from;
+
+    // 0/1 per flattened child-state
+    std::vector<unsigned char> activation_from;
+    std::vector<unsigned char> tracking_from;
+
+    // Distinguished token being tracked for the (0/1) edge weight.
+    // If inactive_from==true, the remaining fields are ignored.
+    bool inactive_from = true;
+    unsigned int witness_child_id_from = 0;
+    unsigned int witness_child_state_id_from = 0;
+    unsigned int witness_y_from = 0; // monotone bit: Max_f starts 0, Min_f starts 1
+};
+
+
 // ============================================================================
-// Min/Max monotone nesting construction, reworked to use data_supremum_t.
-// ONLY change: data tracking/handling.
-//   - Instead of 4 separate vectors (from_0_0, from_0_1, from_1_0, from_1_1),
-//     we store ONE packed vector "packed[i]" per flattened child-state i.
-//     Each packed[i] stores 4 cells (0_0, 0_1, 1_0, 1_1), each cell is 2 bits:
-//
-//       cat 0_0 in bits [1:0]
-//       cat 0_1 in bits [3:2]
-//       cat 1_0 in bits [5:4]
-//       cat 1_1 in bits [7:6]
-//
-//     Each 2-bit cell value is exactly as before:
-//       0 = none, 1 = active, 2 = tracked, 3 = active+tracked
-//
-//   - We reuse data_supremum_t fields as follows (no semantic changes):
-//       data->old_activation_of_children_state  := packed OLD vector
-//       data->new_activation_of_children_state  := packed NEW vector
-//       data->budget_from  (internal_weight_t)  := master_tracking_from (0/1/2)
-//       data->budget_to    (internal_weight_t)  := master_tracking_to   (0/1/2)
-//       data->abs_threshold                     := threshold in internal_weight_t
-//       data->child_id_from (unsigned int)      := inf_or_sup (0=inf-type, 1=sup-type)
-//       data->child_state_id_from (unsigned int):= finite_is_max (0=Min_f, 1=Max_f)
-//       data->global_edge_weight (internal)     := 0/1
-//
-// Everything else (control flow, branching, acceptance, pulses, sink) is identical.
+//  Optimized Min_f/Max_f construction for Sup/LimSup (track ONE token)
+//  IMPORTANT: activation/tracking are variable-length vectors (no fixed-size
+//  bitmasks), so the construction supports arbitrary numbers of flattened
+//  child-states.
 // ============================================================================
 
-namespace {
-    enum PackedCat : unsigned int { CAT_0_0 = 0u, CAT_0_1 = 1u, CAT_1_0 = 2u, CAT_1_1 = 3u };
+typedef struct global_exploration_data_min_max_supremum {
+    // constraints
+    NestedAutomaton* A = nullptr;
+    Parser* parser = nullptr;
+    weight_t threshold{};
+    unsigned int* cumulative_size = nullptr;
+    unsigned int children_all = 0;
+    unsigned int finite_is_max = 0; // 0 = Min_f, 1 = Max_f
 
-    static inline unsigned int packed_get(const unsigned int cell, const PackedCat cat) {
-        return (cell >> (2u * (unsigned int)cat)) & 3u;
+    // epoch reset vector (all ones)
+    std::vector<unsigned char> track_them_all;
+
+    // worklist for iterative DFS
+    std::vector<min_max_sup_work_item>* worklist = nullptr;
+
+    // given (input for current exploration frame)
+    std::string global_from;
+    unsigned int master_state_id_from = 0;
+    std::vector<unsigned char> activation_from;
+    std::vector<unsigned char> tracking_from;
+    bool inactive_from = true;
+    unsigned int witness_child_id_from = 0;
+    unsigned int witness_child_state_id_from = 0;
+    unsigned int witness_y_from = 0;
+
+    // initialized per-symbol
+    Symbol* symbol = nullptr;
+    std::vector<unsigned char> old_activation;
+    std::vector<unsigned char> old_tracking;
+    std::vector<unsigned char> new_activation;
+    std::vector<unsigned char> new_tracking;
+
+    // computed (output accumulators)
+    unsigned int master_state_id_to = 0;
+    weight_t global_edge_weight = 0;
+    bool inactive_to = true;
+    unsigned int witness_child_id_to = 0;
+    unsigned int witness_child_state_id_to = 0;
+    unsigned int witness_y_to = 0;
+} data_min_max_supremum_t;
+
+static void explore_global_initialization_min_max_supremum(data_min_max_supremum_t* data);
+static void explore_global_master_transition_min_max_supremum(data_min_max_supremum_t* data);
+static void explore_global_child_transition_min_max_supremum(data_min_max_supremum_t* data);
+static void explore_global_selection_min_max_supremum(unsigned int child_id, unsigned int child_state_id,
+                                                      data_min_max_supremum_t* data);
+static void explore_global_finalization_min_max_supremum(data_min_max_supremum_t* data);
+static void explore_global_failure_min_max_supremum(data_min_max_supremum_t* data);
+
+static inline bool tracking_all_zero(const std::vector<unsigned char>& v) {
+    for (unsigned char b : v) {
+        if (b != 0) return false;
     }
-    static inline void packed_set(unsigned int& cell, const PackedCat cat, const unsigned int val) {
-        const unsigned int sh = 2u * (unsigned int)cat;
-        cell = (cell & ~(3u << sh)) | ((val & 3u) << sh);
+    return true;
+}
+
+static std::string bits_to_string(const std::vector<unsigned char>& v) {
+    std::string s;
+    s.reserve(v.size());
+    for (unsigned char b : v) {
+        s.push_back(b ? '1' : '0');
+    }
+    return s;
+}
+
+static inline unsigned int min_max_y_update(const weight_t& edge_value,
+                                            unsigned int y_current,
+                                            const data_min_max_supremum_t* data) {
+    const bool pass = !(edge_value < data->threshold); // edge_value >= threshold
+    if (data->finite_is_max) {
+        // Max_f: y' = y OR pass
+        return (y_current != 0u || pass) ? 1u : 0u;
+    }
+    // Min_f: y' = y AND pass
+    return (y_current != 0u && pass) ? 1u : 0u;
+}
+
+static void explore_global_failure_min_max_supremum(data_min_max_supremum_t* data) {
+    data->parser->edges.insert({
+        { data->symbol->getName(), weight_t(0) },
+        { data->global_from, "@sink@" }
+    });
+}
+
+static void explore_global_finalization_min_max_supremum(data_min_max_supremum_t* data) {
+    // Compute destination activation/tracking vectors.
+    std::vector<unsigned char> activation_to = data->new_activation; // copy
+    std::vector<unsigned char> tracking_to   = data->new_tracking;   // copy
+
+    bool global_final = false;
+    // Epoch boundary: exactly as in explore_global_finalization_supremum (Sum+/Sum-)
+    if (tracking_all_zero(data->tracking_from)) {
+        tracking_to = data->track_them_all; // reset obligations
+        global_final = data->A->getStates()->at(data->master_state_id_to)->getFinal();
     }
 
-    // tracked bits are at positions 1,3,5,7 -> mask 0b10101010 = 0xAA
-    static inline bool packed_any_tracked_bits(const unsigned int cell) {
-        return (cell & 0xAAu) != 0u;
+    // Encode destination state:
+    //   master_id/activation_bits/tracking_bits/[child_id/child_state/y | @inactive@]
+    std::string global_to;
+    global_to.reserve(64 + data->children_all * 2);
+    global_to.append(std::to_string(data->master_state_id_to));
+    global_to.push_back('/');
+    global_to.append(bits_to_string(activation_to));
+    global_to.push_back('/');
+    global_to.append(bits_to_string(tracking_to));
+
+    if (data->inactive_to) {
+        global_to.append("/@inactive@");
+    } else {
+        global_to.push_back('/');
+        global_to.append(std::to_string(data->witness_child_id_to));
+        global_to.push_back('/');
+        global_to.append(std::to_string(data->witness_child_state_id_to));
+        global_to.push_back('/');
+        global_to.append(std::to_string(data->witness_y_to));
     }
 
-    static inline void packed_activate_tracked(unsigned int& cell, const PackedCat cat) {
-        packed_set(cell, cat, 3u);
+    data->parser->edges.insert({
+        { data->symbol->getName(), data->global_edge_weight },
+        { data->global_from, global_to }
+    });
+
+    if (global_final) {
+        data->parser->final_states.insert(global_to);
     }
 
-    static std::string vec_to_string_from_packed(const std::vector<unsigned int>& packed,
-                                                 const PackedCat cat) {
-        std::string s;
-        s.reserve(packed.size() * 3);
-        for (size_t i = 0; i < packed.size(); ++i) {
-            if (i > 0) s.push_back(',');
-            s.append(std::to_string(packed_get(packed[i], cat) & 3u));
-        }
-        return s;
-    }
-
-    // Worklist item for iterative DFS (avoids stack overflow)
-    struct min_max_work_item_sup {
-        std::string global_from;
-        unsigned int master_state_id_from;
-        unsigned int master_tracking_from;
-        std::vector<unsigned int> packed_from; // size children_all
-    };
-
-    // We keep the helpers as static functions as before, but the worklist pointer
-    // lives in a TU-local static to avoid modifying data_supremum_t.
-    static std::vector<min_max_work_item_sup>* g_minmax_worklist = nullptr;
-
-    static void explore_global_initialization_min_max_supremum(data_supremum_t* data);
-    static void explore_global_master_transition_min_max_supremum(data_supremum_t* data);
-    static void explore_global_finalization_min_max_supremum(data_supremum_t* data);
-    static void explore_global_failure_min_max_supremum(data_supremum_t* data);
-
-    static void explore_global_selection_case_0_0_min_max_supremum(unsigned int child_id, unsigned int child_state_id, data_supremum_t* data);
-    static void explore_global_selection_case_0_1_min_max_supremum(unsigned int child_id, unsigned int child_state_id, data_supremum_t* data);
-    static void explore_global_selection_case_1_0_min_max_supremum(unsigned int child_id, unsigned int child_state_id, data_supremum_t* data);
-    static void explore_global_selection_case_1_1_min_max_supremum(unsigned int child_id, unsigned int child_state_id, data_supremum_t* data);
-
-    static void explore_global_selection_min_max_supremum(unsigned int child_id, unsigned int child_state_id, data_supremum_t* data) {
-        explore_global_selection_case_0_0_min_max_supremum(child_id, child_state_id, data);
-    }
-
-    static void explore_global_failure_min_max_supremum(data_supremum_t* data) {
-        data->parser->edges.insert({
-            { data->symbol->getName(), weight_t(0) },
-            { data->global_from, "@sink@" }
+    // Iterative DFS: push to worklist on first discovery
+    if (!data->parser->states.contains(global_to)) {
+        data->parser->states.insert(global_to);
+        data->worklist->push_back({
+            global_to,
+            data->master_state_id_to,
+            std::move(activation_to),
+            std::move(tracking_to),
+            data->inactive_to,
+            data->witness_child_id_to,
+            data->witness_child_state_id_to,
+            data->witness_y_to
         });
     }
+}
 
-    /*
-      Status x_y:
-        x = objective bit (0 or 1) -> birth guess -> edge weight
-        y = current bit:
-            - Max_f: y starts 0 and can flip 0->1 when seeing edge>=threshold
-            - Min_f: y starts 1 and can flip 1->0 when seeing edge<threshold
-
-      Returned value matches the original usage:
-        - in *_0 cases: ok means "flip to *_1"
-        - in *_1 cases: ok means "stay in *_1"
-    */
-    static bool beyond_threshold_min_max_supremum(const weight_t& edge_value,
-                                        bool /*guessed_weight_unused*/,
-                                        bool current_is_1,
-                                        const data_supremum_t* data) {
-        const internal_weight_t ew = to_internal(edge_value);
-        const bool pass = !(ew < data->abs_threshold); // ew >= threshold
-
-        const bool finite_is_max = (data->child_state_id_from != 0u);
-
-        if (finite_is_max) {
-            // Max_f: y' = y OR pass
-            if (!current_is_1) return pass; // 0 -> 1 iff pass
-            return true;                    // 1 stays 1
-        } else {
-            // Min_f: y' = y AND pass
-            if (!current_is_1) return false; // 0 stays 0
-            return pass;                     // 1 stays 1 iff pass, else flips to 0
-        }
+static void explore_global_selection_min_max_supremum(unsigned int child_id,
+                                                      unsigned int child_state_id,
+                                                      data_min_max_supremum_t* data) {
+    // Skip the distinguished token's FROM location (handled in explore_global_child_transition_min_max_supremum)
+    if (!data->inactive_from &&
+        child_id == data->witness_child_id_from &&
+        child_state_id == data->witness_child_state_id_from) {
+        explore_global_selection_min_max_supremum(child_id, child_state_id + 1, data);
+        return;
     }
 
-    /*
-      Enforce "final-state handling in the same symbol" on the NEW packed vector.
-      - If a child is in a final state with status 0_0 or 1_1: it MUST terminate now -> drop it from NEW.
-      - If a child is in a final state with status 0_1 or 1_0: it would be forced to terminate but cannot -> branch dies.
-    */
-    static bool cleanup_new_on_finals_min_max_supremum(data_supremum_t* data) {
-        for (unsigned int cid = 0; cid < data->A->getChildrenSize(); ++cid) {
-            ChildAutomaton* child = data->A->getChild(cid);
-            auto* states = child->getStates();
-            if (!states) continue;
+    if (child_id < data->A->getChildrenSize()) {
+        ChildAutomaton* child = data->A->getChild(child_id);
+        auto* states = child->getStates();
 
-            for (unsigned int sid = 0; sid < states->size(); ++sid) {
-                if (!states->at(sid)->getFinal()) continue;
+        if (child_state_id < states->size()) {
+            const unsigned int i = data->cumulative_size[child_id] + child_state_id;
 
-                const unsigned int idx = data->cumulative_size[cid] + sid;
-                unsigned int& cell = data->new_activation_of_children_state[idx];
-
-                // forbidden: reached final but status cannot terminate
-                if ((packed_get(cell, CAT_0_1) & 1u) || (packed_get(cell, CAT_1_0) & 1u)) {
-                    return false;
-                }
-
-                // allowed-terminate: drop immediately (also clears any tracked bit)
-                packed_set(cell, CAT_0_0, 0u);
-                packed_set(cell, CAT_1_1, 0u);
+            if (data->old_activation[i] == 0) {
+                explore_global_selection_min_max_supremum(child_id, child_state_id + 1, data);
+                return;
             }
+
+            if (states->at(child_state_id)->getFinal()) {
+                // Background final states terminate immediately.
+                explore_global_selection_min_max_supremum(child_id, child_state_id + 1, data);
+                return;
+            }
+
+            State* child_state = states->at(child_state_id);
+            auto* succs = child_state->getSuccessors(data->symbol->getId());
+            if (succs) {
+                for (Edge* edge : *succs) {
+                    // If successor is final: terminate in the same symbol (do not propagate)
+                    if (edge->getTo()->getFinal()) {
+                        explore_global_selection_min_max_supremum(child_id + 1, child_state_id, data);
+                        continue;
+                    }
+
+                    const unsigned int ii = data->cumulative_size[child_id] + (unsigned int)edge->getTo()->getId();
+                    const unsigned char stored_tracking = data->new_tracking[ii];
+                    const unsigned char stored_activation = data->new_activation[ii];
+
+                    if (data->old_tracking[i] == 1) {
+                        data->new_tracking[ii] = 1;
+                    }
+                    if (data->old_activation[i] == 1) {
+                        data->new_activation[ii] = 1;
+                    }
+
+                    explore_global_selection_min_max_supremum(child_id + 1, child_state_id, data);
+
+                    data->new_tracking[ii] = stored_tracking;
+                    data->new_activation[ii] = stored_activation;
+                }
+            } else {
+                // No successors on this symbol: treat as silent "no move" for background
+                explore_global_selection_min_max_supremum(child_id + 1, child_state_id, data);
+            }
+        } else {
+            explore_global_selection_min_max_supremum(child_id + 1, 0, data);
         }
-        return true;
+    } else {
+        explore_global_finalization_min_max_supremum(data);
+    }
+}
+
+static void explore_global_child_transition_min_max_supremum(data_min_max_supremum_t* data) {
+    if (data->inactive_from) {
+        data->inactive_to = true;
+        explore_global_selection_min_max_supremum(0, 0, data);
+        return;
     }
 
-    static void explore_global_finalization_min_max_supremum(data_supremum_t* data) {
-        // IMPORTANT: must handle finals in NEW before packing/acceptance
-        if (!cleanup_new_on_finals_min_max_supremum(data)) {
+    ChildAutomaton* child = data->A->getChild(data->witness_child_id_from);
+    State* child_state = child->getStates()->at(data->witness_child_state_id_from);
+
+    // Should normally not happen if we enforce "terminate in same symbol", but handle robustly.
+    if (child_state->getFinal()) {
+        if (data->witness_y_from == 1u) {
+            data->inactive_to = true;
+            explore_global_selection_min_max_supremum(0, 0, data);
+        } else {
             explore_global_failure_min_max_supremum(data);
-            return;
         }
-
-        const unsigned int children_all = data->children_all;
-
-        // Any tracked token present?
-        bool any_tracked = false;
-        for (unsigned int i = 0; i < children_all && !any_tracked; ++i) {
-            if (packed_any_tracked_bits(data->new_activation_of_children_state[i])) {
-                any_tracked = true;
-            }
-        }
-
-        bool global_final = false;
-
-        // if no tracked children and master saw a non-silent since last completion:
-        // emit a one-step "final pulse" (2).
-        unsigned int master_tracking_to = (unsigned int)data->budget_to;
-        if (!any_tracked && master_tracking_to == 0u) {
-            master_tracking_to = 2u;      // final pulse
-            data->budget_to = 2u;
-            global_final = data->A->getStates()->at(data->master_state_id_to)->getFinal();
-        }
-
-        // Build destination state string in the SAME format as before.
-        // encoding: master_state_id/master_tracking/to_0_0/to_0_1/to_1_0/to_1_1
-        const std::vector<unsigned int> packed_to = data->new_activation_of_children_state; // one copy
-
-        std::string global_to;
-        global_to.reserve(96 + children_all * 8);
-        global_to.append(std::to_string(data->master_state_id_to));
-        global_to.push_back('/');
-        global_to.append(std::to_string(master_tracking_to));
-        global_to.push_back('/');
-        global_to.append(vec_to_string_from_packed(packed_to, CAT_0_0));
-        global_to.push_back('/');
-        global_to.append(vec_to_string_from_packed(packed_to, CAT_0_1));
-        global_to.push_back('/');
-        global_to.append(vec_to_string_from_packed(packed_to, CAT_1_0));
-        global_to.push_back('/');
-        global_to.append(vec_to_string_from_packed(packed_to, CAT_1_1));
-
-        if (global_final) {
-            data->parser->final_states.insert(global_to);
-        }
-
-        data->parser->edges.insert({
-            { data->symbol->getName(), weight_t((unsigned int)data->global_edge_weight) },
-            { data->global_from, global_to }
-        });
-
-        // Iterative DFS: push to worklist instead of recursive call
-        if (!data->parser->states.contains(global_to)) {
-            data->parser->states.insert(global_to);
-            g_minmax_worklist->push_back({
-                global_to,
-                data->master_state_id_to,
-                master_tracking_to,
-                packed_to
-            });
-        }
+        return;
     }
 
-    static void explore_global_selection_case_1_1_min_max_supremum(unsigned int child_id, unsigned int child_state_id, data_supremum_t* data) {
-        if (child_id < data->A->getChildrenSize()) {
-            ChildAutomaton* child = data->A->getChild(child_id);
-            auto* states = child->getStates();
+    const unsigned int i = data->cumulative_size[data->witness_child_id_from] + data->witness_child_state_id_from;
 
-            if (child_state_id < states->size()) {
-                const unsigned int i = data->cumulative_size[child_id] + child_state_id;
-                const unsigned int old_val = packed_get(data->old_activation_of_children_state[i], CAT_1_1);
-
-                if (old_val == 0u || old_val == 2u) {
-                    explore_global_selection_case_1_1_min_max_supremum(child_id, child_state_id + 1, data);
-                    return;
-                }
-                if (states->at(child_state_id)->getFinal()) {
-                    explore_global_selection_case_1_1_min_max_supremum(child_id, child_state_id + 1, data);
-                    return;
-                }
-
-                State* child_state = states->at(child_state_id);
-                auto* succs = child_state->getSuccessors(data->symbol->getId());
-                if (!succs) {
-                    explore_global_failure_min_max_supremum(data);
-                    return;
-                }
-
-                for (Edge* edge : *succs) {
-                    const unsigned int ii = data->cumulative_size[child_id] + (unsigned int)edge->getTo()->getId();
-                    const unsigned int stored_cell = data->new_activation_of_children_state[ii];
-
-                    if (beyond_threshold_min_max_supremum(edge->getWeight()->getValue(), true, true, data)) {
-                        // stay 1_1
-                        unsigned int cell = stored_cell;
-                        packed_set(cell, CAT_1_1, old_val);
-                        data->new_activation_of_children_state[ii] = cell;
-                        explore_global_selection_case_1_1_min_max_supremum(child_id + 1, 0, data);
-                    } else {
-                        // become 1_0
-                        unsigned int cell = stored_cell;
-                        packed_set(cell, CAT_1_0, old_val);
-                        data->new_activation_of_children_state[ii] = cell;
-                        explore_global_selection_case_1_1_min_max_supremum(child_id + 1, 0, data);
-                    }
-
-                    data->new_activation_of_children_state[ii] = stored_cell;
-                }
-            } else {
-                explore_global_selection_case_1_1_min_max_supremum(child_id + 1, 0, data);
-            }
-        } else {
-            explore_global_finalization_min_max_supremum(data);
-        }
+    auto* succs = child_state->getSuccessors(data->symbol->getId());
+    if (!succs) {
+        explore_global_failure_min_max_supremum(data);
+        return;
     }
 
-    static void explore_global_selection_case_1_0_min_max_supremum(unsigned int child_id, unsigned int child_state_id, data_supremum_t* data) {
-        if (child_id < data->A->getChildrenSize()) {
-            ChildAutomaton* child = data->A->getChild(child_id);
-            auto* states = child->getStates();
+    for (Edge* child_edge : *succs) {
+        const unsigned int to_state_id = (unsigned int)child_edge->getTo()->getId();
+        const unsigned int ii = data->cumulative_size[data->witness_child_id_from] + to_state_id;
 
-            if (child_state_id < states->size()) {
-                const unsigned int i = data->cumulative_size[child_id] + child_state_id;
-                const unsigned int old_val = packed_get(data->old_activation_of_children_state[i], CAT_1_0);
+        const unsigned char stored_tracking = data->new_tracking[ii];
+        const unsigned char stored_activation = data->new_activation[ii];
 
-                if (old_val == 0u || old_val == 2u) {
-                    explore_global_selection_case_1_0_min_max_supremum(child_id, child_state_id + 1, data);
-                    return;
-                }
-                if (states->at(child_state_id)->getFinal()) {
-                    // 1_0 cannot terminate
-                    explore_global_failure_min_max_supremum(data);
-                    return;
-                }
+        const unsigned int y_next = min_max_y_update(child_edge->getWeight()->getValue(), data->witness_y_from, data);
 
-                State* child_state = states->at(child_state_id);
-                auto* succs = child_state->getSuccessors(data->symbol->getId());
-                if (!succs) {
-                    explore_global_failure_min_max_supremum(data);
-                    return;
-                }
-
-                for (Edge* edge : *succs) {
-                    const unsigned int ii = data->cumulative_size[child_id] + (unsigned int)edge->getTo()->getId();
-                    const unsigned int stored_cell = data->new_activation_of_children_state[ii];
-
-                    // current bit is 0 here
-                    const bool ok = beyond_threshold_min_max_supremum(edge->getWeight()->getValue(), true, false, data);
-                    if (!ok) {
-                        // stay 1_0
-                        unsigned int cell = stored_cell;
-                        packed_set(cell, CAT_1_0, old_val);
-                        data->new_activation_of_children_state[ii] = cell;
-                        explore_global_selection_case_1_0_min_max_supremum(child_id + 1, 0, data);
-                    } else {
-                        // become 1_1
-                        unsigned int cell = stored_cell;
-                        packed_set(cell, CAT_1_1, old_val);
-                        data->new_activation_of_children_state[ii] = cell;
-                        explore_global_selection_case_1_0_min_max_supremum(child_id + 1, 0, data);
-                    }
-
-                    data->new_activation_of_children_state[ii] = stored_cell;
-                }
-            } else {
-                explore_global_selection_case_1_0_min_max_supremum(child_id + 1, 0, data);
-            }
-        } else {
-            explore_global_selection_case_1_1_min_max_supremum(0, 0, data);
+        // For Min_f, once y becomes 0 it can never recover, so the branch is dead.
+        if (!data->finite_is_max && y_next == 0u) {
+            explore_global_failure_min_max_supremum(data);
+            continue;
         }
-    }
 
-    static void explore_global_selection_case_0_1_min_max_supremum(unsigned int child_id, unsigned int child_state_id, data_supremum_t* data) {
-        if (child_id < data->A->getChildrenSize()) {
-            ChildAutomaton* child = data->A->getChild(child_id);
-            auto* states = child->getStates();
-
-            if (child_state_id < states->size()) {
-                const unsigned int i = data->cumulative_size[child_id] + child_state_id;
-                const unsigned int old_val = packed_get(data->old_activation_of_children_state[i], CAT_0_1);
-
-                if (old_val == 0u || old_val == 2u) {
-                    explore_global_selection_case_0_1_min_max_supremum(child_id, child_state_id + 1, data);
-                    return;
-                }
-                if (states->at(child_state_id)->getFinal()) {
-                    // 0_1 cannot terminate
-                    explore_global_failure_min_max_supremum(data);
-                    return;
-                }
-
-                State* child_state = states->at(child_state_id);
-                auto* succs = child_state->getSuccessors(data->symbol->getId());
-                if (!succs) {
-                    explore_global_failure_min_max_supremum(data);
-                    return;
-                }
-
-                for (Edge* edge : *succs) {
-                    const unsigned int ii = data->cumulative_size[child_id] + (unsigned int)edge->getTo()->getId();
-                    const unsigned int stored_cell = data->new_activation_of_children_state[ii];
-
-                    // current bit is 1 here
-                    const bool ok = beyond_threshold_min_max_supremum(edge->getWeight()->getValue(), false, true, data);
-                    if (ok) {
-                        // stay 0_1
-                        unsigned int cell = stored_cell;
-                        packed_set(cell, CAT_0_1, old_val);
-                        data->new_activation_of_children_state[ii] = cell;
-                        explore_global_selection_case_0_1_min_max_supremum(child_id + 1, 0, data);
-                    } else {
-                        // become 0_0
-                        unsigned int cell = stored_cell;
-                        packed_set(cell, CAT_0_0, old_val);
-                        data->new_activation_of_children_state[ii] = cell;
-                        explore_global_selection_case_0_1_min_max_supremum(child_id + 1, 0, data);
-                    }
-
-                    data->new_activation_of_children_state[ii] = stored_cell;
-                }
-            } else {
-                explore_global_selection_case_0_1_min_max_supremum(child_id + 1, 0, data);
-            }
-        } else {
-            explore_global_selection_case_1_0_min_max_supremum(0, 0, data);
-        }
-    }
-
-    static void explore_global_selection_case_0_0_min_max_supremum(unsigned int child_id, unsigned int child_state_id, data_supremum_t* data) {
-        if (child_id < data->A->getChildrenSize()) {
-            ChildAutomaton* child = data->A->getChild(child_id);
-            auto* states = child->getStates();
-
-            if (child_state_id < states->size()) {
-                const unsigned int i = data->cumulative_size[child_id] + child_state_id;
-                const unsigned int old_val = packed_get(data->old_activation_of_children_state[i], CAT_0_0);
-
-                if (old_val == 0u || old_val == 2u) {
-                    explore_global_selection_case_0_0_min_max_supremum(child_id, child_state_id + 1, data);
-                    return;
-                }
-                if (states->at(child_state_id)->getFinal()) {
-                    // 0_0 can terminate
-                    explore_global_selection_case_0_0_min_max_supremum(child_id, child_state_id + 1, data);
-                    return;
-                }
-
-                State* child_state = states->at(child_state_id);
-                auto* succs = child_state->getSuccessors(data->symbol->getId());
-                if (!succs) {
-                    explore_global_failure_min_max_supremum(data);
-                    return;
-                }
-
-                for (Edge* edge : *succs) {
-                    const unsigned int ii = data->cumulative_size[child_id] + (unsigned int)edge->getTo()->getId();
-                    const unsigned int stored_cell = data->new_activation_of_children_state[ii];
-
-                    // current bit is 0 here
-                    const bool ok = beyond_threshold_min_max_supremum(edge->getWeight()->getValue(), false, false, data);
-                    if (!ok) {
-                        // stay 0_0
-                        unsigned int cell = stored_cell;
-                        packed_set(cell, CAT_0_0, old_val);
-                        data->new_activation_of_children_state[ii] = cell;
-                        explore_global_selection_case_0_0_min_max_supremum(child_id + 1, 0, data);
-                    } else {
-                        // become 0_1
-                        unsigned int cell = stored_cell;
-                        packed_set(cell, CAT_0_1, old_val);
-                        data->new_activation_of_children_state[ii] = cell;
-                        explore_global_selection_case_0_0_min_max_supremum(child_id + 1, 0, data);
-                    }
-
-                    data->new_activation_of_children_state[ii] = stored_cell;
-                }
-            } else {
-                explore_global_selection_case_0_0_min_max_supremum(child_id + 1, 0, data);
-            }
-        } else {
-            explore_global_selection_case_0_1_min_max_supremum(0, 0, data);
-        }
-    }
-
-    static void explore_global_master_transition_min_max_supremum(data_supremum_t* data) {
-        auto* succs = data->A->getStates()->at(data->master_state_id_from)->getSuccessors(data->symbol->getId());
-        if (!succs) return;
-
-        auto clear_new = [&]() {
-            std::fill(data->new_activation_of_children_state.begin(),
-                      data->new_activation_of_children_state.end(),
-                      0u);
-        };
-
-        for (Edge* edge : *succs) {
-            data->master_state_id_to = (unsigned int)edge->getTo()->getId();
-
-            const unsigned int child_id =
-                (unsigned int)edge->getWeight()->getValue().to_uint();
-
-            // Default: preserve tracking, but make the "final pulse" (2) last only one step.
-            const unsigned int master_tracking_from = (unsigned int)data->budget_from;
-            data->budget_to = (master_tracking_from == 2u) ? 1u : master_tracking_from;
-
-            clear_new();
-
-            if (data->A->getChild(child_id)->getStates()->size() == 1) {
-                // silent: identity element of the OUTER aggregator
-                const unsigned int inf_or_sup = data->child_id_from; // 0=inf-type, 1=sup-type
-                data->global_edge_weight = (inf_or_sup == 0u) ? 1u : 0u;
+        if (child_edge->getTo()->getFinal()) {
+            // Terminate in the same symbol; success requires y_next==1
+            if (y_next == 1u) {
+                data->inactive_to = true;
                 explore_global_selection_min_max_supremum(0, 0, data);
-                continue;
+            } else {
+                explore_global_failure_min_max_supremum(data);
             }
+            continue;
+        }
 
-            // non-silent
-            data->budget_to = 0u;
+        // Propagate activation/tracking for the witness token to its successor.
+        if (data->old_tracking[i] == 1) {
+            data->new_tracking[ii] = 1;
+        }
+        if (data->old_activation[i] == 1) {
+            data->new_activation[ii] = 1;
+        }
 
-            const unsigned int summoned_child_state_id =
-                (unsigned int)data->A->getChild(child_id)->initial->getId();
+        data->inactive_to = false;
+        data->witness_child_id_to = data->witness_child_id_from;
+        data->witness_child_state_id_to = to_state_id;
+        data->witness_y_to = y_next;
+
+        explore_global_selection_min_max_supremum(0, 0, data);
+
+        data->new_tracking[ii] = stored_tracking;
+        data->new_activation[ii] = stored_activation;
+    }
+}
+
+static void explore_global_master_transition_min_max_supremum(data_min_max_supremum_t* data) {
+    auto* succs = data->A->getStates()->at(data->master_state_id_from)->getSuccessors(data->symbol->getId());
+    if (!succs) return;
+
+    // Save witness context: each master edge explores independently
+    const bool saved_inactive = data->inactive_from;
+    const unsigned int saved_w_child = data->witness_child_id_from;
+    const unsigned int saved_w_state = data->witness_child_state_id_from;
+    const unsigned int saved_w_y = data->witness_y_from;
+
+    for (Edge* master_edge : *succs) {
+        data->inactive_from = saved_inactive;
+        data->witness_child_id_from = saved_w_child;
+        data->witness_child_state_id_from = saved_w_state;
+        data->witness_y_from = saved_w_y;
+
+        data->master_state_id_to = static_cast<unsigned int>(master_edge->getTo()->getId());
+        const unsigned int child_id = static_cast<unsigned int>(master_edge->getWeight()->getValue().to_float());
+
+        if (data->A->getChild(child_id)->getStates()->size() == 1) {
+            // Silent: no spawn, weight 0
+            data->global_edge_weight = 0;
+            explore_global_child_transition_min_max_supremum(data);
+        } else {
+            const unsigned int summoned_child_state_id = data->A->getChild(child_id)->initial->getId();
             const unsigned int ii = data->cumulative_size[child_id] + summoned_child_state_id;
 
-            // Save old packed cell we might mutate for spawning.
-            const unsigned int saved_cell = data->old_activation_of_children_state[ii];
+            // Mark spawned token as active in OLD arrays (so selection sees it)
+            const unsigned char prev_act = data->old_activation[ii];
+            data->old_activation[ii] = 1;
 
-            // Birth status depends on FINITE aggregator:
-            //   Max_f: current starts 0  -> *_0
-            //   Min_f: current starts 1  -> *_1
-            const bool finite_is_max = (data->child_state_id_from != 0u);
+            // Choice 1: NOT summon as witness (spawn only as background)
+            data->global_edge_weight = 0;
+            explore_global_child_transition_min_max_supremum(data);
 
-            if (finite_is_max) {
-                // objective 0 -> 0_0 (edge weight 0)
-                packed_activate_tracked(data->old_activation_of_children_state[ii], CAT_0_0);
-                data->global_edge_weight = 0u;
-                explore_global_selection_min_max_supremum(0, 0, data);
-                data->old_activation_of_children_state[ii] = saved_cell;
-
-                // objective 1 -> 1_0 (edge weight 1)
-                packed_activate_tracked(data->old_activation_of_children_state[ii], CAT_1_0);
-                data->global_edge_weight = 1u;
-                explore_global_selection_min_max_supremum(0, 0, data);
-                data->old_activation_of_children_state[ii] = saved_cell;
-            } else {
-                // objective 0 -> 0_1 (edge weight 0)
-                packed_activate_tracked(data->old_activation_of_children_state[ii], CAT_0_1);
-                data->global_edge_weight = 0u;
-                explore_global_selection_min_max_supremum(0, 0, data);
-                data->old_activation_of_children_state[ii] = saved_cell;
-
-                // objective 1 -> 1_1 (edge weight 1)
-                packed_activate_tracked(data->old_activation_of_children_state[ii], CAT_1_1);
-                data->global_edge_weight = 1u;
-                explore_global_selection_min_max_supremum(0, 0, data);
-                data->old_activation_of_children_state[ii] = saved_cell;
+            // Choice 2: start tracking as witness (only if no witness already tracked)
+            if (saved_inactive) {
+                data->global_edge_weight = 1;
+                data->inactive_from = false;
+                data->witness_child_id_from = child_id;
+                data->witness_child_state_id_from = summoned_child_state_id;
+                data->witness_y_from = data->finite_is_max ? 0u : 1u;
+                explore_global_child_transition_min_max_supremum(data);
             }
 
-            // Restore (already restored after each branch; keep for symmetry)
-            data->old_activation_of_children_state[ii] = saved_cell;
+            data->old_activation[ii] = prev_act;
         }
     }
+}
 
-    static void explore_global_initialization_min_max_supremum(data_supremum_t* data) {
-        const unsigned int n = data->children_all;
+static void explore_global_initialization_min_max_supremum(data_min_max_supremum_t* data) {
+    const unsigned int n = data->children_all;
 
-        // Ensure the packed old vector is present and correctly sized.
-        if (data->old_activation_of_children_state.size() != n) {
-            QUAK_FAIL("packed_from size mismatch in explore_global_initialization_min_max");
-        }
+    data->old_activation.resize(n);
+    data->old_tracking.resize(n);
+    data->new_activation.assign(n, 0);
+    data->new_tracking.assign(n, 0);
 
-        // NEW packed vector reset per symbol.
-        data->new_activation_of_children_state.assign(n, 0u);
-
-        auto* alphabet = data->A->getStates()->at(data->master_state_id_from)->getAlphabet();
-        if (!alphabet) return;
-
-        for (Symbol* symbol : *alphabet) {
-            data->symbol = symbol;
-            explore_global_master_transition_min_max_supremum(data);
-        }
+    for (unsigned int i = 0; i < n; ++i) {
+        data->old_activation[i] = (i < data->activation_from.size()) ? (data->activation_from[i] ? 1 : 0) : 0;
+        data->old_tracking[i]   = (i < data->tracking_from.size()) ? (data->tracking_from[i] ? 1 : 0) : 0;
     }
-} // namespace
+
+    auto* alphabet = data->A->getStates()->at(data->master_state_id_from)->getAlphabet();
+    if (!alphabet) return;
+
+    for (Symbol* symbol : *alphabet) {
+        data->symbol = symbol;
+        explore_global_master_transition_min_max_supremum(data);
+    }
+}
 
 bool NestedAutomaton::emptiness_monotonic_nesting_min_max_supremum(value_function_t infinite_aggregator,
-                                                         value_function_t finite_aggregator,
-                                                         weight_t threshold) {
-    // Decide outer inf_or_sup
-    unsigned int inf_or_sup;
-    if (infinite_aggregator == Inf || infinite_aggregator == LimInf) {
-        inf_or_sup = 0u;
-    } else if (infinite_aggregator == Sup || infinite_aggregator == LimSup) {
-        inf_or_sup = 1u;
-    } else {
-        QUAK_FAIL("bad infinite_aggregator for min_max construction");
+                                                                   value_function_t finite_aggregator,
+                                                                   weight_t threshold) {
+    if (!(infinite_aggregator == Sup || infinite_aggregator == LimSup)) {
+        QUAK_FAIL("emptiness_monotonic_nesting_min_max_supremum: requires Sup/LimSup");
     }
-
-    // Decide finite_is_max
-    unsigned int finite_is_max;
+    unsigned int finite_is_max = 0u;
     if (finite_aggregator == Max_f) {
         finite_is_max = 1u;
     } else if (finite_aggregator == Min_f) {
         finite_is_max = 0u;
     } else {
-        QUAK_FAIL("bad finite_aggregator for min_max construction");
+        QUAK_FAIL("emptiness_monotonic_nesting_min_max_supremum: requires Min_f/Max_f");
     }
 
-    // Build cumulative_size
+    // Flatten child state space
     std::vector<unsigned int> cumulative_size(this->getChildrenSize() + 1);
     cumulative_size[0] = 0;
     for (unsigned int i = 1; i < this->getChildrenSize() + 1; ++i) {
@@ -5479,13 +5326,15 @@ bool NestedAutomaton::emptiness_monotonic_nesting_min_max_supremum(value_functio
     }
     const unsigned int children_all = cumulative_size[this->getChildrenSize()];
 
+    // Epoch reset vector (all ones)
+    std::vector<unsigned char> track_them_all(children_all, 1);
+
     Parser* parser = new Parser(0, 1);
     parser->weights.insert(0);
     parser->weights.insert(1);
-
     parser->states.insert("@sink@");
 
-    // Install sink self-loops on all symbols of the master alphabet.
+    // Sink self-loops on all master symbols
     for (Symbol* symbol : *this->getAlphabet()) {
         parser->alphabet.insert(symbol->getName());
         parser->edges.insert({
@@ -5494,66 +5343,54 @@ bool NestedAutomaton::emptiness_monotonic_nesting_min_max_supremum(value_functio
         });
     }
 
-    // Zero vec string for the legacy encoding format.
-    const auto vec_to_string = [](const std::vector<unsigned int>& v) {
-        std::string s;
-        for (size_t i = 0; i < v.size(); ++i) {
-            if (i > 0) s.push_back(',');
-            s.append(std::to_string(v[i] & 3u));
-        }
-        return s;
-    };
-    std::string zero_vec_str = vec_to_string(std::vector<unsigned int>(children_all, 0u));
-
-    // GLOBAL INITIAL (same encoding format as before)
+    // Initial: no children active, no obligations discharged yet (tracking=0), no witness
+    std::vector<unsigned char> zero(children_all, 0);
     std::string global_initial;
-    global_initial.reserve(96 + children_all * 8);
+    global_initial.reserve(64 + children_all * 2);
     global_initial.append(std::to_string(this->initial->getId()));
     global_initial.push_back('/');
-    global_initial.append(std::to_string(1u));   // master_tracking initially "waiting"
+    global_initial.append(bits_to_string(zero)); // activation
     global_initial.push_back('/');
-    global_initial.append(zero_vec_str);
-    global_initial.push_back('/');
-    global_initial.append(zero_vec_str);
-    global_initial.push_back('/');
-    global_initial.append(zero_vec_str);
-    global_initial.push_back('/');
-    global_initial.append(zero_vec_str);
+    global_initial.append(bits_to_string(zero)); // tracking
+    global_initial.append("/@inactive@");
 
     parser->states.insert(global_initial);
     parser->initial = global_initial;
 
-    // Iterative DFS worklist (packed)
-    std::vector<min_max_work_item_sup> worklist;
+    std::vector<min_max_sup_work_item> worklist;
     worklist.push_back({
         global_initial,
         (unsigned int)this->initial->getId(),
-        1u,
-        std::vector<unsigned int>(children_all, 0u) // packed-from initial all zeros
+        zero,
+        zero,
+        true,
+        0u,
+        0u,
+        finite_is_max ? 0u : 1u
     });
-    g_minmax_worklist = &worklist;
 
-    data_supremum_t data{};
+    data_min_max_supremum_t data{};
     data.A = this;
     data.parser = parser;
-    data.abs_threshold = to_internal(threshold);
+    data.threshold = threshold;
     data.cumulative_size = cumulative_size.data();
     data.children_all = children_all;
-
-    // store flags in the designated fields
-    data.child_id_from = inf_or_sup;        // 0=inf, 1=sup
-    data.child_state_id_from = finite_is_max; // 0=Min_f, 1=Max_f
+    data.finite_is_max = finite_is_max;
+    data.track_them_all = std::move(track_them_all);
+    data.worklist = &worklist;
 
     while (!worklist.empty()) {
-        min_max_work_item_sup item = std::move(worklist.back());
+        min_max_sup_work_item item = std::move(worklist.back());
         worklist.pop_back();
 
         data.global_from = std::move(item.global_from);
         data.master_state_id_from = item.master_state_id_from;
-        data.budget_from = (internal_weight_t)item.master_tracking_from;
-
-        // packed OLD
-        data.old_activation_of_children_state = std::move(item.packed_from);
+        data.activation_from = std::move(item.activation_from);
+        data.tracking_from = std::move(item.tracking_from);
+        data.inactive_from = item.inactive_from;
+        data.witness_child_id_from = item.witness_child_id_from;
+        data.witness_child_state_id_from = item.witness_child_state_id_from;
+        data.witness_y_from = item.witness_y_from;
 
         explore_global_initialization_min_max_supremum(&data);
     }
@@ -5563,12 +5400,28 @@ bool NestedAutomaton::emptiness_monotonic_nesting_min_max_supremum(value_functio
     Automaton* unnested = new Automaton(newname, parser, sync_register);
     delete parser;
 
+        int numEdges = 0;
+        for (size_t s = 0; s < unnested->getStates()->size(); ++s) {
+            State* state = unnested->getStates()->at(s);
+            if (state) {
+                for (size_t a = 0; a < unnested->getAlphabet()->size(); ++a) {
+                    SetStd<Edge*>* succs = state->getSuccessors(a);
+                    if (succs) {
+                        numEdges += succs->size();
+                    }
+                }
+            }
+        }
+        std::cout << "unnested: " << unnested->getStates()->size() << " states, " << numEdges << " edges" << std::endl;
+        std::cout << unnested->getNbSCCs() << " SCCs (" << unnested->getNbAcceptingSCCs() << " accepting)" << std::endl;
+
     weight_t top = unnested->compute_top_with_final(infinite_aggregator);
-    bool result = (top == 1);
+    const bool result = (top >= 1);
 
     delete unnested;
     return result;
 }
+
 
 
 
@@ -5695,15 +5548,6 @@ static bool cleanup_new_on_finals_min_max(data_min_max_t* data) {
         }
     }
     return true;
-}
-
-static std::string vec_to_string(const std::vector<unsigned int>& v) {
-    std::string s;
-    for (size_t i = 0; i < v.size(); ++i) {
-        if (i > 0) s.push_back(',');
-        s.append(std::to_string(v[i] & 3u));
-    }
-    return s;
 }
 
 static void explore_global_finalization_min_max(data_min_max_t* data) {
@@ -6217,6 +6061,22 @@ bool NestedAutomaton::emptiness_monotonic_nesting_min_max(value_function_t infin
     MapStd<std::string, Symbol*> sync_register;
     Automaton* unnested = new Automaton(newname, parser, sync_register);
     // unnested->print();
+
+        int numEdges = 0;
+        for (size_t s = 0; s < unnested->getStates()->size(); ++s) {
+            State* state = unnested->getStates()->at(s);
+            if (state) {
+                for (size_t a = 0; a < unnested->getAlphabet()->size(); ++a) {
+                    SetStd<Edge*>* succs = state->getSuccessors(a);
+                    if (succs) {
+                        numEdges += succs->size();
+                    }
+                }
+            }
+        }
+        std::cout << "unnested: " << unnested->getStates()->size() << " states, " << numEdges << " edges" << std::endl;
+        std::cout << unnested->getNbSCCs() << " SCCs (" << unnested->getNbAcceptingSCCs() << " accepting)" << std::endl;
+
     delete parser;
 
     weight_t top = unnested->compute_top_with_final(infinite_aggregator);
@@ -6980,7 +6840,7 @@ bool NestedAutomaton::isNonEmpty(value_function_t infVal, value_function_t finVa
         else if (infVal == Inf || infVal == LimInf) {
             return this->emptiness_monotonic_nesting(infVal, finVal, x);
         }
-        else if (infVal == LimInfAvg || infVal == LimSupAvg) {
+        else if (infVal == LimInfAvg || infVal == LimSupAvg) {  // TODO: FIX
             NestedAutomaton* det_nwa = nullptr;
             NestedAutomaton* sync_nwa;
             std::vector<bool> complete_flags;
@@ -7026,7 +6886,8 @@ bool NestedAutomaton::isNonEmpty(value_function_t infVal, value_function_t finVa
     }
     else if (finVal == Max_f || finVal == Min_f) {
         if (infVal == Sup || infVal == LimSup) {
-            return this->emptiness_monotonic_nesting_min_max_supremum(infVal, finVal, x);
+            // return this->emptiness_monotonic_nesting_min_max_supremum(infVal, finVal, x);
+            return this->emptiness_monotonic_nesting_min_max(infVal, finVal, x);
             // Automaton* flat = this->flatten_regular(finVal);
             // Automaton* nonSilent = Automaton::removeSilentTransitions(flat, infVal);
             // // flat->print();
@@ -7041,11 +6902,12 @@ bool NestedAutomaton::isNonEmpty(value_function_t infVal, value_function_t finVa
         }
         else if (infVal == LimInfAvg || infVal == LimSupAvg) {
             Automaton* flat = this->flatten_regular(finVal);
+            std::cout << flat->getNbStates() << " " << flat->getNbSCCs() << " " << flat->getNbAcceptingSCCs() << std::endl;
             Automaton* nonSilent = Automaton::removeSilentTransitions(flat, infVal);
-            weight_t topFlat = nonSilent->getTopValue(infVal);
+            bool res = nonSilent->emptiness_LimAvg_with_final(x);
             delete nonSilent;
             delete flat;
-            return (topFlat >= x);
+            return res;
         }
         else {
             QUAK_FAIL("isNonEmpty: unsupported infinite aggregator with Min_f/Max_f");
@@ -7054,10 +6916,21 @@ bool NestedAutomaton::isNonEmpty(value_function_t infVal, value_function_t finVa
     else if (finVal == SumB) {
         Automaton* flat = this->flatten_regular(finVal, bound);
         Automaton* nonSilent = Automaton::removeSilentTransitions(flat, infVal);
-        weight_t topFlat = nonSilent->getTopValue(infVal);
-        delete nonSilent;
-        delete flat;
-        return (topFlat >= x);
+        if (infVal == LimInfAvg || infVal == LimSupAvg) {
+            bool res = nonSilent->emptiness_LimAvg_with_final(x);
+            delete nonSilent;
+            delete flat;
+            return res;
+        }
+        else if (infVal == Sup || infVal == LimSup || infVal == Inf || infVal == LimInf) {
+            weight_t topFlat = nonSilent->compute_top_with_final(infVal);
+            delete nonSilent;
+            delete flat;
+            return (topFlat >= x);
+        }
+        else {
+            QUAK_FAIL("isNonEmpty: unsupported infinite aggregator with SumB");
+        }
     }
     else {
         QUAK_FAIL("isNonEmpty: unsupported finite aggregator");
