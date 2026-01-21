@@ -37,16 +37,19 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_subdirectory(src)
 
-add_executable(quakbin src/quak-main.cpp)
+add_executable(quakbin src/quak-nested-main.cpp)
 target_include_directories(quakbin PRIVATE ${SRCDIR})
 target_link_libraries(quakbin PUBLIC quak quak-private)
 
-# set_target_properties(quakbin PROPERTIES OUTPUT_NAME quak)
-set_target_properties(quakbin PROPERTIES OUTPUT_NAME quak-main RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/src")
+set_target_properties(quakbin PROPERTIES OUTPUT_NAME quak RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
 
-OPTION(BUILD_EXPERIMENTS "Enable and build experiments" ON)
-add_subdirectory(experiments)
+OPTION(BUILD_EXPERIMENTS "Enable and build experiments" OFF)
+if(BUILD_EXPERIMENTS AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/experiments")
+  add_subdirectory(experiments)
+endif()
 
 enable_testing()
-add_subdirectory(tests)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests")
+  add_subdirectory(tests)
+endif()

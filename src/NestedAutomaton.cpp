@@ -4813,8 +4813,10 @@ bool NestedAutomaton::emptiness_monotonic_nesting(value_function_t infinite_aggr
                 }
             }
         }
-        std::cout << "unnested: " << unnested->getStates()->size() << " states, " << numEdges << " edges" << std::endl;
-        std::cout << unnested->getNbSCCs() << " SCCs (" << unnested->getNbAcceptingSCCs() << " accepting)" << std::endl;
+        if (g_debug_mode) {
+            std::cout << "unnested: " << unnested->getStates()->size() << " states, " << numEdges << " edges" << std::endl;
+            std::cout << unnested->getNbSCCs() << " SCCs (" << unnested->getNbAcceptingSCCs() << " accepting)" << std::endl;
+        }
 
     weight_t top = unnested->compute_top_with_final(infinite_aggregator);
     bool result = (top == 1);
@@ -5416,8 +5418,10 @@ bool NestedAutomaton::emptiness_monotonic_nesting_min_max_supremum(value_functio
                 }
             }
         }
-        std::cout << "unnested: " << unnested->getStates()->size() << " states, " << numEdges << " edges" << std::endl;
-        std::cout << unnested->getNbSCCs() << " SCCs (" << unnested->getNbAcceptingSCCs() << " accepting)" << std::endl;
+        if (g_debug_mode) {
+            std::cout << "unnested: " << unnested->getStates()->size() << " states, " << numEdges << " edges" << std::endl;
+            std::cout << unnested->getNbSCCs() << " SCCs (" << unnested->getNbAcceptingSCCs() << " accepting)" << std::endl;
+        }
 
     weight_t top = unnested->compute_top_with_final(infinite_aggregator);
     const bool result = (top >= 1);
@@ -6078,8 +6082,10 @@ bool NestedAutomaton::emptiness_monotonic_nesting_min_max(value_function_t infin
                 }
             }
         }
-        std::cout << "unnested: " << unnested->getStates()->size() << " states, " << numEdges << " edges" << std::endl;
-        std::cout << unnested->getNbSCCs() << " SCCs (" << unnested->getNbAcceptingSCCs() << " accepting)" << std::endl;
+        if (g_debug_mode) {
+            std::cout << "unnested: " << unnested->getStates()->size() << " states, " << numEdges << " edges" << std::endl;
+            std::cout << unnested->getNbSCCs() << " SCCs (" << unnested->getNbAcceptingSCCs() << " accepting)" << std::endl;
+        }
 
     delete parser;
 

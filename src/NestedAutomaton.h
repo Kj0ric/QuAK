@@ -15,6 +15,9 @@
 #include "Automaton.h"
 #include "ChildAutomaton.h"
 
+// Global debug flag (defined in CLI main)
+extern bool g_debug_mode;
+
 class NestedAutomaton : public Automaton {
 private:
 	MapArray<ChildAutomaton*>* children_;	// list of Child Automata, instead of weights
