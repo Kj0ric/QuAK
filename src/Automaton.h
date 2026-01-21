@@ -85,6 +85,7 @@ private:
 
 	void top_dag (SCC_Dag* dag, bool* done, weight_t* top_values) const;
 	void top_reachably_scc (State* state, bool in_scc, bool* spot, weight_t* values) const;
+	void top_reachably_scc_new(State* startState, bool in_scc, std::vector<bool>& spot, std::vector<weight_t>& values) const;
 	weight_t top_reachably (bool in_scc, weight_t* values, weight_t* top_values) const;
 	weight_t top_Sup (weight_t* top_values) const;
 	weight_t top_LimSup (weight_t* top_values) const;
@@ -131,7 +132,9 @@ private:
 
 	// Silent transitions
 	static Automaton* removeSilentTransitionsHelperStandard(const Automaton* A, weight_t replacement);
+	static Automaton* removeSilentTransitionsHelperStandard_prefixIndependent(const Automaton* A, weight_t replacement);
 	static Automaton* removeSilentTransitionsHelperLimitAverage(const Automaton* A);
+	static Automaton* removeSilentTransitionsHelperLimitAverage_prefixIndependent(const Automaton* A);
 
 protected:
 	weight_t compute_Top (value_function_t f, weight_t* top_values, UltimatelyPeriodicWord** witness = nullptr) const;
@@ -156,7 +159,7 @@ public:
 	static Automaton* toLimSup (const Automaton* A, value_function_t f);
 	static Automaton* product(const Automaton* A, aggregator_t aggregator, const Automaton* B);
 
-	static Automaton* removeSilentTransitions(const Automaton* A, value_function_t f);
+	static Automaton* removeSilentTransitions(const Automaton* A, value_function_t f, bool withShortcuts = false);
 	bool emptiness_LimAvg_with_final(weight_t threshold) const;
 	unsigned int getNbSCCs() const;
 	unsigned int getNbAcceptingSCCs() const;

@@ -1106,7 +1106,7 @@ State* initializeBuchi(
     State::RESET();
     Symbol::RESET();
     Weight::RESET();
-    
+
     // Copy alphabet from master
     size_t alph_size = nwa->getAlphabetSize();
     new_alphabet = new MapArray<Symbol*>(alph_size);
@@ -1128,10 +1128,10 @@ State* initializeBuchi(
 
     // Initialize state counter to name the states of Buchi
     state_counter = 0;
-    
+
     // Fill in Buchi state
     init_buchi.parent_state = nwa->getInitial();
-    init_buchi.last_guess = weight_t(INIT_BUCHI_VALUE); 
+    init_buchi.last_guess = weight_t(INIT_BUCHI_VALUE);
     init_buchi.P1 = SetStd<State*>();
     init_buchi.P2 = SetStd<State*>();
 
@@ -1206,7 +1206,7 @@ void processBuchiTransition(
                 ChildAutomaton* monitor = monitors.at(key);
                 State* monitor_init = monitor->getInitial();
                 monitor_init = (*monitor_init->getSuccessors(symbol_id)->begin())->getTo(); // step monitor on call symbol
-                
+
 
                 SetStd<State*> P1new, P2new;
 
@@ -1259,7 +1259,7 @@ Automaton* NestedAutomaton::flatten_regular_parent_trivial(value_function_t finV
     MapArray<Weight*>* new_weights;
     weight_t global_min, global_max;
     BuchiState init_buchi;
-    
+
     // Helper containers
     MapStd<BuchiState, State*> state_map;
     std::queue<BuchiState> worklist;
@@ -4390,16 +4390,16 @@ typedef struct global_exploration_data_all {
     NestedAutomaton* A;
     Parser* parser;
     internal_weight_t abs_threshold;
-    unsigned int* cumulative_size;   // prefix sums for flattening (child_id, local_state) → global index
-    unsigned int track_them_all;     // bitmask [0..children_all); excludes master bit
-    unsigned int children_all;       // total flattened child-state count
+    unsigned int* cumulative_size;
+    unsigned int children_all;
     beyond_threshold_fn_t beyond_threshold;
 
     // given (input for current exploration frame)
-    std::string global_from;         // encoded as "master_id/budget_digits/tracking_bits"
+    std::string global_from;
     unsigned int master_state_id_from;
-    internal_weight_t global_tracking_from;  // child bits in [0..children_all), master bit at position children_all
-    internal_weight_t global_budget_from;    // base-(abs_threshold+2) digits; digit abs_threshold+1 = inactive
+    std::vector<unsigned int> global_tracking_from;     // size = children_all, values 0 or 1
+    std::vector<internal_weight_t> global_budget_from;  // size = children_all
+    unsigned int master_tracking_from;
 
     // initialized per-symbol
     std::vector<internal_weight_t> old_value_of_children_state;
@@ -4409,9 +4409,8 @@ typedef struct global_exploration_data_all {
     // computed (output accumulators)
     unsigned int master_state_id_to;
     internal_weight_t global_edge_weight;
-    std::vector<unsigned int> new_tracked_children_state;    // must restore on backtrack
-    std::vector<internal_weight_t> new_value_of_children_state;  // must restore on backtrack
-    unsigned int master_tracking_from;
+    std::vector<unsigned int> new_tracked_children_state;
+    std::vector<internal_weight_t> new_value_of_children_state;
     unsigned int master_tracking_to;
 } data_all_t;
 
@@ -4438,40 +4437,38 @@ void explore_global_failure (data_all_t* data) {
 }
 
 void explore_global_finalization (data_all_t* data) {
-    const internal_weight_t B = data->abs_threshold + 2;  // digit B-1 means "inactive"
-
-    // Pack so initialization can recover via successive mod/div
-    internal_weight_t global_budget_to = 0;
-    for (int i = (int)data->children_all - 1; i >= 0; --i) {
-        global_budget_to = global_budget_to * B + data->new_value_of_children_state[i];
-    }
-
-    internal_weight_t child_tracking_to = 0;
-    for (unsigned int i = 0; i < data->children_all; ++i) {
-        child_tracking_to |= ((internal_weight_t)(data->new_tracked_children_state[i] ? 1 : 0) << i);
-    }
+    std::vector<internal_weight_t> global_budget_to = data->new_value_of_children_state;
+    std::vector<unsigned int> child_tracking_to = data->new_tracked_children_state;
 
     bool global_final = false;
 
-    // Epoch boundary: all children done AND master saw a non-silent step
-    // Invariant: master_tracking==1 means "waiting for first non-silent weight in this epoch"
-    if (child_tracking_to == 0 && data->master_tracking_to == 0) {
-        child_tracking_to = data->track_them_all;
+    bool all_untracked = true;
+    for (unsigned int i = 0; i < data->children_all; ++i) {
+        if (child_tracking_to[i]) { all_untracked = false; break; }
+    }
+
+    if (all_untracked && data->master_tracking_to == 0) {
+        for (unsigned int i = 0; i < data->children_all; ++i) {
+            child_tracking_to[i] = 1;
+        }
         data->master_tracking_to = 1;
         State* master_to_state = data->A->getStates()->at(data->master_state_id_to);
         global_final = master_to_state->getFinal();
     }
 
-    // Master bit above child bits; requires children_all < bitwidth
-    internal_weight_t full_tracking_to = child_tracking_to | (((internal_weight_t)data->master_tracking_to) << data->children_all);
-
     std::string global_to;
-    global_to.reserve(64);
+    global_to.reserve(64 + data->children_all * 12);
     global_to.append(std::to_string(data->master_state_id_to));
     global_to.push_back('/');
-    global_to.append(std::to_string(global_budget_to));
+    for (unsigned int i = 0; i < data->children_all; ++i) {
+        if (i > 0) global_to.push_back(',');
+        global_to.append(std::to_string(global_budget_to[i]));
+    }
     global_to.push_back('/');
-    global_to.append(std::to_string(full_tracking_to));
+    for (unsigned int i = 0; i < data->children_all; ++i) {
+        global_to.push_back(child_tracking_to[i] ? '1' : '0');
+    }
+    global_to.push_back(data->master_tracking_to ? '1' : '0');
 
     if (global_final) {
         data->parser->final_states.insert(global_to);
@@ -4482,7 +4479,6 @@ void explore_global_finalization (data_all_t* data) {
         { data->global_from, global_to }
     });
 
-    // DFS: only recurse on newly discovered states
     if (!data->parser->states.contains(global_to)) {
         data->parser->states.insert(global_to);
 
@@ -4491,144 +4487,165 @@ void explore_global_finalization (data_all_t* data) {
         data_deeper.parser = data->parser;
         data_deeper.abs_threshold = data->abs_threshold;
         data_deeper.cumulative_size = data->cumulative_size;
-        data_deeper.track_them_all = data->track_them_all;
         data_deeper.children_all = data->children_all;
         data_deeper.beyond_threshold = data->beyond_threshold;
 
         data_deeper.global_from = global_to;
         data_deeper.master_state_id_from = data->master_state_id_to;
-        data_deeper.global_tracking_from = full_tracking_to;
+        data_deeper.global_tracking_from = child_tracking_to;
         data_deeper.global_budget_from = global_budget_to;
+        data_deeper.master_tracking_from = data->master_tracking_to;
 
         explore_global_initialization(&data_deeper);
     }
 }
-
 // Enumerate consistent successor assignments for all child-states under current master edge
 // Precondition: old_* is complete snapshot; new_* starts as inactive/untracked
-void explore_global_selection (unsigned int child_id, unsigned int child_state_id, data_all_t* data) {
-    if (child_id < data->A->getChildrenSize()) {
-        ChildAutomaton* child = data->A->getChild(child_id);
-        auto* states = child->getStates();
+void explore_global_selection(unsigned int start_child_id, unsigned int start_child_state_id, data_all_t* data) {
+    struct StackFrame {
+        unsigned int child_id;
+        unsigned int child_state_id;
+        std::vector<Edge*> edges;
+        size_t edge_index;
+        unsigned int ii;
+        unsigned int stored_tracking;
+        internal_weight_t stored_budget;
+    };
 
-        if (child_state_id < states->size()) {
-            unsigned int i = data->cumulative_size[child_id] + child_state_id;
+    std::vector<StackFrame> stack;
 
-            if (data->old_value_of_children_state[i] == data->abs_threshold + 1) {
-                // Inactive token -- skip
-                explore_global_selection(child_id, child_state_id + 1, data);
-            }
-            else if (states->at(child_state_id)->getFinal()) {
-                // Tokens never represented as active-at-final; termination handled on incoming edges
-                explore_global_selection(child_id, child_state_id + 1, data);
-            }
-            else {
-                State* child_state = states->at(child_state_id);
+    // Find next active non-final state with edges, starting from (cid, csid)
+    auto find_next_choice = [&](unsigned int cid, unsigned int csid) 
+        -> std::tuple<unsigned int, unsigned int, std::vector<Edge*>> 
+    {
+        while (cid < data->A->getChildrenSize()) {
+            ChildAutomaton* child = data->A->getChild(cid);
+            auto* states = child->getStates();
 
-                for (Edge* edge : *child_state->getSuccessors(data->symbol->getId())) {
-                    unsigned int ii = data->cumulative_size[child_id] + edge->getTo()->getId();
+            while (csid < states->size()) {
+                unsigned int i = data->cumulative_size[cid] + csid;
 
-                    // Save for backtracking across outgoing edges
-                    unsigned int stored_tracking = data->new_tracked_children_state[ii];
-                    internal_weight_t stored_budget = data->new_value_of_children_state[ii];
-
-                    const bool to_final = edge->getTo()->getFinal();
-
-                    // Tracked tokens stay tracked until termination or epoch reset
-                    if (data->old_tracked_children_state[i] == true && !to_final) {
-                        data->new_tracked_children_state[ii] = true;
+                if (data->old_value_of_children_state[i] != data->abs_threshold + 1 &&
+                    !states->at(csid)->getFinal()) 
+                {
+                    State* child_state = states->at(csid);
+                    auto* succs = child_state->getSuccessors(data->symbol->getId());
+                    if (succs) {
+                        return {cid, csid, std::vector<Edge*>(succs->begin(), succs->end())};
                     }
+                }
+                csid++;
+            }
+            cid++;
+            csid = 0;
+        }
+        return {cid, csid, {}};
+    };
 
-                    internal_weight_t abs_edge_value;
-                    if (edge->getWeight()->getValue() < 0) {
-                        abs_edge_value = to_internal(-(edge->getWeight()->getValue()));
+    // Find first choice point
+    auto [init_cid, init_csid, init_edges] = find_next_choice(start_child_id, start_child_state_id);
+
+    if (init_edges.empty()) {
+        explore_global_finalization(data);
+        return;
+    }
+
+    stack.push_back({init_cid, init_csid, std::move(init_edges), 0, 0, 0, 0});
+
+    while (!stack.empty()) {
+        StackFrame& frame = stack.back();
+
+        // Restore state from previous edge iteration (if any)
+        if (frame.edge_index > 0) {
+            data->new_tracked_children_state[frame.ii] = frame.stored_tracking;
+            data->new_value_of_children_state[frame.ii] = frame.stored_budget;
+        }
+
+        bool pushed_new_frame = false;
+
+        while (frame.edge_index < frame.edges.size()) {
+            Edge* edge = frame.edges[frame.edge_index];
+            unsigned int i = data->cumulative_size[frame.child_id] + frame.child_state_id;
+            unsigned int ii = data->cumulative_size[frame.child_id] + edge->getTo()->getId();
+
+            // Save for backtracking
+            frame.ii = ii;
+            frame.stored_tracking = data->new_tracked_children_state[ii];
+            frame.stored_budget = data->new_value_of_children_state[ii];
+
+            const bool to_final = edge->getTo()->getFinal();
+
+            if (data->old_tracked_children_state[i] && !to_final) {
+                data->new_tracked_children_state[ii] = true;
+            }
+
+            internal_weight_t abs_edge_value = (edge->getWeight()->getValue() < 0)
+                ? to_internal(-(edge->getWeight()->getValue()))
+                : to_internal(edge->getWeight()->getValue());
+
+            bool should_recurse = false;
+
+            if (to_final) {
+                internal_weight_t oldb = data->old_value_of_children_state[i];
+                internal_weight_t required = 
+                    (abs_edge_value >= data->abs_threshold) ? data->abs_threshold : abs_edge_value;
+
+                if (oldb != required) {
+                    explore_global_failure(data);
+                } else {
+                    data->new_tracked_children_state[ii] = false;
+                    data->new_value_of_children_state[ii] = data->abs_threshold + 1;
+                    should_recurse = true;
+                }
+            } 
+            else if (data->old_value_of_children_state[i] <= data->abs_threshold) {
+                internal_weight_t oldb = data->old_value_of_children_state[i];
+
+                if (oldb < abs_edge_value) {
+                    explore_global_failure(data);
+                } else {
+                    internal_weight_t nextb = oldb - abs_edge_value;
+
+                    if (data->new_value_of_children_state[ii] == data->abs_threshold + 1) {
+                        data->new_value_of_children_state[ii] = nextb;
+                        should_recurse = true;
+                    } else if (data->new_value_of_children_state[ii] != nextb) {
+                        explore_global_failure(data);
                     } else {
-                        abs_edge_value = to_internal(edge->getWeight()->getValue());
+                        should_recurse = true;
                     }
-
-                    // if (to_final) {
-                    //     // Termination: must exactly discharge remaining budget (validates the guess)
-                    //     internal_weight_t oldb = data->old_value_of_children_state[i];
-
-                    //     if (oldb < abs_edge_value) {
-                    //         explore_global_failure(data);
-                    //     } else {
-                    //         internal_weight_t nextb = oldb - abs_edge_value;
-                    //         if (nextb != 0) {
-                    //             // Leftover budget — guess was wrong
-                    //             explore_global_failure(data);
-                    //         } else {
-                    //             data->new_tracked_children_state[ii] = false;
-                    //             data->new_value_of_children_state[ii] = data->abs_threshold + 1;
-                    //             explore_global_selection(child_id, child_state_id + 1, data);
-                    //         }
-                    //     }
-
-                    //     data->new_tracked_children_state[ii] = stored_tracking;
-                    //     data->new_value_of_children_state[ii] = stored_budget;
-                    //     continue;
-                    // }
-
-                    if (to_final) {
-                        internal_weight_t oldb = data->old_value_of_children_state[i];
-
-                        // required clamped value when the run ends immediately after this edge
-                        internal_weight_t required =
-                            (abs_edge_value >= data->abs_threshold) ? data->abs_threshold : abs_edge_value;
-
-                        if (oldb != required) {
-                            explore_global_failure(data);
-                        } else {
-                            // terminate token: inactive + untracked
-                            data->new_tracked_children_state[ii] = false;
-                            data->new_value_of_children_state[ii] = data->abs_threshold + 1; // inactive
-                            explore_global_selection(child_id, child_state_id + 1, data);
-                        }
-
-                        // restore and continue exploring other outgoing edges
-                        data->new_tracked_children_state[ii] = stored_tracking;
-                        data->new_value_of_children_state[ii] = stored_budget;
-                        continue;
-                    }
-
-
-                    // Fixed budget: multiple predecessors must agree on successor's budget
-                    if (data->old_value_of_children_state[i] <= data->abs_threshold) {
-                        internal_weight_t oldb = data->old_value_of_children_state[i];
-
-                        if (oldb < abs_edge_value) {
-                            explore_global_failure(data);
-                        } else {
-                            internal_weight_t nextb = oldb - abs_edge_value;
-
-                            if (data->new_value_of_children_state[ii] == data->abs_threshold + 1) {
-                                // First predecessor setting this cell
-                                data->new_value_of_children_state[ii] = nextb;
-                                explore_global_selection(child_id, child_state_id + 1, data);
-                            } else if (data->new_value_of_children_state[ii] != nextb) {
-                                // Conflict: encoding can't represent multiplicity
-                                explore_global_failure(data);
-                            } else {
-                                explore_global_selection(child_id, child_state_id + 1, data);
-                            }
-                        }
-                    }
-                    // else { // This case should be unreachable due to prior checks (Case (I) in partuicular)
-                    //     explore_global_failure(data);
-                    // }
-
-                    data->new_tracked_children_state[ii] = stored_tracking;
-                    data->new_value_of_children_state[ii] = stored_budget;
                 }
             }
-        } else {
-            explore_global_selection(child_id + 1, 0, data);
+
+            frame.edge_index++;
+
+            if (should_recurse) {
+                auto [next_cid, next_csid, next_edges] = 
+                    find_next_choice(frame.child_id, frame.child_state_id + 1);
+
+                if (next_edges.empty()) {
+                    explore_global_finalization(data);
+                    // Restore and continue to next edge
+                    data->new_tracked_children_state[ii] = frame.stored_tracking;
+                    data->new_value_of_children_state[ii] = frame.stored_budget;
+                } else {
+                    // Push deeper frame
+                    stack.push_back({next_cid, next_csid, std::move(next_edges), 0, 0, 0, 0});
+                    pushed_new_frame = true;
+                    break;
+                }
+            } else {
+                // Failure: restore and continue to next edge
+                data->new_tracked_children_state[ii] = frame.stored_tracking;
+                data->new_value_of_children_state[ii] = frame.stored_budget;
+            }
         }
-    } else {
-        explore_global_finalization(data);
+
+        if (!pushed_new_frame) {
+            stack.pop_back();
+        }
     }
 }
-
 void explore_global_master_transition (data_all_t* data) {
     auto* succs = data->A->getStates()->at(data->master_state_id_from)->getSuccessors(data->symbol->getId());
     if (!succs) return;
@@ -4684,28 +4701,13 @@ void explore_global_master_transition (data_all_t* data) {
 }
 
 void explore_global_initialization (data_all_t* data) {
-    internal_weight_t budget_from = data->global_budget_from;
     const unsigned int n = data->children_all;
 
-    internal_weight_t full_tracking = data->global_tracking_from;
-    internal_weight_t child_mask = ((internal_weight_t)1 << n) - 1;
-    internal_weight_t child_tracking = full_tracking & child_mask;
-    data->master_tracking_from = (unsigned int)((full_tracking >> n) & 1);
-
-    // NEW starts neutral: abs_threshold+1 means "no assignment yet"
     data->new_value_of_children_state.assign(n, data->abs_threshold + 1);
     data->new_tracked_children_state.assign(n, false);
 
-    data->old_value_of_children_state.resize(n);
-    data->old_tracked_children_state.resize(n);
-
-    // Inverse of finalization packing
-    for (unsigned int i = 0; i < n; i++) {
-        data->old_value_of_children_state[i] = budget_from % (data->abs_threshold + 2);
-        budget_from = budget_from / (data->abs_threshold + 2);
-        data->old_tracked_children_state[i] = (unsigned int)(child_tracking & 1);
-        child_tracking >>= 1;
-    }
+    data->old_value_of_children_state = data->global_budget_from;
+    data->old_tracked_children_state = data->global_tracking_from;
 
     auto* alphabet = data->A->getStates()->at(data->master_state_id_from)->getAlphabet();
     if (!alphabet) return;
@@ -4715,6 +4717,7 @@ void explore_global_initialization (data_all_t* data) {
         explore_global_master_transition(data);
     }
 }
+
 
 bool NestedAutomaton::emptiness_monotonic_nesting(value_function_t infinite_aggregator,
                                                  value_function_t finite_aggregator,
@@ -4736,27 +4739,12 @@ bool NestedAutomaton::emptiness_monotonic_nesting(value_function_t infinite_aggr
         beyond_threshold = beyond_bad_threshold;
     }
 
-    // cumulative_size[k] = starting flattened index for child k
     std::vector<unsigned int> cumulative_size(this->getChildrenSize() + 1);
     cumulative_size[0] = 0;
     for (unsigned int i = 1; i < this->getChildrenSize() + 1; i++) {
         cumulative_size[i] = cumulative_size[i - 1] + this->getChild(i - 1)->getStates()->size();
     }
     unsigned int children_all = cumulative_size[this->getChildrenSize()];
-
-    const unsigned int tracking_bits = (unsigned int)(8u * sizeof(internal_weight_t));
-    if (children_all >= tracking_bits) {
-        QUAK_FAIL("children_all too large for internal_weight_t tracking bit-encoding");
-    }
-
-    internal_weight_t track_them_all_wide = 0;
-    for (unsigned int i = 0; i < children_all; i++) {
-        track_them_all_wide = (track_them_all_wide << 1) | 1;
-    }
-    if (track_them_all_wide > (internal_weight_t)std::numeric_limits<unsigned int>::max()) {
-        QUAK_FAIL("children_all too large for unsigned int track_them_all; widen its type");
-    }
-    unsigned int track_them_all = (unsigned int)track_them_all_wide;
 
     Parser* parser = new Parser(0, 1);
     parser->weights.insert(0);
@@ -4771,22 +4759,23 @@ bool NestedAutomaton::emptiness_monotonic_nesting(value_function_t infinite_aggr
         });
     }
 
-    // All digits inactive initially (no child tokens yet)
-    internal_weight_t global_budget_initial = 0;
-    for (unsigned int i = 0; i < children_all; i++) {
-        global_budget_initial = global_budget_initial * (abs_threshold + 2) + (abs_threshold + 1);
-    }
-
-    // Children untracked, master waiting for first non-silent
-    internal_weight_t full_tracking_initial = ((internal_weight_t)1 << children_all);
+    std::vector<internal_weight_t> global_budget_initial(children_all, abs_threshold + 1);
+    std::vector<unsigned int> global_tracking_initial(children_all, 0);
+    unsigned int master_tracking_initial = 1;
 
     std::string global_initial;
-    global_initial.reserve(64);
+    global_initial.reserve(64 + children_all * 12);
     global_initial.append(std::to_string(this->initial->getId()));
     global_initial.push_back('/');
-    global_initial.append(std::to_string(global_budget_initial));
+    for (unsigned int i = 0; i < children_all; ++i) {
+        if (i > 0) global_initial.push_back(',');
+        global_initial.append(std::to_string(global_budget_initial[i]));
+    }
     global_initial.push_back('/');
-    global_initial.append(std::to_string(full_tracking_initial));
+    for (unsigned int i = 0; i < children_all; ++i) {
+        global_initial.push_back('0');
+    }
+    global_initial.push_back('1');
 
     parser->states.insert(global_initial);
     parser->initial = global_initial;
@@ -4795,22 +4784,37 @@ bool NestedAutomaton::emptiness_monotonic_nesting(value_function_t infinite_aggr
     data.A = this;
     data.parser = parser;
     data.abs_threshold = abs_threshold;
-    data.cumulative_size = cumulative_size.data();  // valid while cumulative_size in scope
-    data.track_them_all = track_them_all;
+    data.cumulative_size = cumulative_size.data();
     data.children_all = children_all;
     data.beyond_threshold = beyond_threshold;
     data.global_from = global_initial;
     data.master_state_id_from = this->initial->getId();
-    data.global_tracking_from = full_tracking_initial;
+    data.global_tracking_from = global_tracking_initial;
     data.global_budget_from = global_budget_initial;
+    data.master_tracking_from = master_tracking_initial;
 
     explore_global_initialization(&data);
 
     std::string newname = "unnested(" + this->getName() + ")";
     MapStd<std::string, Symbol*> sync_register;
     Automaton* unnested = new Automaton(newname, parser, sync_register);
-    unnested->print();
+    // unnested->print();
     delete parser;
+
+        int numEdges = 0;
+        for (size_t s = 0; s < unnested->getStates()->size(); ++s) {
+            State* state = unnested->getStates()->at(s);
+            if (state) {
+                for (size_t a = 0; a < unnested->getAlphabet()->size(); ++a) {
+                    SetStd<Edge*>* succs = state->getSuccessors(a);
+                    if (succs) {
+                        numEdges += succs->size();
+                    }
+                }
+            }
+        }
+        std::cout << "unnested: " << unnested->getStates()->size() << " states, " << numEdges << " edges" << std::endl;
+        std::cout << unnested->getNbSCCs() << " SCCs (" << unnested->getNbAcceptingSCCs() << " accepting)" << std::endl;
 
     weight_t top = unnested->compute_top_with_final(infinite_aggregator);
     bool result = (top == 1);
@@ -4857,7 +4861,7 @@ bool NestedAutomaton::emptiness_Avg_SumPlus (weight_t threshold) {
         std::cout << buchi->getNbSCCs() << " SCCs (" << buchi->getNbAcceptingSCCs() << " accepting)" << std::endl;
         // buchi->print();
 
-        Automaton* modBuchi = Automaton::removeSilentTransitions(buchi, LimInfAvg);
+        Automaton* modBuchi = Automaton::removeSilentTransitions(buchi, LimSupAvg, true);
         int numEdges2 = 0;
         for (size_t s = 0; s < modBuchi->getStates()->size(); ++s) {
             State* state = modBuchi->getStates()->at(s);
@@ -6826,10 +6830,10 @@ bool NestedAutomaton::isNonEmpty(value_function_t infVal, value_function_t finVa
         else if (infVal == Inf || infVal == LimInf) {
             return this->emptiness_monotonic_nesting(infVal, finVal, x);
         }
-        else if (infVal == LimInfAvg || infVal == LimSupAvg) {
+        else if (infVal == LimSupAvg) {
             return this->emptiness_Avg_SumPlus(x);
         }
-        else {
+        else { // (LimInfAvg, SumPlus) nonemptiness is open
             QUAK_FAIL("isNonEmpty: unsupported infinite aggregator with SumPlus");
         }
     }
@@ -6886,8 +6890,8 @@ bool NestedAutomaton::isNonEmpty(value_function_t infVal, value_function_t finVa
     }
     else if (finVal == Max_f || finVal == Min_f) {
         if (infVal == Sup || infVal == LimSup) {
-            // return this->emptiness_monotonic_nesting_min_max_supremum(infVal, finVal, x);
-            return this->emptiness_monotonic_nesting_min_max(infVal, finVal, x);
+            return this->emptiness_monotonic_nesting_min_max_supremum(infVal, finVal, x);
+            // return this->emptiness_monotonic_nesting_min_max(infVal, finVal, x);
             // Automaton* flat = this->flatten_regular(finVal);
             // Automaton* nonSilent = Automaton::removeSilentTransitions(flat, infVal);
             // // flat->print();
@@ -6903,7 +6907,7 @@ bool NestedAutomaton::isNonEmpty(value_function_t infVal, value_function_t finVa
         else if (infVal == LimInfAvg || infVal == LimSupAvg) {
             Automaton* flat = this->flatten_regular(finVal);
             std::cout << flat->getNbStates() << " " << flat->getNbSCCs() << " " << flat->getNbAcceptingSCCs() << std::endl;
-            Automaton* nonSilent = Automaton::removeSilentTransitions(flat, infVal);
+            Automaton* nonSilent = Automaton::removeSilentTransitions(flat, infVal, true);
             bool res = nonSilent->emptiness_LimAvg_with_final(x);
             delete nonSilent;
             delete flat;
@@ -6915,7 +6919,8 @@ bool NestedAutomaton::isNonEmpty(value_function_t infVal, value_function_t finVa
     }
     else if (finVal == SumB) {
         Automaton* flat = this->flatten_regular(finVal, bound);
-        Automaton* nonSilent = Automaton::removeSilentTransitions(flat, infVal);
+        bool withShortcuts = !(infVal == Inf || infVal == Sup);
+        Automaton* nonSilent = Automaton::removeSilentTransitions(flat, infVal, withShortcuts);
         if (infVal == LimInfAvg || infVal == LimSupAvg) {
             bool res = nonSilent->emptiness_LimAvg_with_final(x);
             delete nonSilent;
@@ -6939,6 +6944,24 @@ bool NestedAutomaton::isNonEmpty(value_function_t infVal, value_function_t finVa
 
 
 bool NestedAutomaton::isUniversal(value_function_t infVal, value_function_t finVal, weight_t x, weight_t bound) {
-    // TODO
-    return false;
+    if (finVal == Max_f || finVal == Min_f || finVal == SumB) {
+        if (infVal == Sup || infVal == LimSup || infVal == Inf || infVal == LimInf) {
+            Automaton* flat = this->flatten_regular(finVal, bound);
+            // flat->print();
+            bool withShortcuts = !(infVal == Inf || infVal == Sup);
+            Automaton* nonSilent = Automaton::removeSilentTransitions(flat, infVal, withShortcuts);
+            // nonSilent->print();
+            bool res = nonSilent->isUniversal(infVal, 1);
+
+            delete nonSilent;
+            delete flat;
+            return res;
+        }
+        else {
+            QUAK_FAIL("isUniversal: unsupported infinite aggregator");
+        }
+    }
+    else {
+        QUAK_FAIL("isUniversal: unsupported finite aggregator");
+    }
 }

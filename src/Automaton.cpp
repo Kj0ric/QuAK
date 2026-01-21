@@ -124,7 +124,6 @@ Automaton::Automaton(const Automaton& other) :
 	// Copy edges
 	for (unsigned int state_id = 0; state_id < other.states->size(); ++state_id) {
 		State* original_state = other.states->at(state_id);
-		State* new_state = states->at(state_id);
 
 		for (Symbol* original_symbol : *(original_state->getAlphabet())) {
 			for (Edge* original_edge : *(original_state->getSuccessors(original_symbol->getId()))) {
@@ -851,6 +850,101 @@ Automaton* Automaton::booleanize(const Automaton* A, weight_t x) {
 /* ---------------------------------- SIL --------------------------------- */
 // Copy A, replace all weights with value SILENT by a new Weight object with replacement value
 // replacement is the silent transition weight value
+
+Automaton* Automaton::removeSilentTransitionsHelperStandard_prefixIndependent(const Automaton* A, weight_t replacement) {
+    State::RESET();
+    Symbol::RESET();
+    Weight::RESET();
+
+    std::string newname = "NonSilentAccSCC(" + A->getName() + ")";
+
+    // -------- 1. copy alphabet & states ----------------------------
+    MapArray<Symbol*>* newalphabet = new MapArray<Symbol*>(A->alphabet->size());
+    for (unsigned int sid = 0; sid < A->alphabet->size(); ++sid) {
+        newalphabet->insert(sid, new Symbol(A->alphabet->at(sid)));
+    }
+
+    MapArray<State*>* newstates = new MapArray<State*>(A->states->size());
+    for (unsigned int stid = 0; stid < A->states->size(); ++stid) {
+        newstates->insert(stid, new State(A->states->at(stid)));
+    }
+    State* newinitial = newstates->at(A->initial->getId());
+
+    // -------- 2. weights: keep original SILENT weights, add one "replacement" weight ----
+    const unsigned int oldW = A->weights->size();
+    MapArray<Weight*>* newweights = new MapArray<Weight*>(oldW + 1);
+
+    // Copy all original weights as-is (including SILENT).
+    for (unsigned int wid = 0; wid < oldW; ++wid) {
+        newweights->insert(wid, new Weight(A->weights->at(wid)->getValue()));
+    }
+
+    // One extra weight object used for "de-silencing" inside accepting SCCs.
+    Weight* replacementWeight = new Weight(replacement);
+    newweights->insert(oldW, replacementWeight);
+
+    // Domain should ignore SILENT; preserve A's domain and extend with 'replacement' if needed.
+    weight_t newmin_domain = A->min_domain;
+    weight_t newmax_domain = A->max_domain;
+    if (replacement < newmin_domain) newmin_domain = replacement;
+    if (replacement > newmax_domain) newmax_domain = replacement;
+
+    // -------- 3. accepting SCC predicate ---------------------------
+    const unsigned int nbSCC = A->nb_SCCs;
+
+    auto is_accepting_scc_id = [&](int cid) -> bool {
+        if (cid < 0) return false;
+        unsigned int ucid = static_cast<unsigned int>(cid);
+        if (ucid >= nbSCC) return false;
+        return A->final_SCCs[ucid];
+    };
+
+    auto silent_edge_is_internal_to_accepting_scc = [&](const Edge* e) -> bool {
+        if (!e) return false;
+        if (!e->getWeight() || e->getWeight()->getValue() != SILENT) return false;
+
+        const State* u = e->getFrom();
+        const State* v = e->getTo();
+        if (!u || !v) return false;
+
+        int cu = u->getTag();
+        int cv = v->getTag();
+        if (cu < 0 || cv < 0) return false;
+        if (cu != cv) return false;
+
+        return is_accepting_scc_id(cu);
+    };
+
+    // -------- 4. copy transitions; only "de-silence" internal silent edges in accepting SCCs ----
+    for (unsigned int state_id = 0; state_id < A->states->size(); ++state_id) {
+        State* oldFrom = A->states->at(state_id);
+
+        for (Symbol* sym : *(oldFrom->getAlphabet())) {
+            SetStd<Edge*>* succs = oldFrom->getSuccessors(sym->getId());
+            if (!succs) continue;
+
+            for (Edge* edge : *succs) {
+                // Choose weight:
+                // - internal silent edge inside an accepting SCC: use replacementWeight
+                // - otherwise: keep the copied weight by its original weight-id (may still be SILENT)
+                Weight* w =
+                    silent_edge_is_internal_to_accepting_scc(edge)
+                        ? replacementWeight
+                        : newweights->at(edge->getWeight()->getId());
+
+                State* from = newstates->at(edge->getFrom()->getId());
+                State* to   = newstates->at(edge->getTo()->getId());
+
+                Edge* newedge = new Edge(newalphabet->at(sym->getId()), w, from, to);
+                from->addSuccessor(newedge);
+                to->addPredecessor(newedge);
+            }
+        }
+    }
+
+    return new Automaton(newname, newalphabet, newstates, newweights, newmin_domain, newmax_domain, newinitial);
+}
+
 Automaton* Automaton::removeSilentTransitionsHelperStandard(const Automaton* A, weight_t replacement) {
 	State::RESET();
 	Symbol::RESET();
@@ -908,13 +1002,26 @@ Automaton* Automaton::removeSilentTransitionsHelperStandard(const Automaton* A, 
 	return new Automaton(newname, newalphabet, newstates, newweights, newmin_domain, newmax_domain, newinitial);
 }
 
-Automaton* Automaton::removeSilentTransitionsHelperLimitAverage(const Automaton* A) {
+Automaton* Automaton::removeSilentTransitionsHelperLimitAverage_prefixIndependent(const Automaton* A) {
     // Remove ONLY silent transitions that are INTERNAL to ACCEPTING SCCs.
     // All other silent transitions are kept as-is.
 
     State::RESET();
     Symbol::RESET();
     Weight::RESET();
+
+    // -------- Custom hash for tuple<uint, uint, uint> -----------------------
+    struct TupleHash {
+        size_t operator()(const std::tuple<unsigned int, unsigned int, unsigned int>& t) const {
+            auto h1 = std::hash<unsigned int>{}(std::get<0>(t));
+            auto h2 = std::hash<unsigned int>{}(std::get<1>(t));
+            auto h3 = std::hash<unsigned int>{}(std::get<2>(t));
+            return h1 ^ (h2 * 31) ^ (h3 * 997);
+        }
+    };
+
+    using EdgeKey = std::tuple<unsigned int, unsigned int, unsigned int>;
+    using EdgeMap = std::unordered_map<EdgeKey, weight_t, TupleHash>;
 
     // -------- 1. copy alphabet & states ----------------------------
     MapArray<Symbol*>* newalphabet = new MapArray<Symbol*>(A->alphabet->size());
@@ -929,10 +1036,9 @@ Automaton* Automaton::removeSilentTransitionsHelperLimitAverage(const Automaton*
     State* newinitial = newstates->at(A->initial->getId());
 
     const unsigned int n = A->states->size();
-
-    // Preconditions: SCC tags and A->final_SCCs must be available.
     const unsigned int nbSCC = A->nb_SCCs;
 
+    // -------- Helper lambdas ----------------------------------------
     auto is_accepting_scc_id = [&](int cid) -> bool {
         if (cid < 0) return false;
         unsigned int ucid = static_cast<unsigned int>(cid);
@@ -951,18 +1057,17 @@ Automaton* Automaton::removeSilentTransitionsHelperLimitAverage(const Automaton*
         int cu = u->getTag();
         int cv = v->getTag();
         if (cu < 0 || cv < 0) return false;
-        if (cu != cv) return false;                 // must stay inside the SCC
-        return is_accepting_scc_id(cu);             // SCC must be accepting
+        if (cu != cv) return false;
+        return is_accepting_scc_id(cu);
     };
 
-    // -------- 2. restricted ε-closure (only within accepting SCCs) ----------
-    std::vector< SetStd<State*> > silentSucc(n);
+    // -------- 2. Restricted ε-closure (store IDs for cache locality) --------
+    std::vector<std::vector<unsigned int>> silentSucc(n);
 
     for (unsigned int i = 0; i < n; ++i) {
         State* root = A->states->at(i);
-        silentSucc[i].insert(root);
+        silentSucc[i].push_back(i);  // reflexive
 
-        // If root is not in an accepting SCC, we do NOT remove any silent edges from it.
         if (!in_accepting_scc(root)) continue;
 
         const int root_cid = root->getTag();
@@ -970,11 +1075,14 @@ Automaton* Automaton::removeSilentTransitionsHelperLimitAverage(const Automaton*
         std::stack<State*> st;
         st.push(root);
 
+        // Use a local visited set (flat vector for speed)
+        std::vector<bool> visited(n, false);
+        visited[i] = true;
+
         while (!st.empty()) {
             State* u = st.top();
             st.pop();
 
-            // Only expand from states that stay in the same accepting SCC as root.
             if (u->getTag() != root_cid) continue;
 
             for (Symbol* sym : *(u->getAlphabet())) {
@@ -988,12 +1096,12 @@ Automaton* Automaton::removeSilentTransitionsHelperLimitAverage(const Automaton*
                     State* v = e->getTo();
                     if (!v) continue;
 
-                    // Follow silent edges ONLY if they are internal to the same accepting SCC.
+                    unsigned int vId = v->getId();
                     if (!silent_edge_is_internal_to_accepting_scc(u, v, w)) continue;
-                    // (Equivalent here to: v->getTag() == root_cid and SCC is accepting.)
 
-                    if (!silentSucc[i].contains(v)) {
-                        silentSucc[i].insert(v);
+                    if (!visited[vId]) {
+                        visited[vId] = true;
+                        silentSucc[i].push_back(vId);
                         st.push(v);
                     }
                 }
@@ -1001,28 +1109,46 @@ Automaton* Automaton::removeSilentTransitionsHelperLimitAverage(const Automaton*
         }
     }
 
-    // -------- 3. gather best compressed NON-silent edges -------------
-    // (p, a, r) ↦ max weight among paths p -(silent*)-> s -a,w-> t -(silent*)-> r
-    std::map< std::tuple<unsigned int, unsigned int, unsigned int>, weight_t > best;
+    // -------- 2b. Compute reverse closure: silentPred[i] = {j : i ∈ silentSucc[j]} ----
+    std::vector<std::vector<unsigned int>> silentPred(n);
+    for (unsigned int j = 0; j < n; ++j) {
+        for (unsigned int reached : silentSucc[j]) {
+            silentPred[reached].push_back(j);
+        }
+    }
 
-    for (unsigned int pId = 0; pId < n; ++pId) {
-        for (State* s : silentSucc[pId]) {
-            for (Symbol* sym : *(s->getAlphabet())) {
-                SetStd<Edge*>* succs = s->getSuccessors(sym->getId());
-                if (!succs) continue;
+    // -------- 3. Gather best compressed NON-silent edges (inverted iteration) ----
+    // Estimate capacity: at most O(m) entries where m = number of non-silent edges
+    EdgeMap best;
+    best.reserve(n * 4);  // heuristic; adjust based on typical density
 
-                for (Edge* e : *succs) {
-                    weight_t w = e->getWeight()->getValue();
-                    if (w == SILENT) continue; // only compress around a REAL step
+    for (unsigned int sId = 0; sId < n; ++sId) {
+        State* s = A->states->at(sId);
 
-                    State* t = e->getTo();
-                    if (!t) continue;
+        for (Symbol* sym : *(s->getAlphabet())) {
+            SetStd<Edge*>* succs = s->getSuccessors(sym->getId());
+            if (!succs) continue;
 
-                    for (State* r : silentSucc[t->getId()]) {
-                        auto key = std::make_tuple(pId, sym->getId(), r->getId());
+            for (Edge* e : *succs) {
+                weight_t w = e->getWeight()->getValue();
+                if (w == SILENT) continue;  // only compress around a REAL step
+
+                State* t = e->getTo();
+                if (!t) continue;
+
+                unsigned int tId = t->getId();
+                unsigned int symId = sym->getId();
+
+                // Cross-product: all states that can reach s via silent × 
+                //                all states reachable from t via silent
+                for (unsigned int pId : silentPred[sId]) {
+                    for (unsigned int rId : silentSucc[tId]) {
+                        EdgeKey key{pId, symId, rId};
                         auto it = best.find(key);
-                        if (it == best.end() || w > it->second) {
-                            best[key] = w;
+                        if (it == best.end()) {
+                            best.emplace(key, w);
+                        } else if (w > it->second) {
+                            it->second = w;
                         }
                     }
                 }
@@ -1030,12 +1156,11 @@ Automaton* Automaton::removeSilentTransitionsHelperLimitAverage(const Automaton*
         }
     }
 
-    // -------- 4. build final transition set: keep originals except removed silents,
-    //             plus the compressed edges ------------------------------------
-    std::map< std::tuple<unsigned int, unsigned int, unsigned int>, weight_t > final_edges;
-    SetSorted<weight_t> weight_vals;
+    // -------- 4. Build final transition set in a single pass ----------------
+    EdgeMap final_edges;
+    final_edges.reserve(best.size() + n * 4);
 
-    // 4a) keep original edges unless they are silent AND internal to an accepting SCC
+    // 4a) Keep original edges unless they are silent AND internal to an accepting SCC
     for (unsigned int uid = 0; uid < n; ++uid) {
         State* u = A->states->at(uid);
 
@@ -1049,66 +1174,67 @@ Automaton* Automaton::removeSilentTransitionsHelperLimitAverage(const Automaton*
 
                 weight_t w = e->getWeight()->getValue();
 
-                // Drop only silent edges that are internal to an accepting SCC.
+                // Drop only silent edges that are internal to an accepting SCC
                 if (silent_edge_is_internal_to_accepting_scc(u, v, w)) {
                     continue;
                 }
 
-                auto key = std::make_tuple(u->getId(), sym->getId(), v->getId());
-                auto it = final_edges.find(key);
-                if (it == final_edges.end() || w > it->second) {
-                    final_edges[key] = w;
+                EdgeKey key{uid, sym->getId(), v->getId()};
+                auto [it, inserted] = final_edges.try_emplace(key, w);
+                if (!inserted && w > it->second) {
+                    it->second = w;
                 }
             }
         }
     }
 
-    // 4b) add compressed edges (also keeping max if duplicates arise)
-    for (const auto& kv : best) {
-        const auto& key = kv.first;
-        weight_t w = kv.second;
-        auto it = final_edges.find(key);
-        if (it == final_edges.end() || w > it->second) {
-            final_edges[key] = w;
+    // 4b) Merge compressed edges from 'best'
+    for (const auto& [key, w] : best) {
+        auto [it, inserted] = final_edges.try_emplace(key, w);
+        if (!inserted && w > it->second) {
+            it->second = w;
         }
     }
 
-    for (const auto& kv : final_edges) {
-        weight_vals.insert(kv.second);
+    // -------- 5. Collect unique weights and materialise Weight objects ------
+    SetSorted<weight_t> weight_vals;
+    // weight_vals.reserve(final_edges.size());  // upper bound
+    for (const auto& [key, w] : final_edges) {
+        weight_vals.insert(w);
     }
 
-    // -------- 5. materialise the new weight objects -------------------------
     MapArray<Weight*>* newweights = new MapArray<Weight*>(weight_vals.size());
     MapStd<weight_t, Weight*> wreg;
     for (weight_t v : weight_vals) {
-        Weight* w = new Weight(v);
-        newweights->insert(w->getId(), w);
-        wreg.insert(v, w);
+        Weight* wobj = new Weight(v);
+        newweights->insert(wobj->getId(), wobj);
+        wreg.insert(v, wobj);
     }
 
-    // -------- 6. create the new transition relation -------------------------
-    for (const auto& kv : final_edges) {
-        unsigned int pId, symId, rId;
-        std::tie(pId, symId, rId) = kv.first;
+    // -------- 6. Create the new transition relation -------------------------
+    for (const auto& [key, wval] : final_edges) {
+        auto [pId, symId, rId] = key;
 
         Symbol* sym  = newalphabet->at(symId);
         State*  from = newstates->at(pId);
         State*  to   = newstates->at(rId);
-        Weight* w    = wreg.at(kv.second);
+        Weight* w    = wreg.at(wval);
 
-        Edge* e = new Edge(sym, w, from, to);
-        from->addSuccessor(e);
-        to->addPredecessor(e);
+        Edge* edge = new Edge(sym, w, from, to);
+        from->addSuccessor(edge);
+        to->addPredecessor(edge);
     }
 
-    // -------- 7. wrap-up ----------------------------------------------------
+    // -------- 7. Wrap-up ----------------------------------------------------
     std::string newname = "NonSilentAccSCC(" + A->getName() + ")";
     return new Automaton(
         newname, newalphabet, newstates, newweights,
         A->min_domain, A->max_domain, newinitial
     );
 }
-/*
+
+
+
 Automaton* Automaton::removeSilentTransitionsHelperLimitAverage(const Automaton* A) {
 	//  --------  A_fix : compress every ε* ­ a ­ ε* pattern  --------
 	State::RESET();
@@ -1203,8 +1329,8 @@ Automaton* Automaton::removeSilentTransitionsHelperLimitAverage(const Automaton*
 		A->min_domain, A->max_domain, newinitial
 	);
 }
-*/
-Automaton* Automaton::removeSilentTransitions(const Automaton* A, value_function_t f) {
+
+Automaton* Automaton::removeSilentTransitions(const Automaton* A, value_function_t f, bool withShortcuts) {
 	if (f == Inf || f == LimInf) {
 		// idea: Replace all SILENT values with MAXIMAL weight value appears in the run
 		// "return removeSilentTransitionsHelperStandard(A, A->getMaxDomain());" doesn't work.
@@ -1227,41 +1353,22 @@ Automaton* Automaton::removeSilentTransitions(const Automaton* A, value_function
 			QUAK_FAIL("Automaton has fewer than two distinct weights");
 		}
 
-		/*
-		const weight_t minus_inf = std::numeric_limits<float>::lowest();
-		weight_t first  = minus_inf;
-		weight_t second = minus_inf;
-
-		for (Weight *w : *A->getWeights()) {
-			const weight_t v = w->getValue();
-			if (v > first) {
-				second = first;
-				first  = v;
-			} else if (v > second && v < first) {
-				second = v;
-			}
-		}
-
-		if (second == minus_inf) {
-			QUAK_FAIL("Automaton has fewer than two distinct weights");
-		}
-		*/
-
-		return removeSilentTransitionsHelperStandard(A, max_so_far);
+		if (f == LimInf && withShortcuts) return removeSilentTransitionsHelperStandard_prefixIndependent(A, max_so_far);
+		else return removeSilentTransitionsHelperStandard(A, max_so_far);
 	}
 	else if (f == Sup || f == LimSup) {
 		// idea: Replace all SILENT values with MINIMAL weight value appears in the run
-		return removeSilentTransitionsHelperStandard(A, A->getMinDomain());
+		if (f == LimSup && withShortcuts) return removeSilentTransitionsHelperStandard_prefixIndependent(A, A->getMinDomain());
+		else return removeSilentTransitionsHelperStandard(A, A->getMinDomain());
 	}
 	else if (f == LimInfAvg || f == LimSupAvg) {
-		return removeSilentTransitionsHelperLimitAverage(A);
+		if (withShortcuts) return removeSilentTransitionsHelperLimitAverage_prefixIndependent(A);
+		else return removeSilentTransitionsHelperLimitAverage(A);
 	}
 	else {
 		QUAK_FAIL("invalid value function");
 	}
 }
-
-
 
 
 
@@ -1553,29 +1660,81 @@ Automaton* Automaton::livenessComponent_prefixIndependent (const Automaton* A, v
 
 
 
-
-void explore_monotonically (
-		std::pair<State*, Weight*> &from,
-		SetStd<std::pair<State*, Weight*>> &set_of_states,
-		SetStd<std::pair<Symbol*, std::pair<std::pair<State*, Weight*>, std::pair<State*, Weight*>>>> &set_of_edges,
-		Weight* (*select_weight)(Weight*, Weight*)
+void explore_monotonically(
+        std::pair<State*, Weight*> &from,
+        SetStd<std::pair<State*, Weight*>> &set_of_states,
+        SetStd<std::pair<Symbol*, std::pair<std::pair<State*, Weight*>, std::pair<State*, Weight*>>>> &set_of_edges,
+        Weight* (*select_weight)(Weight*, Weight*)
 ) {
-	set_of_states.insert(from);
+    // Mark the start node as discovered.
+    if (!set_of_states.contains(from)) {
+        set_of_states.insert(from);
+    }
 
-	for (Symbol* symbol : *((from.first)->getAlphabet())) {
-		for (Edge* edge : *((from.first)->getSuccessors(symbol->getId()))) {
-			State* state = edge->getTo();
-			Weight* weight = select_weight(from.second, edge->getWeight());
-			auto to = std::pair<State*, Weight*>(state, weight);
-			auto pair_of_states = std::pair<std::pair<State*, Weight*>, std::pair<State*, Weight*>>(from, to);
-			auto newedge = std::pair<Symbol*, std::pair<std::pair<State*, Weight*>, std::pair<State*, Weight*>>>(symbol, pair_of_states);
-			set_of_edges.insert(newedge);
-			if (set_of_states.contains(to) == false) {
-				explore_monotonically(to, set_of_states, set_of_edges, select_weight);
-			}
-		}
-	}
+    // Explicit DFS stack over nodes (State*, Weight*).
+    std::vector<std::pair<State*, Weight*>> st;
+    st.push_back(from);
+
+    while (!st.empty()) {
+        const std::pair<State*, Weight*> cur = st.back();
+        st.pop_back();
+
+        State* s = cur.first;
+        Weight* accw = cur.second;
+
+        auto* alphabet = s->getAlphabet();
+        if (!alphabet) continue;
+
+        for (Symbol* symbol : *alphabet) {
+            auto* succs = s->getSuccessors(symbol->getId());
+            if (!succs) continue;
+
+            for (Edge* edge : *succs) {
+                State* t = edge->getTo();
+                Weight* w = select_weight(accw, edge->getWeight());
+
+                const std::pair<State*, Weight*> to(t, w);
+
+                const auto pair_of_states =
+                    std::pair<std::pair<State*, Weight*>, std::pair<State*, Weight*>>(cur, to);
+
+                const auto newedge =
+                    std::pair<Symbol*, std::pair<std::pair<State*, Weight*>, std::pair<State*, Weight*>>>(symbol, pair_of_states);
+
+                set_of_edges.insert(newedge);
+
+                // Discover and push if new.
+                if (!set_of_states.contains(to)) {
+                    set_of_states.insert(to);
+                    st.push_back(to);
+                }
+            }
+        }
+    }
 }
+
+// void explore_monotonically (
+// 		std::pair<State*, Weight*> &from,
+// 		SetStd<std::pair<State*, Weight*>> &set_of_states,
+// 		SetStd<std::pair<Symbol*, std::pair<std::pair<State*, Weight*>, std::pair<State*, Weight*>>>> &set_of_edges,
+// 		Weight* (*select_weight)(Weight*, Weight*)
+// ) {
+// 	set_of_states.insert(from);
+
+// 	for (Symbol* symbol : *((from.first)->getAlphabet())) {
+// 		for (Edge* edge : *((from.first)->getSuccessors(symbol->getId()))) {
+// 			State* state = edge->getTo();
+// 			Weight* weight = select_weight(from.second, edge->getWeight());
+// 			auto to = std::pair<State*, Weight*>(state, weight);
+// 			auto pair_of_states = std::pair<std::pair<State*, Weight*>, std::pair<State*, Weight*>>(from, to);
+// 			auto newedge = std::pair<Symbol*, std::pair<std::pair<State*, Weight*>, std::pair<State*, Weight*>>>(symbol, pair_of_states);
+// 			set_of_edges.insert(newedge);
+// 			if (set_of_states.contains(to) == false) {
+// 				explore_monotonically(to, set_of_states, set_of_edges, select_weight);
+// 			}
+// 		}
+// 	}
+// }
 
 
 void explore_Inf (
@@ -2098,7 +2257,81 @@ void Automaton::top_dag (SCC_Dag* dag, bool* done, weight_t* top_values) const {
 	}
 }
 
-
+void Automaton::top_reachably_scc_new(State* startState, bool in_scc, std::vector<bool>& spot, std::vector<weight_t>& values) const {
+    
+    struct Frame {
+        State* state;
+        std::vector<Edge*> successors;
+        size_t succIndex;
+        bool initialized;
+    };
+    
+    auto collectSuccessors = [](State* s) {
+        std::vector<Edge*> result;
+        for (Symbol* symbol : *(s->getAlphabet())) {
+            for (Edge* edge : *(s->getSuccessors(symbol->getId()))) {
+                result.push_back(edge);
+            }
+        }
+        return result;
+    };
+    
+    std::vector<Frame> callStack;
+    callStack.push_back({startState, {}, 0, false});
+    
+    while (!callStack.empty()) {
+        Frame& frame = callStack.back();
+        State* state = frame.state;
+        
+        // Phase 1: Initialize
+        if (!frame.initialized) {
+            if (spot[state->getId()]) {
+                callStack.pop_back();
+                continue;
+            }
+            spot[state->getId()] = true;
+            
+            frame.successors = collectSuccessors(state);
+            frame.succIndex = 0;
+            frame.initialized = true;
+        }
+        
+        // Phase 2: Process successors
+        bool pushedChild = false;
+        while (frame.succIndex < frame.successors.size()) {
+            Edge* edge = frame.successors[frame.succIndex];
+            State* child = edge->getTo();
+            
+            if (child->getTag() == state->getTag()) {
+                // Same SCC
+                if (!spot[child->getId()]) {
+                    // Need to recurse - don't advance index yet
+                    // We'll process this edge again after child returns
+                    callStack.push_back({child, {}, 0, false});
+                    pushedChild = true;
+                    break;
+                } 
+                else {
+                    // Child already visited - do the value updates
+                    values[state->getId()] = std::max(values[state->getId()], edge->getWeight()->getValue());
+                    values[state->getId()] = std::max(values[state->getId()], values[child->getId()]);
+                }
+            }
+            else if (!in_scc) {
+                // Different SCC and not in_scc mode
+                values[state->getId()] = std::max(values[state->getId()], edge->getWeight()->getValue());
+            }
+            frame.succIndex++;
+        }
+        
+        if (pushedChild) {
+            continue;
+        }
+        
+        // Phase 3: All successors done, pop frame
+        callStack.pop_back();
+    }
+}
 void Automaton::top_reachably_scc(State* startState, bool in_scc, bool* spot, weight_t* values) const {
     
     struct Frame {
@@ -3551,26 +3784,39 @@ weight_t Automaton::top_Inf_with_final () const {
 }
 
 
-
-weight_t Automaton::top_LimSup_with_final () const {
-	weight_t values[this->states->size()];
-	bool spot[this->states->size()];
-	
-	for (unsigned int state_id = 0; state_id < this->states->size(); ++state_id) {
-		values[state_id] = this->min_domain;
-		spot[state_id] = false;
-	}
+weight_t Automaton::top_LimSup_with_final() const {
+	std::vector<weight_t> values(this->states->size(), this->min_domain);
+	std::vector<bool> spot(this->states->size(), false);
 
 	weight_t top = this->min_domain;
 	for (unsigned int scc_id = 0; scc_id < this->nb_SCCs; ++scc_id) {
-		if (final_SCCs[scc_id] == true) {
-			top_reachably_scc(this->SCCs[scc_id]->origin, true, spot, values);
+		if (final_SCCs[scc_id]) {
+			top_reachably_scc_new(this->SCCs[scc_id]->origin, true, spot, values);
 			top = std::max(top, values[this->SCCs[scc_id]->origin->getId()]);
 		}
 	}
 
 	return top;
 }
+// weight_t Automaton::top_LimSup_with_final () const {
+// 	weight_t values[this->states->size()];
+// 	bool spot[this->states->size()];
+	
+// 	for (unsigned int state_id = 0; state_id < this->states->size(); ++state_id) {
+// 		values[state_id] = this->min_domain;
+// 		spot[state_id] = false;
+// 	}
+
+// 	weight_t top = this->min_domain;
+// 	for (unsigned int scc_id = 0; scc_id < this->nb_SCCs; ++scc_id) {
+// 		if (final_SCCs[scc_id] == true) {
+// 			top_reachably_scc(this->SCCs[scc_id]->origin, true, spot, values);
+// 			top = std::max(top, values[this->SCCs[scc_id]->origin->getId()]);
+// 		}
+// 	}
+
+// 	return top;
+// }
 
 
 
