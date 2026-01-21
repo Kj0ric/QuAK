@@ -52,11 +52,13 @@ Automaton::~Automaton () {
 		delete this->weights->at(weight_id);
 	}
 	delete weights;
-	for (unsigned int scc_id = 0; scc_id < this->nb_SCCs; ++scc_id) {
-		delete this->SCCs[scc_id];
+	if (initial != nullptr) {
+		for (unsigned int scc_id = 0; scc_id < this->nb_SCCs; ++scc_id) {
+			delete this->SCCs[scc_id];
+		}
+		delete[] this->SCCs;
+		delete[] this->final_SCCs;
 	}
-	delete[] this->SCCs;
-	delete[] this->final_SCCs;
 }
 // -------------------------------- Constructors -------------------------------- //
 // To construct from parsed data (file)
@@ -84,7 +86,7 @@ Automaton::Automaton (
 {
   // assert(isComplete() && "The automaton is not complete.");
 	appropriateStates();
-	compute_SCC();
+	if (initial != nullptr) compute_SCC();
 }
 
 // Copy constructor
@@ -263,6 +265,7 @@ void Automaton::build(std::string newname, Parser* parser, MapStd<std::string, S
 			delete this->SCCs[scc_id];
 		}
 		delete[] this->SCCs;
+		delete[] this->final_SCCs;
 		build(newname, &parserTrim, sync_register);
 	}
 }
@@ -3679,7 +3682,11 @@ void Automaton::print(std::ostream& out, bool full, bool bv_weights, bool bv_onl
 	out << "\t\tMAX = " << std::to_string(max_domain) << "\n";
 	out << "\tstates (" << this->states->size() << "):";
 	out << states->toString(State::toString) << "\n";
-	out << "\t\tINITIAL = " << initial->getName() << "\n";
+	// out << "\t\tINITIAL = " << initial->getName() << "\n";
+	out << "\t\tINITIAL = ";
+	if (initial != nullptr) out << initial->getName() << "\n";
+	else out << "(none)\n";
+
 	
 	out << "\t\tFINAL = ";
 	bool first_final = true;
@@ -3697,8 +3704,11 @@ void Automaton::print(std::ostream& out, bool full, bool bv_weights, bool bv_onl
 	}
 	out << "\n";
 
-	out << "\tSCCs (" << this->nb_SCCs << "):";
-	out << this->SCCs[this->initial->getTag()]->toString("\t\t") << "\n";
+	if (initial != nullptr) {
+		out << "\tSCCs (" << this->nb_SCCs << "):";
+		out << this->SCCs[this->initial->getTag()]->toString("\t\t") << "\n";
+	}
+
 	unsigned int nb_edge = 0;
 	for (unsigned int state_id = 0; state_id < states->size(); ++state_id) {
 		for (Symbol* symbol : *(states->at(state_id)->getAlphabet())) {

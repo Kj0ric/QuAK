@@ -51,12 +51,11 @@ public:
     std::unordered_set<MacroSymbol*, MacroSymbolPtrHash, MacroSymbolPtrEqual> generateMacroAlphabet();
     NestedAutomaton* determinizeWithMacroAlphabet();
     NestedAutomaton* synchronizeChildren();
-    Automaton* flatten_Avg_SumMinus();
+    Automaton* flatten_Avg_SumMinus(uint64_t c_bound);
 	Automaton* flatten_regular(value_function_t finVal, weight_t bound = -1);
     Automaton* flatten_regular_parent_trivial(value_function_t finVal, weight_t bound = -1);
 	Automaton* flatten_regular_parent_acceptance(value_function_t finVal, weight_t bound = -1);
     Automaton* flattenNestedAutomaton();
-    NestedAutomaton* synchronizeChildren_LimAvg_SumPlus() const;
 
     NestedAutomaton* makeCompleteNested(std::vector<bool>* complete_flags = nullptr, weight_t parent_sink_w = weight_t(0), weight_t child_sink_w = weight_t(0)) const;
 
@@ -100,9 +99,9 @@ struct BuchiState {
     }
     
     bool operator==(const BuchiState& other) const {
-        return parent_state == other.parent_state && 
-            last_guess == other.last_guess && 
-            P1 == other.P1 && 
+        return parent_state == other.parent_state &&
+            last_guess == other.last_guess &&
+            P1 == other.P1 &&
             P2 == other.P2;
     }
 };
@@ -141,9 +140,9 @@ struct BuchiState_acceptance {
     }
 
     bool operator==(const BuchiState_acceptance& other) const {
-        return parent_state == other.parent_state && 
-            last_guess == other.last_guess && 
-            P1 == other.P1 && 
+        return parent_state == other.parent_state &&
+            last_guess == other.last_guess &&
+            P1 == other.P1 &&
             P2 == other.P2 &&
             acceptance_flag == other.acceptance_flag;
     }

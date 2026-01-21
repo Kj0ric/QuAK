@@ -3040,47 +3040,30 @@ NestedAutomaton* NestedAutomaton::synchronizeChildren() {
 
 
 /**
- * SYNCHRONIZATION SEMANTICS:
- * ==========================
- * The goal is to transform each child automaton so that it "observes" the master's behavior:
- * - When the master fires a SILENT transition, the synchronized child emits weight 0
- *   but internally accumulates the weight it would have emitted.
- * - When the master fires a NON-SILENT transition (calling some child), the synchronized
- *   child emits its accumulated weight plus its current transition weight, then resets.
+ * Synchronization + Ultimate slave construction.
  *
- * STATE REPRESENTATION:
- * ====================
- * Each state of the synchronized child is a tuple (m, s, acc, pending) where:
- *   - m: current state of the master automaton
- *   - s: current state of the original child automaton
- *   - acc: accumulated weight (to be flushed on next non-silent master step)
- *   - pending: boolean flag indicating the child has reached an accepting state during
- *              a silent master step and is waiting to flush its accumulator
+ * Output shape:
+ *  - Exactly ONE child automaton: the synchronized ultimate slave U_sync.
+ *  - The parent (master) is copied, but every transition weight is rewritten as:
+ *      * -1  : silent transition (no spawn)
+ *      * >=0 : ID of the initial state in U_sync from which the spawned instance starts
+ *              (this ID already encodes the master-state-at-spawn in the synchronized product).
  *
- * TERMINATION SEMANTICS:
- * =====================
- * - A synchronized child state is FINAL iff the original child state is accepting AND pending=false.
- *   (This ensures the accumulator has been flushed before termination.)
- * - Final states have no outgoing transitions (they are terminal).
- * - When the child reaches an accepting state during a SILENT master step, we set pending=true
- *   to delay termination until the next non-silent step allows us to flush the accumulator.
+ * Input convention (pre-sync):
+ *  - Parent edge weight encodes called child ID:
+ *      * <= 0 : silent (dummy/no call)
+ *      * >  0 : calls that child ID
  *
- * BOUNDS:
- * ======
- * - X = 2 * conf(A) where conf(A) = product of all non-trivial automaton state counts
- * - Accumulator is bounded by [-X*maxAbsW, X*maxAbsW] to handle both positive and negative weights
+ * Important:
+ *  - Pseudodeterminization guarantees at most one transition per letter from each state
+ *    in both master and all children.
+ *  - This pass does NOT modify existing classes. It rewrites only by rebuilding objects.
  */
-
-
 NestedAutomaton* NestedAutomaton::synchronizeChildren() {
     // =========================================================================
     // UTILITY LAMBDAS
     // =========================================================================
-    
-    /**
-     * Saturating multiplication for uint64_t.
-     * Returns max value on overflow instead of wrapping.
-     */
+
     auto sat_mul_u64 = [](uint64_t a, uint64_t b) -> uint64_t {
         if (a == 0 || b == 0) return 0;
         if (a > std::numeric_limits<uint64_t>::max() / b) {
@@ -3089,875 +3072,1875 @@ NestedAutomaton* NestedAutomaton::synchronizeChildren() {
         return a * b;
     };
 
-    /**
-     * Returns the first edge from a successor set, or nullptr if empty/null.
-     * Assumes pseudo-determinism (at most one edge per letter from each state).
-     */
     auto first_edge_or_null = [](SetStd<Edge*>* succs) -> Edge* {
         if (!succs) return nullptr;
         for (Edge* e : *succs) return e;
         return nullptr;
     };
 
-    /**
-     * Extracts the called child ID from a master edge's weight.
-     * Convention: weight encodes child ID; 0 or negative means silent transition.
-     */
-    auto master_called_child_id = [](const Edge* me) -> size_t {
+    // Reads the payload on a parent edge in the *input* automaton (child-id encoding).
+    // Returns <=0 for silent, >0 for called child-id.
+    auto old_master_called_child_id = [](const Edge* me) -> long long {
         if (!me || !me->getWeight()) return 0;
-        float id = me->getWeight()->getValue().to_float();
-        return (id < 0) ? 0u : static_cast<size_t>(id);
+        // The project historically used to_float() for decoding.
+        // We round to nearest integer to be robust to "1.0" style encodings.
+        const double d = me->getWeight()->getValue().to_float();
+        return static_cast<long long>(std::llround(d));
     };
 
     // =========================================================================
     // COMPUTE CONFIGURATION BOUND X = 2 * conf(this)
     // =========================================================================
-    // conf(A) = product of state counts for all non-trivial automata
-    // This bounds the number of steps before a cycle must occur.
+    // uint64_t conf = 1;
+
+    // const uint64_t nm = static_cast<uint64_t>(this->getStates()->size());
+    // if (nm > 1) conf = sat_mul_u64(conf, nm);
+
+    // for (size_t i = 0; i < this->getChildrenSize(); ++i) {
+    //     ChildAutomaton* c = this->getChild(i);
+    //     const uint64_t nc = static_cast<uint64_t>(c->getStates()->size());
+    //     if (nc > 1) conf = sat_mul_u64(conf, nc);
+    // }
+    // const uint64_t X_u64 = sat_mul_u64(2, conf);
+
+    // =========================================================================
+    // COMPUTE CONFIGURATION BOUND X = 2 * conf(this)
+    // conf(A) = |Q_m| * 2^|Q_slv|, where Q_slv is disjoint union of slave states
+    // =========================================================================
     
-    uint64_t conf = 1;
-    const uint64_t nm = static_cast<uint64_t>(this->getStates()->size());
-    if (nm > 1) conf = sat_mul_u64(conf, nm);
-    
+    // Compute |Q_slv| = sum of states across all slave automata
+    uint64_t Qslv_size = 0;
     for (size_t i = 0; i < this->getChildrenSize(); ++i) {
         ChildAutomaton* c = this->getChild(i);
-        const uint64_t nc = static_cast<uint64_t>(c->getStates()->size());
-        if (nc > 1) conf = sat_mul_u64(conf, nc);
+        Qslv_size += static_cast<uint64_t>(c->getStates()->size());
     }
+
+    // Check for overflow in 2^|Q_slv|
+    if (Qslv_size >= 64) {
+        QUAK_FAIL("Overflow: |Q_slv| >= 64, configuration bound too large");
+    }
+    const uint64_t two_power_Qslv = 1ULL << Qslv_size;
+
+    // conf(A) = |Q_m| * 2^|Q_slv|
+    const uint64_t nm = static_cast<uint64_t>(this->getStates()->size());
+    const uint64_t conf = sat_mul_u64(nm, two_power_Qslv);
+    
     const uint64_t X_u64 = sat_mul_u64(2, conf);
 
     // =========================================================================
-    // SYNCHRONIZE EACH CHILD AUTOMATON
+    // BASIC SIZES, ALPHABET SOURCE
     // =========================================================================
-    
-    MapArray<ChildAutomaton*>* new_children = new MapArray<ChildAutomaton*>(this->getChildrenSize());
     const size_t M = this->getStates()->size();
 
-    for (size_t ci = 0; ci < this->getChildrenSize(); ++ci) {
-        // Reset ID counters for fresh symbol/state/weight IDs
-        Symbol::RESET();
-        State::RESET();
-        Weight::RESET();
-
-        ChildAutomaton* child = this->getChild(ci);
-        MapArray<Symbol*>* src_alpha = child->getAlphabet();
-        const size_t A = src_alpha->size();
-
-        // Copy alphabet (symbols are value objects)
-        MapArray<Symbol*>* calpha = new MapArray<Symbol*>(A);
-        for (size_t a = 0; a < A; ++a) {
-            Symbol* s_new = new Symbol(src_alpha->at(a));
-            calpha->insert(s_new->getId(), s_new);
+    // Use any (non-null) child's alphabet as the canonical alphabet.
+    // (Assumes all automata use the same alphabet IDs.)
+    ChildAutomaton* alpha_src_child = nullptr;
+    for (size_t i = 0; i < this->getChildrenSize(); ++i) {
+        if (this->getChild(i) && this->getChild(i)->getNbStates() > 1 && this->getChild(i)->getAlphabet()) {
+            alpha_src_child = this->getChild(i);
+            break;
         }
+    }
+    if (!alpha_src_child) QUAK_FAIL("synchronizeChildren: no child alphabet available");
 
-        // =====================================================================
-        // COMPUTE WEIGHT STATISTICS AND ACCUMULATOR BOUNDS
-        // =====================================================================
-        
-        weight_t minW = weight_t(0);
-        weight_t maxW = weight_t(0);
-        weight_t maxAbsW = weight_t(0);
+    MapArray<Symbol*>* src_alpha = alpha_src_child->getAlphabet();
+    const size_t A = src_alpha->size();
+
+    // =========================================================================
+    // BUILD THE SYNCHRONIZED ULTIMATE SLAVE U_sync (single child)
+    // =========================================================================
+    Symbol::RESET();
+    State::RESET();
+    Weight::RESET();
+
+    // ---- Copy alphabet for U_sync ----
+    MapArray<Symbol*>* calpha = new MapArray<Symbol*>(A);
+    for (size_t a = 0; a < A; ++a) {
+        Symbol* s_new = new Symbol(src_alpha->at(a));
+        calpha->insert(s_new->getId(), s_new);
+    }
+
+    // ---- Compute GLOBAL weight statistics over all "real" children (id > 0) ----
+    // We include all children indices > 0 because index 0 is commonly dummy/silent.
+    bool firstW = true;
+    weight_t minW = weight_t(0), maxW = weight_t(0), maxAbsW = weight_t(0);
+
+    for (size_t ci = 1; ci < this->getChildrenSize(); ++ci) {
+        ChildAutomaton* child = this->getChild(ci);
+        if (!child) continue;
         MapArray<Weight*>* ws = child->getWeights();
-        bool first = true;
-        
+        if (!ws) continue;
+
         for (size_t wi = 0; wi < ws->size(); ++wi) {
             Weight* w = ws->at(wi);
-            weight_t v = w->getValue();
-            if (first) { 
-                minW = maxW = v; 
-                first = false; 
-            } else { 
-                if (v < minW) minW = v; 
-                if (v > maxW) maxW = v; 
+            if (!w) continue;
+            const weight_t v = w->getValue();
+
+            if (firstW) { minW = maxW = v; firstW = false; }
+            else {
+                if (v < minW) minW = v;
+                if (v > maxW) maxW = v;
             }
-            weight_t av = (v < weight_t(0)) ? -v : v;
+
+            const weight_t av = (v < weight_t(0)) ? -v : v;
             if (av > maxAbsW) maxAbsW = av;
         }
-        
-        // The accumulator is bounded by X * maxAbsW
-        const weight_t cap = (maxAbsW == weight_t(0)) 
-            ? weight_t(0) 
-            : weight_t(static_cast<double>(X_u64)) * maxAbsW;
+    }
 
-        // Determine accumulator range based on weight signs
-        weight_t accMin = weight_t(0);
-        weight_t accMax = weight_t(0);
-        if (cap == weight_t(0)) {
-            accMin = accMax = weight_t(0);
-        } else if (maxW <= weight_t(0)) {
-            // All weights non-positive: accumulator is non-positive
-            accMin = -cap; 
-            accMax = weight_t(0);
-        } else if (minW >= weight_t(0)) {
-            // All weights non-negative: accumulator is non-negative
-            accMin = weight_t(0); 
-            accMax = cap;
-        } else {
-            // Mixed signs: accumulator can be anything in [-cap, cap]
-            accMin = -cap; 
-            accMax = cap;
+    // If there were no real weights found, treat as all 0.
+    if (firstW) { minW = maxW = maxAbsW = weight_t(0); }
+
+    // Accumulator bound cap = X * maxAbsW
+    const weight_t cap = (maxAbsW == weight_t(0))
+        ? weight_t(0)
+        : weight_t(static_cast<double>(X_u64)) * maxAbsW;
+
+    weight_t accMin = -cap;
+    weight_t accMax =  cap;
+
+    // For SumMinus (all weights <= 0), we can tighten to [ -cap, 0 ].
+    if (cap == weight_t(0)) {
+        accMin = accMax = weight_t(0);
+    } else if (maxW <= weight_t(0)) {
+        accMin = -cap;
+        accMax = weight_t(0);
+    } else if (minW >= weight_t(0)) {
+        accMin = weight_t(0);
+        accMax = cap;
+    }
+
+    // Output weights are either 0 (silent master step) or acc + child_weight (non-silent)
+    const weight_t outMinBound = std::min(weight_t(0), accMin + minW);
+    const weight_t outMaxBound = std::max(weight_t(0), accMax + maxW);
+
+    // ---- Weight register for U_sync outputs ----
+    std::vector<Weight*> cweights_vec;
+    MapStd<weight_t, Weight*> weight_register;
+
+    auto get_weight = [&](weight_t v) -> Weight* {
+        if (!weight_register.contains(v)) {
+            Weight* w = new Weight(v);
+            cweights_vec.push_back(w);
+            weight_register.insert(v, w);
+        }
+        return weight_register.at(v);
+    };
+    // get_weight(weight_t(0)); // ensure 0 exists TODO: WHY
+
+    // ---- State space of U_sync, explored on-demand ----
+    struct SyncKey {
+        uint32_t master_id;       // master state at the *same time step*
+        uint32_t child_index;     // which original child component (ultimate-slave selector)
+        uint32_t child_state_id;  // local state in that child
+        weight_t accumulator;     // buffered sum waiting to flush
+        bool pending_accept;      // child reached accept on silent master step, waiting to flush
+
+        bool operator==(const SyncKey& o) const {
+            return master_id == o.master_id
+                && child_index == o.child_index
+                && child_state_id == o.child_state_id
+                && accumulator == o.accumulator
+                && pending_accept == o.pending_accept;
+        }
+    };
+
+    struct SyncKeyHash {
+        size_t operator()(const SyncKey& k) const noexcept {
+            size_t h = 1469598103934665603ull;
+            auto mix64 = [&](uint64_t x) { h ^= x; h *= 1099511628211ull; };
+
+            mix64(static_cast<uint64_t>(k.master_id));
+            mix64(static_cast<uint64_t>(k.child_index));
+            mix64(static_cast<uint64_t>(k.child_state_id));
+            mix64(static_cast<uint64_t>(std::hash<weight_t>{}(k.accumulator)));
+            mix64(static_cast<uint64_t>(k.pending_accept ? 1 : 0));
+            return h;
+        }
+    };
+
+    std::unordered_map<SyncKey, State*, SyncKeyHash> state_map;
+    std::queue<SyncKey> worklist;
+
+    SetStd<State*>* cfinals = new SetStd<State*>();
+    std::vector<State*> cstates_vec;
+
+    auto child_is_final = [&](uint32_t child_index, uint32_t local_sid) -> bool {
+        ChildAutomaton* c = this->getChild(child_index);
+        if (!c) return false;
+        State* s = c->getStates()->at(local_sid);
+        return s && c->isFinal(s);
+    };
+
+    auto get_or_make_state = [&](const SyncKey& key) -> State* {
+        auto it = state_map.find(key);
+        if (it != state_map.end()) return it->second;
+
+        std::ostringstream ss;
+        ss << "U_sync_m" << key.master_id
+           << "_c" << key.child_index
+           << "_s" << key.child_state_id
+           << "_a" << key.accumulator
+           << (key.pending_accept ? "_P" : "");
+
+        State* ns = new State(ss.str(), A, outMinBound, outMaxBound);
+        cstates_vec.push_back(ns);
+
+        // FINAL iff underlying local state is accepting AND we are not pending (flushed).
+        if (child_is_final(key.child_index, key.child_state_id) && !key.pending_accept) {
+            ns->setFinal(true);
+            cfinals->insert(ns);
         }
 
-        // Output domain bounds (outputs are either 0 or accumulated+transition weight)
-        weight_t outMinBound = std::min(weight_t(0), accMin + minW);
-        weight_t outMaxBound = std::max(weight_t(0), accMax + maxW);
+        state_map.insert({key, ns});
+        worklist.push(key);
+        return ns;
+    };
 
-        // =====================================================================
-        // BUILD SYNCHRONIZED CHILD AUTOMATON
-        // =====================================================================
-        
-        std::vector<State*>  cstates_vec;
-        std::vector<Weight*> cweights_vec;
-        MapStd<weight_t, Weight*> weight_register;
+    // =========================================================================
+    // Seed initial states of U_sync for every *calling* master transition.
+    // Also compute the new parent payload table: -1 for silent, else init_state_id in U_sync.
+    // =========================================================================
+    std::vector<std::vector<long long>> new_parent_payload(
+        M, std::vector<long long>(A, -1LL)
+    );
 
-        // Memoized weight creation
-        auto get_weight = [&](weight_t v) -> Weight* {
-            if (!weight_register.contains(v)) {
-                Weight* w = new Weight(v);
-                cweights_vec.push_back(w);
-                weight_register.insert(v, w);
-            }
-            return weight_register.at(v);
-        };
-        get_weight(weight_t(0)); // Ensure zero weight exists
+    // We remember at least one created "real" seed state to use as the formal initial of U_sync.
+    State* some_seed_initial = nullptr;
 
-        SetStd<State*>* cfinals = new SetStd<State*>();
+    for (uint32_t mid = 0; mid < static_cast<uint32_t>(M); ++mid) {
+        State* m_state = this->getStates()->at(mid);
 
-        // ---------------------------------------------------------------------
-        // Synchronized state key: (master_state, child_state, accumulator, pending)
-        // ---------------------------------------------------------------------
-        struct SyncKey {
-            uint32_t master_id;     // Master automaton state ID
-            uint32_t child_id;      // Child automaton state ID  
-            weight_t accumulator;   // Accumulated weight waiting to be flushed
-            bool pending_accept;    // True if child reached accepting during silent step
-            
-            bool operator==(const SyncKey& o) const {
-                return master_id == o.master_id 
-                    && child_id == o.child_id 
-                    && accumulator == o.accumulator 
-                    && pending_accept == o.pending_accept;
-            }
-        };
+        for (uint32_t a = 0; a < static_cast<uint32_t>(A); ++a) {
+            Edge* me = first_edge_or_null(m_state->getSuccessors(a));
+            if (!me) continue;
 
-        struct SyncKeyHash {
-            size_t operator()(const SyncKey& k) const noexcept {
-                size_t h = 1469598103934665603ull;
-                auto mix64 = [&](uint64_t x) { 
-                    h ^= x; 
-                    h *= 1099511628211ull; 
-                };
+            const long long cid = old_master_called_child_id(me);
 
-                mix64(static_cast<uint64_t>(k.master_id));
-                mix64(static_cast<uint64_t>(k.child_id));
-
-                // Hash accumulator consistently (handle -0.0 == 0.0)
-                weight_t v = k.accumulator;
-                if (std::is_floating_point<weight_t>::value) {
-                    if (v == weight_t(0)) v = weight_t(0);
-                }
-                mix64(static_cast<uint64_t>(std::hash<weight_t>{}(v)));
-                mix64(static_cast<uint64_t>(k.pending_accept ? 1 : 0));
-                
-                return h;
-            }
-        };
-
-        std::unordered_map<SyncKey, State*, SyncKeyHash> state_map;
-        std::queue<SyncKey> worklist;
-
-        // Helper: check if a child state ID corresponds to a final state
-        auto child_is_final = [&](uint32_t sid) -> bool {
-            State* cs = child->getStates()->at(sid);
-            return cs && child->isFinal(cs);
-        };
-
-        // ---------------------------------------------------------------------
-        // Get or create synchronized state for a given key
-        // ---------------------------------------------------------------------
-        auto get_or_make_state = [&](const SyncKey& key) -> State* {
-            auto it = state_map.find(key);
-            if (it != state_map.end()) return it->second;
-
-            // Create new state
-            std::ostringstream ss;
-            ss << "sync_m" << key.master_id 
-               << "_s" << key.child_id 
-               << "_a" << key.accumulator 
-               << (key.pending_accept ? "_P" : "");
-            
-            State* ns = new State(ss.str(), A, outMinBound, outMaxBound);
-            cstates_vec.push_back(ns);
-
-            // A synchronized state is final iff:
-            // - The child state is accepting, AND
-            // - We are NOT pending (i.e., accumulator has been flushed)
-            // Note: When pending=false and child is accepting, acc should be 0
-            // (we only reach such states via non-silent transitions which reset acc)
-            if (child_is_final(key.child_id) && !key.pending_accept) {
-                ns->setFinal(true);
-                cfinals->insert(ns);
-            }
-
-            state_map.insert({key, ns});
-            worklist.push(key);
-            return ns;
-        };
-
-        // Initialize: synchronized initial state
-        const uint32_t m0 = static_cast<uint32_t>(this->getInitial()->getId());
-        const uint32_t s0 = static_cast<uint32_t>(child->getInitial()->getId());
-        State* initial_state = get_or_make_state(SyncKey{m0, s0, weight_t(0), false});
-
-        // ---------------------------------------------------------------------
-        // BFS exploration of synchronized state space
-        // ---------------------------------------------------------------------
-        while (!worklist.empty()) {
-            SyncKey cur = worklist.front();
-            worklist.pop();
-
-            // Final states of synchronized child are terminal (no outgoing edges)
-            if (child_is_final(cur.child_id) && !cur.pending_accept) {
+            if (cid <= 0) {
+                // silent in the input -> silent in the output, encoded as -1
+                new_parent_payload[mid][a] = -1;
                 continue;
             }
 
-            State* cur_node = state_map.at(cur);
-            State* m_state = this->getStates()->at(cur.master_id);
-            State* s_state = child->getStates()->at(cur.child_id);
+            const uint32_t child_index = static_cast<uint32_t>(cid);
+            // if (child_index >= this->getChildrenSize()) QUAK_FAIL("synchronizeChildren: parent calls out-of-range child id");
 
-            // Process each letter in the alphabet
-            for (size_t a = 0; a < A; ++a) {
-                // Get master transition on letter a
-                Edge* master_edge = first_edge_or_null(m_state->getSuccessors(a));
-                if (!master_edge) continue; // No master transition (assumes completeness)
+            ChildAutomaton* child = this->getChild(child_index);
+            // if (!child) QUAK_FAIL("synchronizeChildren: null child called by parent");
 
-                const size_t called_child = master_called_child_id(master_edge);
-                const bool master_is_silent = (called_child == 0);
-                const uint32_t next_master_id = static_cast<uint32_t>(master_edge->getTo()->getId());
+            const uint32_t s0 = static_cast<uint32_t>(child->getInitial()->getId());
 
-                // -------------------------------------------------------------
-                // Determine child transition and weight contribution
-                // -------------------------------------------------------------
-                Edge* child_edge = nullptr;
-                uint32_t next_child_id = cur.child_id;
-                weight_t child_weight = weight_t(0);
+            // The spawn state must encode the master state at the call site (mid).
+            SyncKey start{mid, child_index, s0, weight_t(0), false};
+            State* start_state = get_or_make_state(start);
 
-                if (cur.pending_accept) {
-                    // Child has already terminated (in accepting state, waiting to flush)
-                    // Child is "frozen": doesn't step, contributes 0 weight
-                    // next_child_id stays the same (accepting state)
-                    // child_weight = 0
-                } else {
-                    // Child is active: must take a transition
-                    child_edge = first_edge_or_null(s_state->getSuccessors(a));
-                    if (!child_edge) continue; // No child transition (input not complete)
-                    
-                    next_child_id = static_cast<uint32_t>(child_edge->getTo()->getId());
-                    child_weight = child_edge->getWeight()->getValue();
-                }
+            new_parent_payload[mid][a] = static_cast<long long>(start_state->getId());
 
-                // -------------------------------------------------------------
-                // Apply synchronization rules based on master transition type
-                // -------------------------------------------------------------
-                if (master_is_silent) {
-                    // SILENT MASTER TRANSITION
-                    // - Emit weight 0
-                    // - Accumulate child's weight
-                    // - If child just reached accepting state, set pending
-                    
-                    const weight_t new_acc = cur.accumulator + child_weight;
-
-                    // Skip if accumulator would exceed bounds
-                    if (new_acc < accMin || new_acc > accMax) {
-                        continue;  // Don't create this transition
-                    }
-                    
-                    // Determine if we should set pending
-                    bool new_pending = cur.pending_accept;
-                    if (!cur.pending_accept && child_edge && child->isFinal(child_edge->getTo())) {
-                        // Child just reached accepting state during silent step
-                        // Delay termination until next non-silent step
-                        new_pending = true;
-                    }
-
-                    SyncKey next_key{next_master_id, next_child_id, new_acc, new_pending};
-                    State* next_node = get_or_make_state(next_key);
-
-                    // Create transition with weight 0
-                    Weight* w_out = get_weight(weight_t(0));
-                    Edge* new_edge = new Edge(calpha->at(a), w_out, cur_node, next_node);
-                    cur_node->addSuccessor(new_edge);
-                    next_node->addPredecessor(new_edge);
-                    
-                } else {
-                    // NON-SILENT MASTER TRANSITION
-                    // - Emit accumulated weight + child's current weight
-                    // - Reset accumulator to 0
-                    // - Clear pending flag
-                    
-                    const weight_t emit_weight = cur.accumulator + child_weight;
-                    Weight* w_out = get_weight(emit_weight);
-
-                    // After non-silent step, accumulator resets and pending clears
-                    // The next state always has acc=0 and pending=false
-                    SyncKey next_key{next_master_id, next_child_id, weight_t(0), false};
-                    State* next_node = get_or_make_state(next_key);
-
-                    Edge* new_edge = new Edge(calpha->at(a), w_out, cur_node, next_node);
-                    cur_node->addSuccessor(new_edge);
-                    next_node->addPredecessor(new_edge);
-                }
-            }
+            if (!some_seed_initial) some_seed_initial = start_state;
         }
-
-        // =====================================================================
-        // FINALIZE SYNCHRONIZED CHILD AUTOMATON
-        // =====================================================================
-        
-        // Compute actual min/max weights from created weights
-        weight_t realMin = weight_t(0), realMax = weight_t(0);
-        first = true;
-        for (Weight* w : cweights_vec) {
-            weight_t v = w->getValue();
-            if (first) { 
-                realMin = realMax = v; 
-                first = false; 
-            } else { 
-                if (v < realMin) realMin = v; 
-                if (v > realMax) realMax = v; 
-            }
-        }
-
-        // Build final arrays
-        MapArray<State*>*  cstates  = new MapArray<State*>(cstates_vec.size());
-        MapArray<Weight*>* cweights = new MapArray<Weight*>(cweights_vec.size());
-        for (State* st : cstates_vec)   cstates->insert(st->getId(), st);
-        for (Weight* wt : cweights_vec) cweights->insert(wt->getId(), wt);
-
-        // Create synchronized child
-        std::string cname = child->getName() + "_sync";
-        ChildAutomaton* synced = new ChildAutomaton(
-            cname, calpha, cstates, cweights, 
-            realMin, realMax, initial_state, cfinals
-        );
-        new_children->insert(ci, synced);
     }
 
+    // // If the parent never calls any child, build a harmless 1-state U_sync.
+    // if (!some_seed_initial) {
+    //     // Create a single non-final state with 0 self-loops.
+    //     SyncKey dead{0, 1, 0, weight_t(0), false}; // child_index/child_state_id unused
+    //     State* dead_state = new State("U_sync_dead", A, outMinBound, outMaxBound);
+    //     cstates_vec.push_back(dead_state);
+    //     some_seed_initial = dead_state;
+
+    //     for (uint32_t a = 0; a < static_cast<uint32_t>(A); ++a) {
+    //         Weight* w0 = get_weight(weight_t(0));
+    //         Edge* e = new Edge(calpha->at(a), w0, dead_state, dead_state);
+    //         dead_state->addSuccessor(e);
+    //         dead_state->addPredecessor(e);
+    //     }
+
+    //     // No worklist exploration needed.
+    //     worklist = std::queue<SyncKey>();
+    //     state_map.clear();
+    // }
+
     // =========================================================================
-    // CREATE RESULT NESTED AUTOMATON
+    // BFS exploration of U_sync transitions
     // =========================================================================
-    
-    NestedAutomaton* result = new NestedAutomaton(this, new_children);
-    result->setName("Sync(" + this->getName() + ")");
+    while (!worklist.empty()) {
+        SyncKey cur = worklist.front();
+        worklist.pop();
+
+        // Terminality: final iff (accepting && !pending)
+        if (child_is_final(cur.child_index, cur.child_state_id) && !cur.pending_accept) {
+            continue;
+        }
+
+        State* cur_node = state_map.at(cur);
+
+        State* m_state = this->getStates()->at(cur.master_id);
+        ChildAutomaton* child = this->getChild(cur.child_index);
+        if (!child) QUAK_FAIL("synchronizeChildren: null child during exploration");
+
+        State* s_state = child->getStates()->at(cur.child_state_id);
+
+        for (uint32_t a = 0; a < static_cast<uint32_t>(A); ++a) {
+            Edge* master_edge = first_edge_or_null(m_state->getSuccessors(a));
+            if (!master_edge) continue;
+
+            const long long cid = old_master_called_child_id(master_edge);
+            const bool master_is_silent = (cid <= 0);
+
+            const uint32_t next_master_id = static_cast<uint32_t>(master_edge->getTo()->getId());
+
+            // child step
+            Edge* child_edge = nullptr;
+            uint32_t next_child_state_id = cur.child_state_id;
+            weight_t child_w = weight_t(0);
+
+            if (!cur.pending_accept) {
+                child_edge = first_edge_or_null(s_state->getSuccessors(a));
+                if (!child_edge) continue;
+
+                next_child_state_id = static_cast<uint32_t>(child_edge->getTo()->getId());
+                child_w = child_edge->getWeight()->getValue();
+            }
+            // else: frozen in accepting state; no step; child_w = 0; next_child_state_id stays
+
+            if (master_is_silent) {
+                // Emit 0, accumulate child_w, possibly set pending_accept
+                const weight_t new_acc = cur.accumulator + child_w;
+
+                if (new_acc < accMin || new_acc > accMax) {
+                    // out of allowed accumulator range
+                    continue;
+                }
+
+                bool new_pending = cur.pending_accept;
+                if (!cur.pending_accept && child_edge && child->isFinal(child_edge->getTo())) {
+                    new_pending = true;
+                }
+
+                SyncKey nxt{next_master_id, cur.child_index, next_child_state_id, new_acc, new_pending};
+                State* nxt_node = get_or_make_state(nxt);
+
+                Weight* w0 = get_weight(weight_t(0));
+                Edge* e = new Edge(calpha->at(a), w0, cur_node, nxt_node);
+                cur_node->addSuccessor(e);
+                nxt_node->addPredecessor(e);
+            } else {
+                // Emit acc + child_w, reset accumulator, clear pending
+                const weight_t emit = cur.accumulator + child_w;
+                Weight* w_out = get_weight(emit);
+
+                SyncKey nxt{next_master_id, cur.child_index, next_child_state_id, weight_t(0), false};
+                State* nxt_node = get_or_make_state(nxt);
+
+                Edge* e = new Edge(calpha->at(a), w_out, cur_node, nxt_node);
+                cur_node->addSuccessor(e);
+                nxt_node->addPredecessor(e);
+            }
+        }
+    }
+
+    // ---- finalize U_sync weights min/max ----
+    weight_t realMin = weight_t(0), realMax = weight_t(0);
+    bool firstOut = true;
+    for (Weight* w : cweights_vec) {
+        const weight_t v = w->getValue();
+        if (firstOut) { realMin = realMax = v; firstOut = false; }
+        else {
+            if (v < realMin) realMin = v;
+            if (v > realMax) realMax = v;
+        }
+    }
+    if (firstOut) { realMin = realMax = weight_t(0); }
+
+    MapArray<State*>*  cstates  = new MapArray<State*>(cstates_vec.size());
+    MapArray<Weight*>* cweights = new MapArray<Weight*>(cweights_vec.size());
+    for (State* st : cstates_vec)   cstates->insert(st->getId(), st);
+    for (Weight* wt : cweights_vec) cweights->insert(wt->getId(), wt);
+
+    ChildAutomaton* ultimate_synced = new ChildAutomaton(
+        "U_sync(" + this->getName() + ")",
+        calpha, cstates, cweights,
+        realMin, realMax,
+        nullptr,
+        cfinals
+    );
+
+    MapArray<ChildAutomaton*>* new_children = new MapArray<ChildAutomaton*>(1);
+    new_children->insert(0, ultimate_synced);
+
+    // =========================================================================
+    // REBUILD THE PARENT (MASTER) WITH NEW PAYLOADS
+    // =========================================================================
+    // We must rebuild because we need weights -1 / initStateId, and we cannot mutate
+    // the old weight list safely.
+
+    Symbol::RESET();
+    State::RESET();
+    Weight::RESET();
+
+    // Copy parent alphabet
+    MapArray<Symbol*>* malpha = new MapArray<Symbol*>(A);
+    for (size_t a = 0; a < A; ++a) {
+        Symbol* s_new = new Symbol(src_alpha->at(a));
+        malpha->insert(s_new->getId(), s_new);
+    }
+
+    // Copy parent states
+    MapArray<State*>* mstates = new MapArray<State*>(M);
+    for (uint32_t sid = 0; sid < static_cast<uint32_t>(M); ++sid) {
+        State* ns = new State(this->getStates()->at(sid));
+        mstates->insert(ns->getId(), ns);
+    }
+    State* minitial = mstates->at(this->getInitial()->getId());
+
+    // Copy finals
+    SetStd<State*>* mfinals = new SetStd<State*>();
+    for (uint32_t sid = 0; sid < static_cast<uint32_t>(M); ++sid) {
+        State* os = this->getStates()->at(sid);
+        if (os->getFinal()) {
+            State* ns = mstates->at(sid);
+            ns->setFinal(true);
+            mfinals->insert(ns);
+        }
+    }
+
+    // Parent weights are just payload integers (-1 or U_sync state id).
+    std::vector<Weight*> mweights_vec;
+    MapStd<long long, Weight*> mweight_reg;
+
+    auto get_mweight = [&](long long payload) -> Weight* {
+        if (!mweight_reg.contains(payload)) {
+            Weight* w = new Weight(weight_t(static_cast<double>(payload)));
+            mweights_vec.push_back(w);
+            mweight_reg.insert(payload, w);
+        }
+        return mweight_reg.at(payload);
+    };
+
+    // Create edges
+    for (uint32_t sid = 0; sid < static_cast<uint32_t>(M); ++sid) {
+        State* os = this->getStates()->at(sid);
+        State* nf = mstates->at(sid);
+
+        for (uint32_t a = 0; a < static_cast<uint32_t>(A); ++a) {
+            Edge* oe = first_edge_or_null(os->getSuccessors(a));
+            if (!oe) continue;
+
+            State* nt = mstates->at(static_cast<uint32_t>(oe->getTo()->getId()));
+
+            const long long payload = new_parent_payload[sid][a]; // -1 or U_sync init state id
+            Weight* nw = get_mweight(payload);
+
+            Edge* ne = new Edge(malpha->at(a), nw, nf, nt);
+            nf->addSuccessor(ne);
+            nt->addPredecessor(ne);
+        }
+    }
+
+    // Finalize parent weight array and min/max (purely informational)
+    MapArray<Weight*>* mweights = new MapArray<Weight*>(mweights_vec.size());
+    weight_t pMin = weight_t(0), pMax = weight_t(0);
+    bool firstP = true;
+    for (Weight* w : mweights_vec) {
+        mweights->insert(w->getId(), w);
+        const weight_t v = w->getValue();
+        if (firstP) { pMin = pMax = v; firstP = false; }
+        else {
+            if (v < pMin) pMin = v;
+            if (v > pMax) pMax = v;
+        }
+    }
+    if (firstP) { pMin = pMax = weight_t(0); }
+
+    // =========================================================================
+    // BUILD RESULT NESTED AUTOMATON
+    // =========================================================================
+    // NOTE: adapt the constructor call below to whatever "explicit components"
+    // constructor your NestedAutomaton provides (alphabet, states, weights, initial, finals, children).
+    NestedAutomaton* result = new NestedAutomaton(
+        "Sync(" + this->getName() + ")",
+        malpha, mstates, mweights,
+        pMin, pMax,
+        minitial,
+        new_children
+    );
+    // result->print();
+
     return result;
 }
 
 
 
+// -----------------------------------------------------------------------------
+// TOCL definition helpers (Lemma 5.3 proof):
+//
+//   Q_slv  = disjoint union of the state sets of all slave automata of A
+//   conf(A)= number of configurations (q_m, A) where q_m in Q_m and A ⊆ Q_slv
+//
+// Exact conf(A) (reachable configurations) is expensive to compute.
+// This computes the standard TOCL upper bound:  conf(A) <= |Q_m| * 2^{|Q_slv|}.
+//
+// Then we set
+//   N      = (|Q_slv| + 2) * conf(A) * |Q_slv|^{2*|Q_slv|}
+//   c_bound= 2 * N
+//
+// Call this on the pseudodeterminized, pre-synchronization NWA (before U_sync blowup).
+// -----------------------------------------------------------------------------
+static uint64_t compute_c_bound(const NestedAutomaton* A_det_pre_sync) {
+    if (!A_det_pre_sync) QUAK_FAIL("compute_c_bound: null automaton");
 
-// assuming the input NWA is pseudo-deterministic and children are synchronized
-Automaton* NestedAutomaton::flatten_Avg_SumMinus() {
-    using std::size_t;
-
-    // ---------- helper: single outgoing edge after determinization ----------
-    auto first_edge_or_null = [](SetStd<Edge*>* succs) -> Edge* {
-        if (!succs) return nullptr;
-        for (Edge* e : *succs) return e; // at most one after determinization
-        return nullptr;
-    };
-
-    // ---------- weight helpers ----------
-    auto weight_zero = []() { return weight_t(0); };
-    auto weight_two  = []() { return weight_t(2); };
-    auto weight_abs = [&](weight_t v) -> weight_t {
-        // Sum- ⇒ weights are non-positive, but we still define |v|
-        if (v < weight_zero()) return -v;
-        return v;
-    };
-
-    // ---------- cache children ----------
-    const size_t C = this->getChildrenSize();
-    std::vector<ChildAutomaton*> children(C, nullptr);
-    for (size_t ci = 0; ci < C; ++ci) {
-        children[ci] = this->getChild(ci);
-    }
-
-    // ---------- master metadata ----------
-    MapArray<State*>* mstates = this->getStates();
-    MapArray<Symbol*>* malpha = this->getAlphabet();
-    const size_t M_states = mstates->size();
-    const size_t A        = malpha->size();
-
-    // precompute master successor table [master_state_id][symbol_id]
-    std::vector<std::vector<Edge*>> masterSucc(M_states, std::vector<Edge*>(A, nullptr));
-    for (size_t sid = 0; sid < M_states; ++sid) {
-        State* s = mstates->at(sid);
-        if (!s) continue;
-        // after construction, ids are dense; assert to be safe
-        assert(s->getId() == static_cast<int>(sid));
-        for (size_t a = 0; a < A; ++a) {
-            masterSucc[sid][a] = first_edge_or_null(s->getSuccessors(a));
-        }
-    }
-
-    // ---------- child metadata ----------
-    struct ChildInfo {
-        ChildAutomaton* aut = nullptr;
-        std::vector<std::vector<Edge*>> succ;   // [state_id][symbol_id]
-        std::vector<bool>               is_final; // [state_id]
-        std::vector<Edge*>              initSucc; // [symbol_id] from initial state
-        size_t                          num_states = 0;
-    };
-
-    std::vector<ChildInfo> cinfo(C);
-
-    // global stats: total #child states U, max absolute weight W_abs
-    size_t   U      = 0;
-    weight_t W_abs  = weight_zero();
-
-    for (size_t ci = 0; ci < C; ++ci) {
-        ChildAutomaton* child = children[ci];
-        cinfo[ci].aut = child;
-        if (!child) continue;
-
-        MapArray<State*>*   cstates  = child->getStates();
-        MapArray<Weight*>*  cweights = child->getWeights();
-        const size_t        S        = cstates->size();
-        cinfo[ci].num_states = S;
-        U += S;
-
-        // compute |w| max over this child
-        for (size_t wid = 0; wid < cweights->size(); ++wid) {
-            Weight* w = cweights->at(wid);
-            if (!w) continue;
-            weight_t mag = weight_abs(w->getValue());
-            if (mag > W_abs) W_abs = mag;
-        }
-
-        // allocate tables
-        cinfo[ci].succ.assign(S, std::vector<Edge*>(A, nullptr));
-        cinfo[ci].is_final.assign(S, false);
-        cinfo[ci].initSucc.assign(A, nullptr);
-
-        // fill succ and final flags
-        for (size_t sid = 0; sid < S; ++sid) {
-            State* s = cstates->at(sid);
-            if (!s) continue;
-            assert(s->getId() == static_cast<int>(sid));
-            cinfo[ci].is_final[sid] = child->isFinal(s);
-            
-            if (cinfo[ci].is_final[sid]) {
-                // final states are terminal after determinization
-                continue;
-            }
-            for (size_t a = 0; a < A; ++a) {
-                cinfo[ci].succ[sid][a] = first_edge_or_null(s->getSuccessors(a));
-            }
-        }
-
-        // fill initSucc from child's initial state
-        State* s0 = child->getInitial();
-        if (s0) {
-            const size_t init_id = static_cast<size_t>(s0->getId());
-            assert(init_id < S);
-            for (size_t a = 0; a < A; ++a) {
-                cinfo[ci].initSucc[a] = cinfo[ci].succ[init_id][a];
-            }
-        }
-    }
-
-    // ---------- X, Y, Z bounds (combinatorial) ----------
-    auto sat_mul = [](size_t a, size_t b) -> size_t {
+    auto sat_mul_u64 = [](uint64_t a, uint64_t b) -> uint64_t {
         if (a == 0 || b == 0) return 0;
-        const size_t maxv = std::numeric_limits<size_t>::max();
-        if (a > maxv / b) return maxv;
+        if (a > std::numeric_limits<uint64_t>::max() / b) {
+            return std::numeric_limits<uint64_t>::max();
+        }
         return a * b;
     };
 
-    auto sat_pow = [&](size_t base, size_t exp) -> size_t {
-        if (exp == 0) return 1;
-        const size_t maxv = std::numeric_limits<size_t>::max();
-        size_t res = 1;
+    auto sat_pow_u64 = [&](uint64_t base, uint64_t exp) -> uint64_t {
+        uint64_t r = 1;
         while (exp > 0) {
-            if (base != 0 && res > maxv / base) return maxv;
-            res *= base;
-            if (res == maxv) return maxv;
-            --exp;
+            if (exp & 1ULL) r = sat_mul_u64(r, base);
+            exp >>= 1ULL;
+            if (exp) base = sat_mul_u64(base, base);
+            if (r == std::numeric_limits<uint64_t>::max()) return r;
+            if (base == std::numeric_limits<uint64_t>::max() && exp > 0) return base;
         }
-        return res;
+        return r;
     };
 
-    // X = 2 * |M| * Π_i |S_i|
-    size_t X_states = 2;
-    X_states = sat_mul(X_states, M_states);
-    for (size_t ci = 0; ci < C; ++ci) {
-        if (!children[ci]) continue;
-        X_states = sat_mul(X_states, cinfo[ci].num_states);
+    auto sat_pow2_u64 = [&](uint64_t exp) -> uint64_t {
+        if (exp >= 63ULL) return std::numeric_limits<uint64_t>::max(); // 2^63 overflows signed, saturate
+        return (1ULL << exp);
+    };
+
+    // |Q_m|
+    const uint64_t Qm = static_cast<uint64_t>(A_det_pre_sync->getStates()->size());
+
+    // |Q_slv| = sum of sizes of slave state sets (disjoint union).
+    // If child 0 is your dummy, skip it.
+    uint64_t Qslv = 0;
+    for (size_t i = 1; i < A_det_pre_sync->getChildrenSize(); ++i) {
+        ChildAutomaton* c = A_det_pre_sync->getChild(i);
+        if (!c) continue;
+        const uint64_t nc = static_cast<uint64_t>(c->getStates()->size());
+        if (Qslv > std::numeric_limits<uint64_t>::max() - nc) {
+            Qslv = std::numeric_limits<uint64_t>::max();
+            break;
+        }
+        Qslv += nc;
     }
 
-    // Y = X * (|U| + 2) * |U|^{2|U|}
-    size_t exp   = sat_mul(2, U);          // 2|U|
-    size_t U_pow = sat_pow(U, exp);        // |U|^{2|U|}
-
-    size_t Y = sat_mul(X_states, U + 2);
-    Y = sat_mul(Y, U_pow);
-
-    // Z = 2 * X * (|U| + 2) * |U|^{2|U|} * W_abs  (all in weight_t)
-    weight_t Z = weight_zero();
-    if (W_abs > weight_zero()) {
-        weight_t WX = weight_two() * weight_t(X_states);
-        WX = WX * weight_t(U + 2);
-        WX = WX * weight_t(U_pow);
-        Z  = WX * W_abs;
+    if (Qslv == 0) {
+        return 0; // no real slaves, multiplicity bound is irrelevant
     }
 
-    // ---------- flattened alphabet: copy from NWA ----------
+    // TOCL upper bound on number of configurations:
+    // conf(A) <= |Q_m| * 2^{|Q_slv|}
+    const uint64_t conf_upper = sat_mul_u64(Qm, sat_pow2_u64(Qslv));
+
+    // N = (|Q_slv| + 2) * conf(A) * |Q_slv|^{2|Q_slv|}
+    const uint64_t pow_part = sat_pow_u64(Qslv, sat_mul_u64(2ULL, Qslv));
+    uint64_t N = sat_mul_u64(Qslv + 2ULL, conf_upper);
+    N = sat_mul_u64(N, pow_part);
+
+    // c_bound = 2 * N
+    return sat_mul_u64(2ULL, N);
+}
+
+// Typical usage in your pipeline:
+//
+// NestedAutomaton* A_det = pseudodeterminize(...);
+// const uint64_t c_bound = compute_c_bound_TOCL_pre_sync_upper(A_det);
+// NestedAutomaton* A_sync = A_det->synchronizeChildren();
+// Automaton* flat = A_sync->flatten_TOCL_silLimAvg_powerset(c_bound);
+
+
+
+
+// Assumptions (consistent with your synchronizeChildren output):
+//  - this NWA is pseudodeterministic: <= 1 edge per letter from any state in master and in the unique child.
+//  - children size == 1, child is the synchronized ultimate slave U_sync.
+//  - master edge weight payload: <0 means SILENT, >=0 means spawn from that U_sync state-id.
+//  - U_sync final states have no outgoing transitions (your BFS already enforced this).
+
+Automaton* NestedAutomaton::flatten_Avg_SumMinus(uint64_t c_bound) {
+    // ----------------------------- helpers -----------------------------
+    auto first_edge_or_null = [](SetStd<Edge*>* succs) -> Edge* {
+        if (!succs) return nullptr;
+        for (Edge* e : *succs) return e;
+        return nullptr;
+    };
+
+    auto master_payload_ll = [](const Edge* me) -> long long {
+        if (!me || !me->getWeight()) return -1;
+        const double d = me->getWeight()->getValue().to_float();
+        return static_cast<long long>(std::llround(d));
+    };
+
+    // ----------------------------- sanity -----------------------------
+    if (this->getChildrenSize() != 1) {
+        QUAK_FAIL("flatten_Avg_SumMinus: expected exactly one child (ultimate synchronized slave)");
+    }
+    ChildAutomaton* U = this->getChild(0);
+    if (!U) QUAK_FAIL("flatten_Avg_SumMinus: null ultimate slave");
+
+    MapArray<State*>* mstates_src = this->getStates();
+    const uint32_t M = static_cast<uint32_t>(mstates_src->size());
+
+    MapArray<State*>* ustates_src = U->getStates();
+    const uint32_t UQ = static_cast<uint32_t>(ustates_src->size());
+
+    MapArray<Symbol*>* alpha_src = U->getAlphabet();
+    if (!alpha_src) QUAK_FAIL("flatten_Avg_SumMinus: null alphabet in ultimate slave");
+    const uint32_t A = static_cast<uint32_t>(alpha_src->size());
+
+    // ----------------------------- precompute master step table -----------------------------
+    struct MStep {
+        bool exists = false;
+        uint32_t to = 0;
+        long long payload = -1; // <0 silent, >=0 spawn-id
+    };
+    std::vector<std::vector<MStep>> mstep(M, std::vector<MStep>(A));
+
+    for (uint32_t ms = 0; ms < M; ++ms) {
+        State* s = mstates_src->at(ms);
+        for (uint32_t a = 0; a < A; ++a) {
+            Edge* e = first_edge_or_null(s->getSuccessors(a));
+            if (!e) continue;
+            mstep[ms][a].exists = true;
+            mstep[ms][a].to = static_cast<uint32_t>(e->getTo()->getId());
+            mstep[ms][a].payload = master_payload_ll(e);
+        }
+    }
+
+    // ----------------------------- precompute slave step table -----------------------------
+    struct UStep {
+        bool exists = false;
+        uint32_t to = 0;
+        weight_t w = weight_t(0);
+        bool to_final = false;
+    };
+    std::vector<std::vector<UStep>> ustep(UQ, std::vector<UStep>(A));
+
+    for (uint32_t us = 0; us < UQ; ++us) {
+        State* s = ustates_src->at(us);
+        const bool s_final = s && s->getFinal();
+        // In your construction, finals have no outgoing; we can skip precomputing.
+        if (s_final) continue;
+
+        for (uint32_t a = 0; a < A; ++a) {
+            Edge* e = first_edge_or_null(s->getSuccessors(a));
+            if (!e) continue;
+            ustep[us][a].exists = true;
+            ustep[us][a].to = static_cast<uint32_t>(e->getTo()->getId());
+            ustep[us][a].w = e->getWeight()->getValue();
+            ustep[us][a].to_final = (e->getTo() && e->getTo()->getFinal());
+        }
+    }
+
+    // ----------------------------- compute loose weight bounds for State ctor -----------------------------
+    // Bounds are only used by your State(...) ctor; we keep them conservative.
+    weight_t uMin = weight_t(0), uMax = weight_t(0);
+    bool firstW = true;
+    if (U->getWeights()) {
+        for (size_t i = 0; i < U->getWeights()->size(); ++i) {
+            Weight* w = U->getWeights()->at(i);
+            if (!w) continue;
+            const weight_t v = w->getValue();
+            if (firstW) { uMin = uMax = v; firstW = false; }
+            else {
+                if (v < uMin) uMin = v;
+                if (v > uMax) uMax = v;
+            }
+        }
+    }
+    if (firstW) { uMin = uMax = weight_t(0); }
+
+    // Worst-case per-step sum ≤ (total active + 1 spawn) * maxAbs.
+    weight_t maxAbs = (uMax < weight_t(0)) ? -uMin : std::max(uMax, (uMin < weight_t(0) ? -uMin : uMin));
+    const double factor = static_cast<double>(c_bound) * static_cast<double>(UQ) + 1.0;
+    weight_t outAbs = weight_t(factor) * maxAbs;
+
+    weight_t outMinBound = (uMin >= weight_t(0)) ? weight_t(0) : -outAbs;
+    weight_t outMaxBound = (uMax <= weight_t(0)) ? weight_t(0) : outAbs;
+
+    // ----------------------------- build new alphabet -----------------------------
     Symbol::RESET();
-    MapArray<Symbol*>* falpha = new MapArray<Symbol*>(A);
-    for (size_t a = 0; a < A; ++a) {
-        Symbol* s_new = new Symbol(malpha->at(a)->getName());
-        falpha->insert(s_new->getId(), s_new); // ids are 0..A-1 after RESET
-    }
-
-    // ---------- flattened states & weights ----------
     State::RESET();
     Weight::RESET();
 
-    std::vector<State*>  fstates_vec;
+    MapArray<Symbol*>* falpha = new MapArray<Symbol*>(A);
+    for (uint32_t a = 0; a < A; ++a) {
+        Symbol* s_new = new Symbol(alpha_src->at(a));
+        falpha->insert(s_new->getId(), s_new);
+    }
+
+    // ----------------------------- weight register -----------------------------
     std::vector<Weight*> fweights_vec;
-    fstates_vec.reserve(64);
-    fweights_vec.reserve(16);
+    MapStd<weight_t, Weight*> wreg;
 
-    MapStd<weight_t, Weight*> weight_register;
-
-    weight_t flat_min       = weight_zero();
-    weight_t flat_max       = weight_zero();
-    bool     flat_has_weight = false;
-
-    auto get_weight = [&](weight_t v) -> Weight* {
-        if (weight_register.contains(v) != true) {
+    auto get_w = [&](const weight_t& v) -> Weight* {
+        if (!wreg.contains(v)) {
             Weight* w = new Weight(v);
             fweights_vec.push_back(w);
-            weight_register.insert(v, w);
-
-            if (!flat_has_weight) {
-                flat_min = flat_max = v;
-                flat_has_weight = true;
-            } else {
-                if (v < flat_min) flat_min = v;
-                if (v > flat_max) flat_max = v;
-            }
+            wreg.insert(v, w);
         }
-        return weight_register.at(v);
+        return wreg.at(v);
     };
 
-    // ---------- flatten state encoding ----------
-    struct BoundedInst {
-        size_t   child_index;
-        State*   state;
-        weight_t budget;  // remaining |weight|-budget ∈ [0, Z]
-    };
-    using UInst = std::pair<size_t, State*>; // (child_index, child_state)
+    Weight* w_silent = get_w(SILENT); // ensure SILENT exists
 
-    struct FlatKey {
-        State*                   master;
-        std::vector<UInst>       unbounded;
-        std::vector<BoundedInst> bounded;
+    // ----------------------------- key type: (master_id, sparse multiset) -----------------------------
+    // mult stored as [sid0,cnt0,sid1,cnt1,...] sorted by sid, only cnt>0.
+    struct Key {
+        uint32_t mid;
+        std::vector<uint32_t> nz;
 
-        bool operator==(const FlatKey& o) const {
-            if (master != o.master) return false;
-            if (unbounded.size() != o.unbounded.size()) return false;
-            if (bounded.size()   != o.bounded.size())   return false;
-
-            for (size_t i = 0; i < unbounded.size(); ++i) {
-                if (unbounded[i].first  != o.unbounded[i].first)  return false;
-                if (unbounded[i].second != o.unbounded[i].second) return false;
-            }
-            for (size_t i = 0; i < bounded.size(); ++i) {
-                const BoundedInst& b1 = bounded[i];
-                const BoundedInst& b2 = o.bounded[i];
-                if (b1.child_index != b2.child_index) return false;
-                if (b1.state       != b2.state)       return false;
-                if (b1.budget      != b2.budget)      return false;
-            }
-            return true;
+        bool operator==(const Key& o) const {
+            return mid == o.mid && nz == o.nz;
         }
     };
 
-    struct FlatKeyHash {
-        size_t operator()(FlatKey const& k) const {
+    struct KeyHash {
+        size_t operator()(const Key& k) const noexcept {
             size_t h = 1469598103934665603ull;
             auto mix = [&](uint64_t x) {
-                h ^= x;
+                h ^= static_cast<size_t>(x);
                 h *= 1099511628211ull;
             };
-            mix(reinterpret_cast<uint64_t>(k.master));
-            for (auto const& u : k.unbounded) {
-                mix(static_cast<uint64_t>(u.first));
-                mix(reinterpret_cast<uint64_t>(u.second));
-            }
-            for (auto const& b : k.bounded) {
-                mix(static_cast<uint64_t>(b.child_index));
-                mix(reinterpret_cast<uint64_t>(b.state));
-                // we deliberately ignore budget in the hash to avoid depending on hash<weight_t>
-            }
+            mix(k.mid);
+            for (uint32_t x : k.nz) mix(x);
             return h;
         }
     };
 
-    auto normalize_key = [](FlatKey& k) {
-        auto cmpU = [](const UInst& a, const UInst& b) {
-            if (a.first != b.first) return a.first < b.first;
-            return a.second->getId() < b.second->getId();
-        };
-        std::sort(k.unbounded.begin(), k.unbounded.end(), cmpU);
-
-        auto cmpB = [](const BoundedInst& a, const BoundedInst& b) {
-            if (a.child_index != b.child_index) return a.child_index < b.child_index;
-            int ida = a.state->getId();
-            int idb = b.state->getId();
-            if (ida != idb) return ida < idb;
-            if (a.budget < b.budget) return true;
-            if (a.budget > b.budget) return false;
-            return false;
-        };
-        std::sort(k.bounded.begin(), k.bounded.end(), cmpB);
+    auto encode_name = [&](const Key& k) -> std::string {
+        std::ostringstream ss;
+        ss << "F_m" << k.mid << "_";
+        for (size_t i = 0; i + 1 < k.nz.size(); i += 2) {
+            ss << k.nz[i] << ":" << k.nz[i+1] << ",";
+        }
+        return ss.str();
     };
 
-    std::unordered_map<FlatKey, State*, FlatKeyHash> state_map;
-    std::queue<FlatKey> worklist;
+    // ----------------------------- state table + BFS -----------------------------
+    std::unordered_map<Key, State*, KeyHash> stmap;
+    std::queue<Key> work;
 
-    auto get_or_make_state = [&](FlatKey key) -> State* {
-        normalize_key(key);
-        auto it = state_map.find(key);
-        if (it != state_map.end()) return it->second;
+    std::vector<State*> fstates_vec;
+    SetStd<State*>* ffinals = new SetStd<State*>();
 
-        std::ostringstream ss;
-        ss << "flat_" << state_map.size();
-        State* ns = new State(ss.str(), A, 0, 0); // no children: domain [0,0]
+    auto master_is_final = [&](uint32_t mid) -> bool {
+        State* ms = mstates_src->at(mid);
+        return ms && ms->getFinal();
+    };
+
+    auto get_or_make = [&](const Key& k) -> State* {
+        auto it = stmap.find(k);
+        if (it != stmap.end()) return it->second;
+
+        State* ns = new State(encode_name(k), A, outMinBound, outMaxBound);
         fstates_vec.push_back(ns);
 
-        state_map.insert(std::make_pair(key, ns));
-        worklist.push(key);
+        if (master_is_final(k.mid)) {
+            ns->setFinal(true);
+            ffinals->insert(ns);
+        }
+
+        stmap.insert({k, ns});
+        work.push(k);
         return ns;
     };
 
-    // scratch buffers reused across transitions (to reduce allocations)
-    std::vector<UInst>       scratch_unbounded;
-    std::vector<BoundedInst> scratch_bounded;
+    // initial: (master_initial, empty multiset)
+    Key init;
+    init.mid = static_cast<uint32_t>(this->getInitial()->getId());
+    init.nz.clear();
 
-    // ---------- initial flat state: (master_initial, no slaves) ----------
-    FlatKey initKey;
-    initKey.master = this->getInitial();
-    State* flat_initial = get_or_make_state(initKey);
+    State* finitial = get_or_make(init);
 
-    // ---------- BFS over flattened state space ----------
-    while (!worklist.empty()) {
-        FlatKey key = worklist.front();
-        worklist.pop();
+    // Transition computation: apply letter a to sparse multiset, with optional spawn.
+    auto step_multiset = [&](const std::vector<uint32_t>& nz_in,
+                             bool do_spawn, uint32_t spawn_sid,
+                             uint32_t a,
+                             weight_t& sum_out,
+                             std::vector<uint32_t>& nz_out) -> bool
+    {
+        sum_out = weight_t(0);
 
-        State* from_flat = state_map.at(key);
+        // accumulate counts by current sid
+        // (use unordered_map because nz_in is sparse)
+        std::unordered_map<uint32_t, uint64_t> cur;
+        cur.reserve(nz_in.size() / 2 + 2);
 
-        for (size_t a = 0; a < A; ++a) {
-            Edge* me = masterSucc[key.master->getId()][a];
-            if (!me) continue;
+        for (size_t i = 0; i + 1 < nz_in.size(); i += 2) {
+            cur[nz_in[i]] += static_cast<uint64_t>(nz_in[i + 1]);
+        }
+        if (do_spawn) {
+            if (spawn_sid >= UQ) return false;
+            cur[spawn_sid] += 1ull;
+        }
 
-            State*   m2 = me->getTo();
-            weight_t wm = me->getWeight()->getValue(); // ≤ 0 under Sum-
+        // advance each active bucket
+        std::unordered_map<uint32_t, uint64_t> nxt;
+        nxt.reserve(cur.size() + 4);
 
-            bool ok = true;
-            scratch_unbounded.clear();
-            scratch_bounded.clear();
+        for (const auto& kv : cur) {
+            const uint32_t sid = kv.first;
+            const uint64_t cnt = kv.second;
+            if (cnt == 0) continue;
 
-            weight_t sum_unbounded = weight_zero();
-            weight_t sum_bounded   = weight_zero();
+            if (sid >= UQ) return false;
+            if (!ustep[sid][a].exists) return false;
 
-            // --- existing unbounded instances ---
-            for (const UInst& u : key.unbounded) {
-                size_t  ci    = u.first;
-                State*  s_cur = u.second;
+            const UStep& st = ustep[sid][a];
 
-                ChildInfo& ch = cinfo[ci];
-                if (!ch.aut) { ok = false; break; }
+            // sum += cnt * st.w
+            sum_out = sum_out + (weight_t(static_cast<double>(cnt)) * st.w);
 
-                const size_t sid = static_cast<size_t>(s_cur->getId());
-                if (sid >= ch.succ.size()) { ok = false; break; }
+            // drop instances that terminate (reach final)
+            if (st.to_final) continue;
 
-                Edge* se = ch.succ[sid][a];
-                if (!se) { ok = false; break; }
+            uint64_t& ref = nxt[st.to];
+            ref += cnt;
 
-                State*   s2 = se->getTo();
-                weight_t xu = se->getWeight()->getValue(); // ≤ 0
+            // enforce per-state cap <= c_bound
+            if (ref > c_bound) return false;
+        }
 
-                sum_unbounded += xu;
-                scratch_unbounded.emplace_back(ci, s2);
-            }
-            if (!ok) continue;
+        // build canonical nz_out sorted by sid
+        std::vector<std::pair<uint32_t, uint64_t>> tmp;
+        tmp.reserve(nxt.size());
+        for (const auto& kv : nxt) {
+            if (kv.second == 0) continue;
+            tmp.push_back({kv.first, kv.second});
+        }
+        std::sort(tmp.begin(), tmp.end(),
+                  [](auto& x, auto& y){ return x.first < y.first; });
 
-            // --- existing bounded instances ---
-            for (const BoundedInst& b : key.bounded) {
-                size_t   ci    = b.child_index;
-                State*   s_cur = b.state;
-                weight_t bud   = b.budget;
+        nz_out.clear();
+        nz_out.reserve(tmp.size() * 2);
+        for (auto& p : tmp) {
+            nz_out.push_back(p.first);
+            nz_out.push_back(static_cast<uint32_t>(p.second));
+        }
 
-                ChildInfo& ch = cinfo[ci];
-                if (!ch.aut) { ok = false; break; }
+        return true;
+    };
 
-                const size_t sid = static_cast<size_t>(s_cur->getId());
-                if (sid >= ch.succ.size()) { ok = false; break; }
+    // ----------------------------- BFS build edges -----------------------------
+    while (!work.empty()) {
+        Key cur = work.front();
+        work.pop();
 
-                Edge* se = ch.succ[sid][a];
-                if (!se) { ok = false; break; }
+        State* from = stmap.at(cur);
 
-                State*   s2    = se->getTo();
-                weight_t z     = se->getWeight()->getValue(); // ≤ 0
-                weight_t mag_z = weight_abs(z);
+        for (uint32_t a = 0; a < A; ++a) {
+            const MStep& ms = mstep[cur.mid][a];
+            if (!ms.exists) continue;
 
-                // strictly decreasing absolute budget
-                if (bud < mag_z) { ok = false; break; }
-                weight_t bud2 = bud - mag_z;
+            const bool master_silent = (ms.payload < 0);
+            const bool do_spawn = (!master_silent);
+            const uint32_t spawn_sid = do_spawn ? static_cast<uint32_t>(ms.payload) : 0;
 
-                sum_bounded += z;
+            weight_t sumw;
+            std::vector<uint32_t> nz_next;
 
-                // if budget exhausted and child is final, drop this instance
-                if (bud2 == weight_zero()) {
-                    const size_t s2id = static_cast<size_t>(s2->getId());
-                    if (s2id < ch.is_final.size() && ch.is_final[s2id]) {
-                        continue;
-                    }
-                }
-
-                scratch_bounded.push_back(BoundedInst{ci, s2, bud2});
-            }
-            if (!ok) continue;
-
-            // total contribution of master + active slaves (before spawning)
-            weight_t base_weight = wm + sum_unbounded + sum_bounded;
-
-            // -------- (i) no new instantiation --------
-            {
-                FlatKey k2;
-                k2.master    = m2;
-                k2.unbounded = scratch_unbounded;
-                k2.bounded   = scratch_bounded;
-
-                State* to_flat = get_or_make_state(k2);
-                Edge* e = new Edge(falpha->at(a), get_weight(base_weight), from_flat, to_flat);
-                from_flat->addSuccessor(e);
-                to_flat->addPredecessor(e);
+            if (!step_multiset(cur.nz, do_spawn, spawn_sid, a, sumw, nz_next)) {
+                continue; // reject this letter from this state
             }
 
-            // -------- (ii) spawn unbounded instance --------
-            if (Y > 0 && scratch_unbounded.size() < Y && U > 0) {
-                for (size_t ci = 0; ci < C; ++ci) {
-                    ChildInfo& ch = cinfo[ci];
-                    if (!ch.aut) continue;
+            Key nxtK;
+            nxtK.mid = ms.to;
+            nxtK.nz = std::move(nz_next);
 
-                    Edge* se0 = ch.initSucc[a];
-                    if (!se0) continue;
+            State* to = get_or_make(nxtK);
 
-                    State*   s1    = se0->getTo();
-                    weight_t x_new = se0->getWeight()->getValue(); // ≤ 0
+            Weight* ew = master_silent ? w_silent : get_w(sumw);
 
-                    FlatKey k2;
-                    k2.master    = m2;
-                    k2.unbounded = scratch_unbounded;
-                    k2.bounded   = scratch_bounded;
-                    k2.unbounded.emplace_back(ci, s1);
-
-                    State* to_flat = get_or_make_state(k2);
-                    weight_t x = base_weight + x_new;
-
-                    Edge* e = new Edge(falpha->at(a), get_weight(x), from_flat, to_flat);
-                    from_flat->addSuccessor(e);
-                    to_flat->addPredecessor(e);
-                }
-            }
-
-            // -------- (iii) spawn bounded instance --------
-            if (U > 0 && Z > weight_zero() && scratch_bounded.size() < U) {
-                for (size_t ci = 0; ci < C; ++ci) {
-                    ChildInfo& ch = cinfo[ci];
-                    if (!ch.aut) continue;
-
-                    Edge* se0 = ch.initSucc[a];
-                    if (!se0) continue;
-
-                    State*   s1    = se0->getTo();
-                    weight_t z     = se0->getWeight()->getValue(); // ≤ 0
-                    weight_t mag_z = weight_abs(z);
-                    if (mag_z > Z) continue;
-
-                    weight_t bud2 = Z - mag_z;
-
-                    FlatKey k2;
-                    k2.master    = m2;
-                    k2.unbounded = scratch_unbounded;
-                    k2.bounded   = scratch_bounded;
-                    k2.bounded.push_back(BoundedInst{ci, s1, bud2});
-
-                    State* to_flat = get_or_make_state(k2);
-                    weight_t x = base_weight + z; // ≤ 0
-
-                    Edge* e = new Edge(falpha->at(a), get_weight(x), from_flat, to_flat);
-                    from_flat->addSuccessor(e);
-                    to_flat->addPredecessor(e);
-                }
-            }
+            Edge* e = new Edge(falpha->at(a), ew, from, to);
+            from->addSuccessor(e);
+            to->addPredecessor(e);
         }
     }
 
-    // ---------- materialize states / weights ----------
-    const size_t state_count  = fstates_vec.size();
-    const size_t weight_count = fweights_vec.size();
-
-    MapArray<State*>*  fstates  = new MapArray<State*>(state_count);
-    MapArray<Weight*>* fweights = new MapArray<Weight*>(weight_count);
-
-    for (State* s : fstates_vec)   fstates->insert(s->getId(), s);
-    for (Weight* w : fweights_vec) fweights->insert(w->getId(), w);
-
-    if (!flat_has_weight) {
-        flat_min = flat_max = weight_zero();
-    }
-
-    // ---------- select final states (logic only, still not wired into Automaton) ----------
-    SetStd<State*>* flat_finals = new SetStd<State*>();
-    for (const auto& kv : state_map) {
-        const FlatKey& k = kv.first;
-        State*         s = kv.second;
-        if (k.unbounded.empty() && k.bounded.empty()) {
-            flat_finals->insert(s);
+    // ----------------------------- finalize arrays and build Automaton -----------------------------
+    // weights min/max (ignore SILENT if you want; here we include it for bookkeeping)
+    weight_t fMin = weight_t(0), fMax = weight_t(0);
+    bool firstOut = true;
+    for (Weight* w : fweights_vec) {
+        if (!w) continue;
+        const weight_t v = w->getValue();
+        if (firstOut) { fMin = fMax = v; firstOut = false; }
+        else {
+            if (v < fMin) fMin = v;
+            if (v > fMax) fMax = v;
         }
     }
-    (void)flat_finals; // kept for future use
+    if (firstOut) { fMin = fMax = weight_t(0); }
 
-    // ---------- build and return a childless Automaton ----------
-    std::string fname = "Flat(" + this->getName() + ")";
-    Automaton* flatNA = new Automaton(
-        fname,
-        falpha,
-        fstates,
-        fweights,
-        flat_min,
-        flat_max,
-        flat_initial
+    MapArray<State*>*  fstates  = new MapArray<State*>(fstates_vec.size());
+    MapArray<Weight*>* fweights = new MapArray<Weight*>(fweights_vec.size());
+
+    for (State* st : fstates_vec)   fstates->insert(st->getId(), st);
+    for (Weight* wt : fweights_vec) fweights->insert(wt->getId(), wt);
+
+    // IMPORTANT: adapt this constructor call to your Automaton API.
+    // Many parts of your code use a similar shape as ChildAutomaton(...).
+    Automaton* flat = new Automaton(
+        "Flat(" + this->getName() + ")",
+        falpha, fstates, fweights,
+        fMin, fMax,
+        finitial
     );
 
-    return flatNA;
+    return flat;
 }
 
 
+
+
+
+
+// // assuming the input NWA is pseudo-deterministic and children are synchronized
+// Automaton* NestedAutomaton::flatten_Avg_SumMinus() {
+//     using std::size_t;
+
+//     // ---------- helper: single outgoing edge after determinization ----------
+//     auto first_edge_or_null = [](SetStd<Edge*>* succs) -> Edge* {
+//         if (!succs) return nullptr;
+//         for (Edge* e : *succs) return e; // at most one after determinization
+//         return nullptr;
+//     };
+
+//     // ---------- weight helpers ----------
+//     auto weight_zero = []() { return weight_t(0); };
+//     auto weight_two  = []() { return weight_t(2); };
+//     auto weight_abs = [&](weight_t v) -> weight_t {
+//         // Sum- ⇒ weights are non-positive, but we still define |v|
+//         if (v < weight_zero()) return -v;
+//         return v;
+//     };
+
+//     // ---------- cache children ----------
+//     const size_t C = this->getChildrenSize();
+//     std::vector<ChildAutomaton*> children(C, nullptr);
+//     for (size_t ci = 0; ci < C; ++ci) {
+//         children[ci] = this->getChild(ci);
+//     }
+
+//     // ---------- master metadata ----------
+//     MapArray<State*>* mstates = this->getStates();
+//     MapArray<Symbol*>* malpha = this->getAlphabet();
+//     const size_t M_states = mstates->size();
+//     const size_t A        = malpha->size();
+
+//     // precompute master successor table [master_state_id][symbol_id]
+//     std::vector<std::vector<Edge*>> masterSucc(M_states, std::vector<Edge*>(A, nullptr));
+//     for (size_t sid = 0; sid < M_states; ++sid) {
+//         State* s = mstates->at(sid);
+//         if (!s) continue;
+//         // after construction, ids are dense; assert to be safe
+//         assert(s->getId() == static_cast<int>(sid));
+//         for (size_t a = 0; a < A; ++a) {
+//             masterSucc[sid][a] = first_edge_or_null(s->getSuccessors(a));
+//         }
+//     }
+
+//     // ---------- child metadata ----------
+//     struct ChildInfo {
+//         ChildAutomaton* aut = nullptr;
+//         std::vector<std::vector<Edge*>> succ;   // [state_id][symbol_id]
+//         std::vector<bool>               is_final; // [state_id]
+//         std::vector<Edge*>              initSucc; // [symbol_id] from initial state
+//         size_t                          num_states = 0;
+//     };
+
+//     std::vector<ChildInfo> cinfo(C);
+
+//     // global stats: total #child states U, max absolute weight W_abs
+//     size_t   U      = 0;
+//     weight_t W_abs  = weight_zero();
+
+//     for (size_t ci = 0; ci < C; ++ci) {
+//         ChildAutomaton* child = children[ci];
+//         cinfo[ci].aut = child;
+//         if (!child) continue;
+
+//         MapArray<State*>*   cstates  = child->getStates();
+//         MapArray<Weight*>*  cweights = child->getWeights();
+//         const size_t        S        = cstates->size();
+//         cinfo[ci].num_states = S;
+//         U += S;
+
+//         // compute |w| max over this child
+//         for (size_t wid = 0; wid < cweights->size(); ++wid) {
+//             Weight* w = cweights->at(wid);
+//             if (!w) continue;
+//             weight_t mag = weight_abs(w->getValue());
+//             if (mag > W_abs) W_abs = mag;
+//         }
+
+//         // allocate tables
+//         cinfo[ci].succ.assign(S, std::vector<Edge*>(A, nullptr));
+//         cinfo[ci].is_final.assign(S, false);
+//         cinfo[ci].initSucc.assign(A, nullptr);
+
+//         // fill succ and final flags
+//         for (size_t sid = 0; sid < S; ++sid) {
+//             State* s = cstates->at(sid);
+//             if (!s) continue;
+//             assert(s->getId() == static_cast<int>(sid));
+//             cinfo[ci].is_final[sid] = child->isFinal(s);
+            
+//             if (cinfo[ci].is_final[sid]) {
+//                 // final states are terminal after determinization
+//                 continue;
+//             }
+//             for (size_t a = 0; a < A; ++a) {
+//                 cinfo[ci].succ[sid][a] = first_edge_or_null(s->getSuccessors(a));
+//             }
+//         }
+
+//         // fill initSucc from child's initial state
+//         State* s0 = child->getInitial();
+//         if (s0) {
+//             const size_t init_id = static_cast<size_t>(s0->getId());
+//             assert(init_id < S);
+//             for (size_t a = 0; a < A; ++a) {
+//                 cinfo[ci].initSucc[a] = cinfo[ci].succ[init_id][a];
+//             }
+//         }
+//     }
+
+//     // ---------- X, Y, Z bounds (combinatorial) ----------
+//     auto sat_mul = [](size_t a, size_t b) -> size_t {
+//         if (a == 0 || b == 0) return 0;
+//         const size_t maxv = std::numeric_limits<size_t>::max();
+//         if (a > maxv / b) return maxv;
+//         return a * b;
+//     };
+
+//     auto sat_pow = [&](size_t base, size_t exp) -> size_t {
+//         if (exp == 0) return 1;
+//         const size_t maxv = std::numeric_limits<size_t>::max();
+//         size_t res = 1;
+//         while (exp > 0) {
+//             if (base != 0 && res > maxv / base) return maxv;
+//             res *= base;
+//             if (res == maxv) return maxv;
+//             --exp;
+//         }
+//         return res;
+//     };
+
+//     // X = 2 * |M| * Π_i |S_i|
+//     size_t X_states = 2;
+//     X_states = sat_mul(X_states, M_states);
+//     for (size_t ci = 0; ci < C; ++ci) {
+//         if (!children[ci]) continue;
+//         X_states = sat_mul(X_states, cinfo[ci].num_states);
+//     }
+
+//     // Y = X * (|U| + 2) * |U|^{2|U|}
+//     size_t exp   = sat_mul(2, U);          // 2|U|
+//     size_t U_pow = sat_pow(U, exp);        // |U|^{2|U|}
+
+//     size_t Y = sat_mul(X_states, U + 2);
+//     Y = sat_mul(Y, U_pow);
+
+//     // Z = 2 * X * (|U| + 2) * |U|^{2|U|} * W_abs  (all in weight_t)
+//     weight_t Z = weight_zero();
+//     if (W_abs > weight_zero()) {
+//         weight_t WX = weight_two() * weight_t(X_states);
+//         WX = WX * weight_t(U + 2);
+//         WX = WX * weight_t(U_pow);
+//         Z  = WX * W_abs;
+//     }
+
+//     // ---------- flattened alphabet: copy from NWA ----------
+//     Symbol::RESET();
+//     MapArray<Symbol*>* falpha = new MapArray<Symbol*>(A);
+//     for (size_t a = 0; a < A; ++a) {
+//         Symbol* s_new = new Symbol(malpha->at(a)->getName());
+//         falpha->insert(s_new->getId(), s_new); // ids are 0..A-1 after RESET
+//     }
+
+//     // ---------- flattened states & weights ----------
+//     State::RESET();
+//     Weight::RESET();
+
+//     std::vector<State*>  fstates_vec;
+//     std::vector<Weight*> fweights_vec;
+//     fstates_vec.reserve(64);
+//     fweights_vec.reserve(16);
+
+//     MapStd<weight_t, Weight*> weight_register;
+
+//     weight_t flat_min       = weight_zero();
+//     weight_t flat_max       = weight_zero();
+//     bool     flat_has_weight = false;
+
+//     auto get_weight = [&](weight_t v) -> Weight* {
+//         if (weight_register.contains(v) != true) {
+//             Weight* w = new Weight(v);
+//             fweights_vec.push_back(w);
+//             weight_register.insert(v, w);
+
+//             if (!flat_has_weight) {
+//                 flat_min = flat_max = v;
+//                 flat_has_weight = true;
+//             } else {
+//                 if (v < flat_min) flat_min = v;
+//                 if (v > flat_max) flat_max = v;
+//             }
+//         }
+//         return weight_register.at(v);
+//     };
+
+//     // ---------- flatten state encoding ----------
+//     struct BoundedInst {
+//         size_t   child_index;
+//         State*   state;
+//         weight_t budget;  // remaining |weight|-budget ∈ [0, Z]
+//     };
+//     using UInst = std::pair<size_t, State*>; // (child_index, child_state)
+
+//     struct FlatKey {
+//         State*                   master;
+//         std::vector<UInst>       unbounded;
+//         std::vector<BoundedInst> bounded;
+
+//         bool operator==(const FlatKey& o) const {
+//             if (master != o.master) return false;
+//             if (unbounded.size() != o.unbounded.size()) return false;
+//             if (bounded.size()   != o.bounded.size())   return false;
+
+//             for (size_t i = 0; i < unbounded.size(); ++i) {
+//                 if (unbounded[i].first  != o.unbounded[i].first)  return false;
+//                 if (unbounded[i].second != o.unbounded[i].second) return false;
+//             }
+//             for (size_t i = 0; i < bounded.size(); ++i) {
+//                 const BoundedInst& b1 = bounded[i];
+//                 const BoundedInst& b2 = o.bounded[i];
+//                 if (b1.child_index != b2.child_index) return false;
+//                 if (b1.state       != b2.state)       return false;
+//                 if (b1.budget      != b2.budget)      return false;
+//             }
+//             return true;
+//         }
+//     };
+
+//     struct FlatKeyHash {
+//         size_t operator()(FlatKey const& k) const {
+//             size_t h = 1469598103934665603ull;
+//             auto mix = [&](uint64_t x) {
+//                 h ^= x;
+//                 h *= 1099511628211ull;
+//             };
+//             mix(reinterpret_cast<uint64_t>(k.master));
+//             for (auto const& u : k.unbounded) {
+//                 mix(static_cast<uint64_t>(u.first));
+//                 mix(reinterpret_cast<uint64_t>(u.second));
+//             }
+//             for (auto const& b : k.bounded) {
+//                 mix(static_cast<uint64_t>(b.child_index));
+//                 mix(reinterpret_cast<uint64_t>(b.state));
+//                 // we deliberately ignore budget in the hash to avoid depending on hash<weight_t>
+//             }
+//             return h;
+//         }
+//     };
+
+//     auto normalize_key = [](FlatKey& k) {
+//         auto cmpU = [](const UInst& a, const UInst& b) {
+//             if (a.first != b.first) return a.first < b.first;
+//             return a.second->getId() < b.second->getId();
+//         };
+//         std::sort(k.unbounded.begin(), k.unbounded.end(), cmpU);
+
+//         auto cmpB = [](const BoundedInst& a, const BoundedInst& b) {
+//             if (a.child_index != b.child_index) return a.child_index < b.child_index;
+//             int ida = a.state->getId();
+//             int idb = b.state->getId();
+//             if (ida != idb) return ida < idb;
+//             if (a.budget < b.budget) return true;
+//             if (a.budget > b.budget) return false;
+//             return false;
+//         };
+//         std::sort(k.bounded.begin(), k.bounded.end(), cmpB);
+//     };
+
+//     std::unordered_map<FlatKey, State*, FlatKeyHash> state_map;
+//     std::queue<FlatKey> worklist;
+
+//     auto get_or_make_state = [&](FlatKey key) -> State* {
+//         normalize_key(key);
+//         auto it = state_map.find(key);
+//         if (it != state_map.end()) return it->second;
+
+//         std::ostringstream ss;
+//         ss << "flat_" << state_map.size();
+//         State* ns = new State(ss.str(), A, 0, 0); // no children: domain [0,0]
+//         fstates_vec.push_back(ns);
+
+//         state_map.insert(std::make_pair(key, ns));
+//         worklist.push(key);
+//         return ns;
+//     };
+
+//     // scratch buffers reused across transitions (to reduce allocations)
+//     std::vector<UInst>       scratch_unbounded;
+//     std::vector<BoundedInst> scratch_bounded;
+
+//     // ---------- initial flat state: (master_initial, no slaves) ----------
+//     FlatKey initKey;
+//     initKey.master = this->getInitial();
+//     State* flat_initial = get_or_make_state(initKey);
+
+//     // ---------- BFS over flattened state space ----------
+//     while (!worklist.empty()) {
+//         FlatKey key = worklist.front();
+//         worklist.pop();
+
+//         State* from_flat = state_map.at(key);
+
+//         for (size_t a = 0; a < A; ++a) {
+//             Edge* me = masterSucc[key.master->getId()][a];
+//             if (!me) continue;
+
+//             State*   m2 = me->getTo();
+//             weight_t wm = me->getWeight()->getValue(); // ≤ 0 under Sum-
+
+//             bool ok = true;
+//             scratch_unbounded.clear();
+//             scratch_bounded.clear();
+
+//             weight_t sum_unbounded = weight_zero();
+//             weight_t sum_bounded   = weight_zero();
+
+//             // --- existing unbounded instances ---
+//             for (const UInst& u : key.unbounded) {
+//                 size_t  ci    = u.first;
+//                 State*  s_cur = u.second;
+
+//                 ChildInfo& ch = cinfo[ci];
+//                 if (!ch.aut) { ok = false; break; }
+
+//                 const size_t sid = static_cast<size_t>(s_cur->getId());
+//                 if (sid >= ch.succ.size()) { ok = false; break; }
+
+//                 Edge* se = ch.succ[sid][a];
+//                 if (!se) { ok = false; break; }
+
+//                 State*   s2 = se->getTo();
+//                 weight_t xu = se->getWeight()->getValue(); // ≤ 0
+
+//                 sum_unbounded += xu;
+//                 scratch_unbounded.emplace_back(ci, s2);
+//             }
+//             if (!ok) continue;
+
+//             // --- existing bounded instances ---
+//             for (const BoundedInst& b : key.bounded) {
+//                 size_t   ci    = b.child_index;
+//                 State*   s_cur = b.state;
+//                 weight_t bud   = b.budget;
+
+//                 ChildInfo& ch = cinfo[ci];
+//                 if (!ch.aut) { ok = false; break; }
+
+//                 const size_t sid = static_cast<size_t>(s_cur->getId());
+//                 if (sid >= ch.succ.size()) { ok = false; break; }
+
+//                 Edge* se = ch.succ[sid][a];
+//                 if (!se) { ok = false; break; }
+
+//                 State*   s2    = se->getTo();
+//                 weight_t z     = se->getWeight()->getValue(); // ≤ 0
+//                 weight_t mag_z = weight_abs(z);
+
+//                 // strictly decreasing absolute budget
+//                 if (bud < mag_z) { ok = false; break; }
+//                 weight_t bud2 = bud - mag_z;
+
+//                 sum_bounded += z;
+
+//                 // if budget exhausted and child is final, drop this instance
+//                 if (bud2 == weight_zero()) {
+//                     const size_t s2id = static_cast<size_t>(s2->getId());
+//                     if (s2id < ch.is_final.size() && ch.is_final[s2id]) {
+//                         continue;
+//                     }
+//                 }
+
+//                 scratch_bounded.push_back(BoundedInst{ci, s2, bud2});
+//             }
+//             if (!ok) continue;
+
+//             // total contribution of master + active slaves (before spawning)
+//             weight_t base_weight = wm + sum_unbounded + sum_bounded;
+
+//             // -------- (i) no new instantiation --------
+//             {
+//                 FlatKey k2;
+//                 k2.master    = m2;
+//                 k2.unbounded = scratch_unbounded;
+//                 k2.bounded   = scratch_bounded;
+
+//                 State* to_flat = get_or_make_state(k2);
+//                 Edge* e = new Edge(falpha->at(a), get_weight(base_weight), from_flat, to_flat);
+//                 from_flat->addSuccessor(e);
+//                 to_flat->addPredecessor(e);
+//             }
+
+//             // -------- (ii) spawn unbounded instance --------
+//             if (Y > 0 && scratch_unbounded.size() < Y && U > 0) {
+//                 for (size_t ci = 0; ci < C; ++ci) {
+//                     ChildInfo& ch = cinfo[ci];
+//                     if (!ch.aut) continue;
+
+//                     Edge* se0 = ch.initSucc[a];
+//                     if (!se0) continue;
+
+//                     State*   s1    = se0->getTo();
+//                     weight_t x_new = se0->getWeight()->getValue(); // ≤ 0
+
+//                     FlatKey k2;
+//                     k2.master    = m2;
+//                     k2.unbounded = scratch_unbounded;
+//                     k2.bounded   = scratch_bounded;
+//                     k2.unbounded.emplace_back(ci, s1);
+
+//                     State* to_flat = get_or_make_state(k2);
+//                     weight_t x = base_weight + x_new;
+
+//                     Edge* e = new Edge(falpha->at(a), get_weight(x), from_flat, to_flat);
+//                     from_flat->addSuccessor(e);
+//                     to_flat->addPredecessor(e);
+//                 }
+//             }
+
+//             // -------- (iii) spawn bounded instance --------
+//             if (U > 0 && Z > weight_zero() && scratch_bounded.size() < U) {
+//                 for (size_t ci = 0; ci < C; ++ci) {
+//                     ChildInfo& ch = cinfo[ci];
+//                     if (!ch.aut) continue;
+
+//                     Edge* se0 = ch.initSucc[a];
+//                     if (!se0) continue;
+
+//                     State*   s1    = se0->getTo();
+//                     weight_t z     = se0->getWeight()->getValue(); // ≤ 0
+//                     weight_t mag_z = weight_abs(z);
+//                     if (mag_z > Z) continue;
+
+//                     weight_t bud2 = Z - mag_z;
+
+//                     FlatKey k2;
+//                     k2.master    = m2;
+//                     k2.unbounded = scratch_unbounded;
+//                     k2.bounded   = scratch_bounded;
+//                     k2.bounded.push_back(BoundedInst{ci, s1, bud2});
+
+//                     State* to_flat = get_or_make_state(k2);
+//                     weight_t x = base_weight + z; // ≤ 0
+
+//                     Edge* e = new Edge(falpha->at(a), get_weight(x), from_flat, to_flat);
+//                     from_flat->addSuccessor(e);
+//                     to_flat->addPredecessor(e);
+//                 }
+//             }
+//         }
+//     }
+
+//     // ---------- materialize states / weights ----------
+//     const size_t state_count  = fstates_vec.size();
+//     const size_t weight_count = fweights_vec.size();
+
+//     MapArray<State*>*  fstates  = new MapArray<State*>(state_count);
+//     MapArray<Weight*>* fweights = new MapArray<Weight*>(weight_count);
+
+//     for (State* s : fstates_vec)   fstates->insert(s->getId(), s);
+//     for (Weight* w : fweights_vec) fweights->insert(w->getId(), w);
+
+//     if (!flat_has_weight) {
+//         flat_min = flat_max = weight_zero();
+//     }
+
+//     // ---------- select final states (logic only, still not wired into Automaton) ----------
+//     SetStd<State*>* flat_finals = new SetStd<State*>();
+//     for (const auto& kv : state_map) {
+//         const FlatKey& k = kv.first;
+//         State*         s = kv.second;
+//         if (k.unbounded.empty() && k.bounded.empty()) {
+//             flat_finals->insert(s);
+//         }
+//     }
+//     (void)flat_finals; // kept for future use
+
+//     // ---------- build and return a childless Automaton ----------
+//     std::string fname = "Flat(" + this->getName() + ")";
+//     Automaton* flatNA = new Automaton(
+//         fname,
+//         falpha,
+//         fstates,
+//         fweights,
+//         flat_min,
+//         flat_max,
+//         flat_initial
+//     );
+
+//     return flatNA;
+// }
+
+
 /////////////////////////////////////////
 /////////////////////////////////////////
 /////////////////////////////////////////
 
+
+// typedef uint64_t internal_weight_t;
+
+// inline internal_weight_t to_internal(weight_t w) {
+//     return (internal_weight_t)w.to_float();
+// }
+
+// typedef struct global_exploration_data_supremum {
+//     // constraints
+//     NestedAutomaton* A;
+//     Parser* parser;
+//     internal_weight_t abs_threshold;
+//     unsigned int* cumulative_size;   // prefix sums for flattening (child_id, local_state) -> global index
+//     unsigned int track_them_all;     // bitmask with all child-state bits set
+//     unsigned int children_all;       // total flattened child-state count
+
+//     // given (input for current exploration frame)
+//     std::string global_from;         // encoded as "master_id/activation/tracking/[token_info|@inactive@]"
+//     unsigned int master_state_id_from;
+//     internal_weight_t budget_from;   // budget of the single tracked token (only valid if !inactive_from)
+//     unsigned int child_state_id_from;
+//     unsigned int child_id_from;
+//     bool inactive_from;              // true = no token currently being tracked for weight
+//     internal_weight_t global_tracking_from;   // per-child-state tracking bits
+//     internal_weight_t global_activation_from; // per-child-state activation bits (token present)
+
+//     // initialized per-symbol
+//     Symbol* symbol;
+//     std::vector<unsigned int> old_activation_of_children_state;
+//     std::vector<unsigned int> old_tracking_of_children_state;
+//     std::vector<unsigned int> new_activation_of_children_state;  // must restore on backtrack
+//     std::vector<unsigned int> new_tracking_of_children_state;    // must restore on backtrack
+
+//     // computed (output)
+//     unsigned int master_state_id_to;
+//     internal_weight_t global_edge_weight;
+//     internal_weight_t budget_to;
+//     unsigned int child_state_id_to;
+//     unsigned int child_id_to;
+//     bool inactive_to;
+// } data_supremum_t;
+
+// void explore_global_initialization_supremum (data_supremum_t* data);
+
+// void explore_global_failure_supremum (data_supremum_t* data) {
+//     data->parser->edges.insert({
+//         { data->symbol->getName(), weight_t(0) },
+//         { data->global_from, "@sink@" }
+//     });
+// }
+
+// void explore_global_finalization_supremum (data_supremum_t* data, Symbol* symbol) {
+//     internal_weight_t global_activation_to = 0;
+//     internal_weight_t global_tracking_to = 0;
+//     for (unsigned int i = 0; i < data->children_all; i++) {
+//         global_activation_to = (global_activation_to << 1)
+//                              + data->new_activation_of_children_state[i];
+
+//         global_tracking_to = (global_tracking_to << 1)
+//                            + data->new_tracking_of_children_state[i];
+//     }
+
+//     bool global_final = false;
+//     // Epoch boundary: tracking_from==0 means all obligations discharged
+//     if (data->global_tracking_from == 0) {
+//         global_tracking_to = data->track_them_all;  // reset for next epoch
+//         // global_final = true;
+//         // TODO: CHECK
+//         global_final = data->A->getStates()->at(data->master_state_id_to)->getFinal();
+//     }
+
+//     // State encodes: master_id/activation/tracking/[child_id/child_state/budget | @inactive@]
+//     std::string global_to;
+//     global_to.reserve(64);
+//     global_to.append(std::to_string(data->master_state_id_to));
+//     global_to.push_back('/');
+//     global_to.append(std::to_string(global_activation_to));
+//     global_to.push_back('/');
+//     global_to.append(std::to_string(global_tracking_to));
+
+//     if (data->inactive_to) {
+//         global_to.append("/@inactive@");
+//     } else {
+//         global_to.push_back('/');
+//         global_to.append(std::to_string(data->child_id_to));
+//         global_to.push_back('/');
+//         global_to.append(std::to_string(data->child_state_id_to));
+//         global_to.push_back('/');
+//         global_to.append(std::to_string(data->budget_to));
+//     }
+
+//     data->parser->edges.insert({
+//         { symbol->getName(), (weight_t)data->global_edge_weight },
+//         { data->global_from, global_to }
+//     });
+
+//     if (global_final == true) {
+//         data->parser->final_states.insert(global_to);
+//     }
+
+//     // DFS: only recurse on newly discovered states
+//     if (data->parser->states.contains(global_to) == false) {
+//         data->parser->states.insert(global_to);
+
+//         data_supremum_t data_deeper{};
+//         data_deeper.A             = data->A;
+//         data_deeper.parser        = data->parser;
+//         data_deeper.abs_threshold = data->abs_threshold;
+//         data_deeper.cumulative_size = data->cumulative_size;
+//         data_deeper.track_them_all  = data->track_them_all;
+//         data_deeper.children_all    = data->children_all;
+
+//         data_deeper.global_from          = global_to;
+//         data_deeper.master_state_id_from = data->master_state_id_to;
+//         data_deeper.inactive_from        = data->inactive_to;
+//         data_deeper.global_tracking_from = global_tracking_to;
+//         data_deeper.global_activation_from = global_activation_to;
+
+//         if (data->inactive_to == false) {
+//             data_deeper.budget_from         = data->budget_to;
+//             data_deeper.child_state_id_from = data->child_state_id_to;
+//             data_deeper.child_id_from       = data->child_id_to;
+//         }
+
+//         explore_global_initialization_supremum(&data_deeper);
+//     }
+// }
+
+// // Propagate background children (all except the single tracked token)
+// void explore_global_selection_supremum (unsigned int child_id, unsigned int child_state_id, data_supremum_t* data) {
+//     // Skip the tracked token -- handled separately in explore_global_child_transition_supremum
+//     if (child_id == data->child_id_from && child_state_id == data->child_state_id_from) {
+//         explore_global_selection_supremum(child_id, child_state_id + 1, data);
+//     }
+//     else if (child_id < data->A->getChildrenSize()) {
+//         auto* child  = data->A->getChild(child_id);
+//         auto* states = child->getStates();
+
+//         if (child_state_id < states->size()) {
+//             unsigned int i = data->cumulative_size[child_id] + child_state_id;
+
+//             if (data->old_activation_of_children_state[i] == 0) {
+//                 explore_global_selection_supremum(child_id, child_state_id + 1, data);
+//             }
+//             else if (states->at(child_state_id)->getFinal()) {
+//                 // Final states implicitly terminate -- no successor propagation needed
+//                 explore_global_selection_supremum(child_id, child_state_id + 1, data);
+//             }
+//             else {
+//                 State* child_state = states->at(child_state_id);
+
+//                 auto* succs = child_state->getSuccessors(data->symbol->getId());
+//                 if (succs) {
+//                     for (Edge* edge : *succs) {
+//                         unsigned int ii = data->cumulative_size[child_id] + edge->getTo()->getId();
+//                         unsigned int stored_tracking   = data->new_tracking_of_children_state[ii];
+//                         unsigned int stored_activation = data->new_activation_of_children_state[ii];
+
+//                         // Propagate tracking/activation to successor
+//                         if (data->old_tracking_of_children_state[i] == 1) {
+//                             data->new_tracking_of_children_state[ii] = 1;
+//                         }
+//                         if (data->old_activation_of_children_state[i] == 1) {
+//                             data->new_activation_of_children_state[ii] = 1;
+//                         }
+
+//                         explore_global_selection_supremum(child_id + 1, child_state_id, data);
+
+//                         data->new_tracking_of_children_state[ii]   = stored_tracking;
+//                         data->new_activation_of_children_state[ii] = stored_activation;
+//                     }
+//                 } else {
+//                     explore_global_selection_supremum(child_id + 1, child_state_id, data);
+//                 }
+//             }
+//         }
+//         else {
+//             explore_global_selection_supremum(child_id + 1, 0, data);
+//         }
+//     }
+//     else {
+//         explore_global_finalization_supremum(data, data->symbol);
+//     }
+// }
+
+// // Handle the single tracked token's transition (the one accumulating weight)
+// void explore_global_child_transition_supremum (data_supremum_t* data) {
+//     if (data->inactive_from == true) {
+//         // No token being tracked -- just propagate background children
+//         data->inactive_to = true;
+//         explore_global_selection_supremum(0, 0, data);
+//         return;
+//     }
+
+//     State* child_state = data->A->getChild(data->child_id_from)->getStates()->at(data->child_state_id_from);
+
+//     if (child_state->getFinal() == true) {
+//         // Termination: budget must be exactly exhausted (validates the guess)
+//         if (data->budget_from == 0) {
+//             data->inactive_to = true;
+//             explore_global_selection_supremum(0, 0, data);
+//         } else {
+//             explore_global_failure_supremum(data);
+//         }
+//         return;
+//     }
+
+//     unsigned int i = data->cumulative_size[data->child_id_from] + data->child_state_id_from;
+
+//     if (child_state->getSuccessors(data->symbol->getId())) {
+//         for (Edge* child_edge : *child_state->getSuccessors(data->symbol->getId())) {
+//             unsigned int ii = data->cumulative_size[data->child_id_from] + child_edge->getTo()->getId();
+//             unsigned int stored_tracking = data->new_tracking_of_children_state[ii];
+//             unsigned int stored_activation = data->new_activation_of_children_state[ii];
+
+//             if (data->old_tracking_of_children_state[i] == 1) {
+//                 data->new_tracking_of_children_state[ii] = 1;
+//             }
+//             if (data->old_activation_of_children_state[i] == 1) {
+//                 data->new_activation_of_children_state[ii] = 1;
+//             }
+
+//             data->inactive_to = false;
+//             data->child_id_to = data->child_id_from;
+//             data->child_state_id_to = child_edge->getTo()->getId();
+
+//             internal_weight_t abs_child_edge_value;
+//             if (child_edge->getWeight()->getValue() < 0) {
+//                 abs_child_edge_value = to_internal(-(child_edge->getWeight()->getValue()));
+//             } else {
+//                 abs_child_edge_value = to_internal(child_edge->getWeight()->getValue());
+//             }
+
+//             if (data->budget_from < data->abs_threshold) {
+//                 // Fixed budget mode: deterministic subtraction
+//                 if (data->budget_from < abs_child_edge_value) {
+//                     explore_global_failure_supremum(data);
+//                 } else {
+//                     data->budget_to = data->budget_from - abs_child_edge_value;
+//                     explore_global_selection_supremum(0, 0, data);
+//                 }
+//             } else {
+//                 // Unlimited budget (abs_threshold): nondeterministically guess successor budget
+//                 // Any guess where guess + edge_cost >= threshold is valid (could still reach threshold)
+//                 for (internal_weight_t abs_weight = data->abs_threshold; ; abs_weight--) {
+//                     if (abs_weight + abs_child_edge_value >= data->abs_threshold) {
+//                         data->budget_to = abs_weight;
+//                         explore_global_selection_supremum(0, 0, data);
+//                     }
+//                     if (abs_weight == 0) break;
+//                 }
+//             }
+
+//             data->new_tracking_of_children_state[ii] = stored_tracking;
+//             data->new_activation_of_children_state[ii] = stored_activation;
+//         }
+//     }
+// }
+
+// void explore_global_master_transition_supremum (data_supremum_t* data) {
+//     auto succs = data->A->getStates()->at(data->master_state_id_from)->getSuccessors(data->symbol->getId());
+//     if (!succs) return;
+
+//     // Save tracked token context -- each master edge explores independently
+//     unsigned int       saved_child_state_id_from = data->child_state_id_from;
+//     unsigned int       saved_child_id_from       = data->child_id_from;
+//     internal_weight_t  saved_budget_from         = data->budget_from;
+//     bool               saved_inactive_from       = data->inactive_from;
+
+//     for (Edge* master_edge : *succs) {
+//         data->child_state_id_from = saved_child_state_id_from;
+//         data->child_id_from       = saved_child_id_from;
+//         data->budget_from         = saved_budget_from;
+//         data->inactive_from       = saved_inactive_from;
+
+//         data->master_state_id_to = static_cast<unsigned int>(master_edge->getTo()->getId());
+//         unsigned int child_id = static_cast<unsigned int>(master_edge->getWeight()->getValue().to_float());
+
+//         if (data->A->getChild(child_id)->getStates()->size() == 1) {
+//             // Silent transition: no spawn, weight 0
+//             data->global_edge_weight = 0;
+//             explore_global_child_transition_supremum(data);
+//         } else {
+//             unsigned int summoned_child_state_id = data->A->getChild(child_id)->initial->getId();
+//             unsigned int ii = data->cumulative_size[child_id] + summoned_child_state_id;
+
+//             // Mark spawned child as active in OLD (so selection sees it)
+//             unsigned prev = data->old_activation_of_children_state[ii];
+//             data->old_activation_of_children_state[ii] = 1;
+
+//             // Choice 1: spawn as background (not tracked for weight)
+//             data->global_edge_weight = 0;
+//             explore_global_child_transition_supremum(data);
+
+//             // Choice 2: start tracking for weight (only if no token currently tracked)
+//             if (saved_inactive_from) {
+//                 data->global_edge_weight  = 1;  // signal that we're betting on this token
+//                 data->child_state_id_from = summoned_child_state_id;
+//                 data->child_id_from       = child_id;
+//                 data->budget_from         = data->abs_threshold;  // start with "unlimited"
+//                 data->inactive_from       = false;
+//                 explore_global_child_transition_supremum(data);
+//             }
+
+//             data->old_activation_of_children_state[ii] = prev;
+//         }
+//     }
+// }
+
+// void explore_global_initialization_supremum (data_supremum_t* data) {
+//     internal_weight_t activation_from = data->global_activation_from;
+//     internal_weight_t tracking_from   = data->global_tracking_from;
+
+//     const unsigned int n = data->children_all;
+
+//     data->new_activation_of_children_state.assign(n, 0);
+//     data->new_tracking_of_children_state.assign(n, 0);
+
+//     data->old_activation_of_children_state.resize(n);
+//     data->old_tracking_of_children_state.resize(n);
+
+//     // Unpack bitmasks
+//     for (unsigned int i = 0; i < n; i++) {
+//         data->old_activation_of_children_state[i] = static_cast<unsigned int>(activation_from & 1);
+//         activation_from >>= 1;
+
+//         data->old_tracking_of_children_state[i] = static_cast<unsigned int>(tracking_from & 1);
+//         tracking_from >>= 1;
+//     }
+
+//     if (data->A->getStates()->at(data->master_state_id_from)->getAlphabet()) {
+//         for (Symbol* symbol : *(data->A->getStates()->at(data->master_state_id_from)->getAlphabet())) {
+//             data->symbol = symbol;
+//             explore_global_master_transition_supremum(data);
+//         }
+//     }
+// }
+
+// // Track ONE child token explicitly for weight, others as background
+// bool NestedAutomaton::emptiness_monotonic_nesting_supremum(value_function_t infinite_aggregator,
+//                                                            value_function_t finite_aggregator,
+//                                                            weight_t threshold) {
+//     if (threshold <= 0 && finite_aggregator == SumPlus) {
+//         return true;
+//     }
+//     if (threshold > 0 && finite_aggregator == SumMinus) {
+//         return false;
+//     }
+
+//     internal_weight_t abs_threshold;
+//     if (threshold > 0) {
+//         abs_threshold = to_internal(threshold);
+//     } else {
+//         abs_threshold = to_internal(-threshold + 1);
+//     }
+
+//     std::vector<unsigned int> cumulative_size(this->children_->size() + 1);
+//     cumulative_size[0] = 0;
+//     for (unsigned int i = 1; i < this->children_->size() + 1; i++) {
+//         cumulative_size[i] = cumulative_size[i - 1] + this->getChild(i - 1)->getStates()->size();
+//     }
+//     unsigned int children_all = cumulative_size[this->children_->size()];
+
+//     // All bits set for epoch reset
+//     unsigned int track_them_all = 0;
+//     for (unsigned int i = 0; i < children_all; i++) {
+//         track_them_all = track_them_all * 2 + 1;
+//     }
+
+//     Parser* parser = new Parser(0, 1);
+//     parser->weights.insert(0);
+//     parser->weights.insert(1);
+//     parser->states.insert("@sink@");
+
+//     for (Symbol* symbol : *this->getAlphabet()) {
+//         parser->alphabet.insert(symbol->getName());
+//         std::pair<std::pair<std::string, weight_t>, std::pair<std::string, std::string>> sink_self_loop;
+//         sink_self_loop.first.first = symbol->getName();
+//         sink_self_loop.first.second = 0;
+//         sink_self_loop.second.first = "@sink@";
+//         sink_self_loop.second.second = "@sink@";
+//         parser->edges.insert(sink_self_loop);
+//     }
+
+//     // Initial: no children active, none tracked, no token being followed for weight
+//     std::string global_initial = "";
+//     global_initial = global_initial + std::to_string(this->initial->getId());
+//     global_initial = global_initial + "/" + std::to_string(0);  // activation=0
+//     global_initial = global_initial + "/" + std::to_string(0);  // tracking=0
+//     global_initial = global_initial + "/" + "@inactive@";
+//     parser->states.insert(global_initial);
+//     parser->initial = global_initial;
+
+//     data_supremum_t* data = new data_supremum_t();
+//     if (data == nullptr) QUAK_FAIL("out of memory");
+
+//     data->A = this;
+//     data->parser = parser;
+//     data->abs_threshold = abs_threshold;
+//     data->cumulative_size = cumulative_size.data();
+//     data->track_them_all = track_them_all;
+//     data->children_all = children_all;
+//     data->global_from = global_initial;
+//     data->master_state_id_from = this->initial->getId();
+//     data->inactive_from = true;
+//     data->global_tracking_from = 0;
+//     data->global_activation_from = 0;
+
+//     explore_global_initialization_supremum(data);
+//     delete data;
+
+//     std::string newname = "unnested(" + this->getName() + ")";
+//     MapStd<std::string, Symbol*> sync_register;
+//     Automaton* unnested = new Automaton(newname, parser, sync_register);
+//     // unnested->print();
+//     std::cout << "Unnested: " << parser->states.size() << " states, " << parser->edges.size() << " edges" << std::endl;
+//     delete parser;
+
+//     weight_t top = unnested->compute_top_with_final(infinite_aggregator);
+//     bool result = (top >= 1);
+
+//     delete unnested;
+//     return result;
+// }
 
 typedef uint64_t internal_weight_t;
 
 inline internal_weight_t to_internal(weight_t w) {
     return (internal_weight_t)w.to_float();
 }
+
+struct pending_state_t {
+    std::string global_from;
+    unsigned int master_state_id_from;
+    internal_weight_t budget_from;
+    unsigned int child_state_id_from;
+    unsigned int child_id_from;
+    bool inactive_from;
+    internal_weight_t global_tracking_from;
+    internal_weight_t global_activation_from;
+};
 
 typedef struct global_exploration_data_supremum {
     // constraints
@@ -3967,6 +4950,9 @@ typedef struct global_exploration_data_supremum {
     unsigned int* cumulative_size;   // prefix sums for flattening (child_id, local_state) -> global index
     unsigned int track_them_all;     // bitmask with all child-state bits set
     unsigned int children_all;       // total flattened child-state count
+
+    // pending states for iterative exploration
+    std::vector<pending_state_t>* pending_states;
 
     // given (input for current exploration frame)
     std::string global_from;         // encoded as "master_id/activation/tracking/[token_info|@inactive@]"
@@ -4052,31 +5038,24 @@ void explore_global_finalization_supremum (data_supremum_t* data, Symbol* symbol
         data->parser->final_states.insert(global_to);
     }
 
-    // DFS: only recurse on newly discovered states
+    // Iterative: push newly discovered states onto the work stack
     if (data->parser->states.contains(global_to) == false) {
         data->parser->states.insert(global_to);
 
-        data_supremum_t data_deeper{};
-        data_deeper.A             = data->A;
-        data_deeper.parser        = data->parser;
-        data_deeper.abs_threshold = data->abs_threshold;
-        data_deeper.cumulative_size = data->cumulative_size;
-        data_deeper.track_them_all  = data->track_them_all;
-        data_deeper.children_all    = data->children_all;
-
-        data_deeper.global_from          = global_to;
-        data_deeper.master_state_id_from = data->master_state_id_to;
-        data_deeper.inactive_from        = data->inactive_to;
-        data_deeper.global_tracking_from = global_tracking_to;
-        data_deeper.global_activation_from = global_activation_to;
+        pending_state_t ps;
+        ps.global_from          = global_to;
+        ps.master_state_id_from = data->master_state_id_to;
+        ps.inactive_from        = data->inactive_to;
+        ps.global_tracking_from = global_tracking_to;
+        ps.global_activation_from = global_activation_to;
 
         if (data->inactive_to == false) {
-            data_deeper.budget_from         = data->budget_to;
-            data_deeper.child_state_id_from = data->child_state_id_to;
-            data_deeper.child_id_from       = data->child_id_to;
+            ps.budget_from         = data->budget_to;
+            ps.child_state_id_from = data->child_state_id_to;
+            ps.child_id_from       = data->child_id_to;
         }
 
-        explore_global_initialization_supremum(&data_deeper);
+        data->pending_states->push_back(ps);
     }
 }
 
@@ -4354,20 +5333,50 @@ bool NestedAutomaton::emptiness_monotonic_nesting_supremum(value_function_t infi
     data->cumulative_size = cumulative_size.data();
     data->track_them_all = track_them_all;
     data->children_all = children_all;
-    data->global_from = global_initial;
-    data->master_state_id_from = this->initial->getId();
-    data->inactive_from = true;
-    data->global_tracking_from = 0;
-    data->global_activation_from = 0;
 
-    explore_global_initialization_supremum(data);
+    // Iterative DFS using explicit stack
+    std::vector<pending_state_t> pending_states;
+    pending_states.reserve(1024);  // avoid early reallocations
+
+    pending_state_t initial_ps;
+    initial_ps.global_from          = global_initial;
+    initial_ps.master_state_id_from = this->initial->getId();
+    initial_ps.inactive_from        = true;
+    initial_ps.global_tracking_from = 0;
+    initial_ps.global_activation_from = 0;
+    initial_ps.budget_from          = 0;
+    initial_ps.child_state_id_from  = 0;
+    initial_ps.child_id_from        = 0;
+    pending_states.push_back(initial_ps);
+
+    data->pending_states = &pending_states;
+
+    while (!pending_states.empty()) {
+        pending_state_t ps = pending_states.back();
+        pending_states.pop_back();
+
+        data->global_from          = ps.global_from;
+        data->master_state_id_from = ps.master_state_id_from;
+        data->inactive_from        = ps.inactive_from;
+        data->global_tracking_from = ps.global_tracking_from;
+        data->global_activation_from = ps.global_activation_from;
+
+        if (ps.inactive_from == false) {
+            data->budget_from         = ps.budget_from;
+            data->child_state_id_from = ps.child_state_id_from;
+            data->child_id_from       = ps.child_id_from;
+        }
+
+        explore_global_initialization_supremum(data);
+    }
+
     delete data;
 
     std::string newname = "unnested(" + this->getName() + ")";
     MapStd<std::string, Symbol*> sync_register;
     Automaton* unnested = new Automaton(newname, parser, sync_register);
     // unnested->print();
-    std::cout << "Unnested: " << parser->states.size() << " states, " << parser->edges.size() << " edges" << std::endl;
+    // std::cout << "Unnested: " << parser->states.size() << " states, " << parser->edges.size() << " edges" << std::endl;
     delete parser;
 
     weight_t top = unnested->compute_top_with_final(infinite_aggregator);
@@ -4376,6 +5385,11 @@ bool NestedAutomaton::emptiness_monotonic_nesting_supremum(value_function_t infi
     delete unnested;
     return result;
 }
+
+
+
+
+
 
 
 /////////////////////////////////////////
@@ -4798,23 +5812,23 @@ bool NestedAutomaton::emptiness_monotonic_nesting(value_function_t infinite_aggr
     std::string newname = "unnested(" + this->getName() + ")";
     MapStd<std::string, Symbol*> sync_register;
     Automaton* unnested = new Automaton(newname, parser, sync_register);
-    // unnested->print();
+    unnested->print();
     delete parser;
 
-        int numEdges = 0;
-        for (size_t s = 0; s < unnested->getStates()->size(); ++s) {
-            State* state = unnested->getStates()->at(s);
-            if (state) {
-                for (size_t a = 0; a < unnested->getAlphabet()->size(); ++a) {
-                    SetStd<Edge*>* succs = state->getSuccessors(a);
-                    if (succs) {
-                        numEdges += succs->size();
-                    }
-                }
-            }
-        }
-        std::cout << "unnested: " << unnested->getStates()->size() << " states, " << numEdges << " edges" << std::endl;
-        std::cout << unnested->getNbSCCs() << " SCCs (" << unnested->getNbAcceptingSCCs() << " accepting)" << std::endl;
+        // int numEdges = 0;
+        // for (size_t s = 0; s < unnested->getStates()->size(); ++s) {
+        //     State* state = unnested->getStates()->at(s);
+        //     if (state) {
+        //         for (size_t a = 0; a < unnested->getAlphabet()->size(); ++a) {
+        //             SetStd<Edge*>* succs = state->getSuccessors(a);
+        //             if (succs) {
+        //                 numEdges += succs->size();
+        //             }
+        //         }
+        //     }
+        // }
+        // std::cout << "unnested: " << unnested->getStates()->size() << " states, " << numEdges << " edges" << std::endl;
+        // std::cout << unnested->getNbSCCs() << " SCCs (" << unnested->getNbAcceptingSCCs() << " accepting)" << std::endl;
 
     weight_t top = unnested->compute_top_with_final(infinite_aggregator);
     bool result = (top == 1);
@@ -4845,37 +5859,37 @@ bool NestedAutomaton::emptiness_Avg_SumPlus (weight_t threshold) {
     }
     else {
         Automaton* buchi = flatten_regular(SumB, theoretical_bound); // Key Lemma construction
-        int numEdges = 0;
-        for (size_t s = 0; s < buchi->getStates()->size(); ++s) {
-            State* state = buchi->getStates()->at(s);
-            if (state) {
-                for (size_t a = 0; a < buchi->getAlphabet()->size(); ++a) {
-                    SetStd<Edge*>* succs = state->getSuccessors(a);
-                    if (succs) {
-                        numEdges += succs->size();
-                    }
-                }
-            }
-        }
-        std::cout << "buchi: " << buchi->getStates()->size() << " states, " << numEdges << " edges" << std::endl;
-        std::cout << buchi->getNbSCCs() << " SCCs (" << buchi->getNbAcceptingSCCs() << " accepting)" << std::endl;
+        // int numEdges = 0;
+        // for (size_t s = 0; s < buchi->getStates()->size(); ++s) {
+        //     State* state = buchi->getStates()->at(s);
+        //     if (state) {
+        //         for (size_t a = 0; a < buchi->getAlphabet()->size(); ++a) {
+        //             SetStd<Edge*>* succs = state->getSuccessors(a);
+        //             if (succs) {
+        //                 numEdges += succs->size();
+        //             }
+        //         }
+        //     }
+        // }
+        // std::cout << "buchi: " << buchi->getStates()->size() << " states, " << numEdges << " edges" << std::endl;
+        // std::cout << buchi->getNbSCCs() << " SCCs (" << buchi->getNbAcceptingSCCs() << " accepting)" << std::endl;
         // buchi->print();
 
         Automaton* modBuchi = Automaton::removeSilentTransitions(buchi, LimSupAvg, true);
-        int numEdges2 = 0;
-        for (size_t s = 0; s < modBuchi->getStates()->size(); ++s) {
-            State* state = modBuchi->getStates()->at(s);
-            if (state) {
-                for (size_t a = 0; a < modBuchi->getAlphabet()->size(); ++a) {
-                    SetStd<Edge*>* succs = state->getSuccessors(a);
-                    if (succs) {
-                        numEdges2 += succs->size();
-                    }
-                }
-            }
-        }
-        std::cout << "modBuchi: " << modBuchi->getStates()->size() << " states, " << numEdges2 << " edges" << std::endl;
-        std::cout << modBuchi->getNbSCCs() << " SCCs (" << modBuchi->getNbAcceptingSCCs() << " accepting)" << std::endl;
+        // int numEdges2 = 0;
+        // for (size_t s = 0; s < modBuchi->getStates()->size(); ++s) {
+        //     State* state = modBuchi->getStates()->at(s);
+        //     if (state) {
+        //         for (size_t a = 0; a < modBuchi->getAlphabet()->size(); ++a) {
+        //             SetStd<Edge*>* succs = state->getSuccessors(a);
+        //             if (succs) {
+        //                 numEdges2 += succs->size();
+        //             }
+        //         }
+        //     }
+        // }
+        // std::cout << "modBuchi: " << modBuchi->getStates()->size() << " states, " << numEdges2 << " edges" << std::endl;
+        // std::cout << modBuchi->getNbSCCs() << " SCCs (" << modBuchi->getNbAcceptingSCCs() << " accepting)" << std::endl;
         // modBuchi->print();
         
         bool res = modBuchi->emptiness_LimAvg_with_final(threshold);
@@ -5404,20 +6418,20 @@ bool NestedAutomaton::emptiness_monotonic_nesting_min_max_supremum(value_functio
     Automaton* unnested = new Automaton(newname, parser, sync_register);
     delete parser;
 
-        int numEdges = 0;
-        for (size_t s = 0; s < unnested->getStates()->size(); ++s) {
-            State* state = unnested->getStates()->at(s);
-            if (state) {
-                for (size_t a = 0; a < unnested->getAlphabet()->size(); ++a) {
-                    SetStd<Edge*>* succs = state->getSuccessors(a);
-                    if (succs) {
-                        numEdges += succs->size();
-                    }
-                }
-            }
-        }
-        std::cout << "unnested: " << unnested->getStates()->size() << " states, " << numEdges << " edges" << std::endl;
-        std::cout << unnested->getNbSCCs() << " SCCs (" << unnested->getNbAcceptingSCCs() << " accepting)" << std::endl;
+        // int numEdges = 0;
+        // for (size_t s = 0; s < unnested->getStates()->size(); ++s) {
+        //     State* state = unnested->getStates()->at(s);
+        //     if (state) {
+        //         for (size_t a = 0; a < unnested->getAlphabet()->size(); ++a) {
+        //             SetStd<Edge*>* succs = state->getSuccessors(a);
+        //             if (succs) {
+        //                 numEdges += succs->size();
+        //             }
+        //         }
+        //     }
+        // }
+        // std::cout << "unnested: " << unnested->getStates()->size() << " states, " << numEdges << " edges" << std::endl;
+        // std::cout << unnested->getNbSCCs() << " SCCs (" << unnested->getNbAcceptingSCCs() << " accepting)" << std::endl;
 
     weight_t top = unnested->compute_top_with_final(infinite_aggregator);
     const bool result = (top >= 1);
@@ -6066,20 +7080,20 @@ bool NestedAutomaton::emptiness_monotonic_nesting_min_max(value_function_t infin
     Automaton* unnested = new Automaton(newname, parser, sync_register);
     // unnested->print();
 
-        int numEdges = 0;
-        for (size_t s = 0; s < unnested->getStates()->size(); ++s) {
-            State* state = unnested->getStates()->at(s);
-            if (state) {
-                for (size_t a = 0; a < unnested->getAlphabet()->size(); ++a) {
-                    SetStd<Edge*>* succs = state->getSuccessors(a);
-                    if (succs) {
-                        numEdges += succs->size();
-                    }
-                }
-            }
-        }
-        std::cout << "unnested: " << unnested->getStates()->size() << " states, " << numEdges << " edges" << std::endl;
-        std::cout << unnested->getNbSCCs() << " SCCs (" << unnested->getNbAcceptingSCCs() << " accepting)" << std::endl;
+        // int numEdges = 0;
+        // for (size_t s = 0; s < unnested->getStates()->size(); ++s) {
+        //     State* state = unnested->getStates()->at(s);
+        //     if (state) {
+        //         for (size_t a = 0; a < unnested->getAlphabet()->size(); ++a) {
+        //             SetStd<Edge*>* succs = state->getSuccessors(a);
+        //             if (succs) {
+        //                 numEdges += succs->size();
+        //             }
+        //         }
+        //     }
+        // }
+        // std::cout << "unnested: " << unnested->getStates()->size() << " states, " << numEdges << " edges" << std::endl;
+        // std::cout << unnested->getNbSCCs() << " SCCs (" << unnested->getNbAcceptingSCCs() << " accepting)" << std::endl;
 
     delete parser;
 
@@ -6833,7 +7847,7 @@ bool NestedAutomaton::isNonEmpty(value_function_t infVal, value_function_t finVa
         else if (infVal == LimSupAvg) {
             return this->emptiness_Avg_SumPlus(x);
         }
-        else { // (LimInfAvg, SumPlus) nonemptiness is open
+        else {
             QUAK_FAIL("isNonEmpty: unsupported infinite aggregator with SumPlus");
         }
     }
@@ -6848,41 +7862,33 @@ bool NestedAutomaton::isNonEmpty(value_function_t infVal, value_function_t finVa
             NestedAutomaton* det_nwa = nullptr;
             NestedAutomaton* sync_nwa;
             std::vector<bool> complete_flags;
+            unsigned long long c_bound;
 
             if (this->isDeterministicNested() && this->isCompleteNested(&complete_flags)) {
+                c_bound = compute_c_bound(this);
                 sync_nwa = this->synchronizeChildren();
             }
             else if (this->isDeterministicNested() && !this->isCompleteNested(&complete_flags)) {
                 det_nwa = this->makeCompleteNested(&complete_flags);
+                c_bound = compute_c_bound(this);
                 sync_nwa = det_nwa->synchronizeChildren();
             }
             else {
                 det_nwa = this->determinizeWithMacroAlphabet();
+                c_bound = compute_c_bound(this);
                 sync_nwa = det_nwa->synchronizeChildren();
             }
-
-            Automaton* flat = sync_nwa->flatten_Avg_SumMinus();
-            weight_t topFlat = flat->getTopValue(infVal);
+            sync_nwa->print();
+            Automaton* flat = sync_nwa->flatten_Avg_SumMinus(c_bound);
+            flat->print();
+            Automaton* nonSilent = Automaton::removeSilentTransitions(flat, infVal, true);
+            nonSilent->print();
+            bool res = nonSilent->emptiness_LimAvg_with_final(x);
 
             delete flat;
             delete sync_nwa;
             delete det_nwa;
-
-            return (topFlat >= x);
-
-            // NestedAutomaton* det_nwa;
-            // if (this->isDeterministicAndCompleteNested()) {
-            //     det_nwa = this;
-            // } else {
-            //     det_nwa = this->determinizeWithMacroAlphabet();
-            // }
-            // NestedAutomaton* sync_nwa = det_nwa->synchronizeChildren();
-            // Automaton* flat = sync_nwa->flatten_Avg_SumMinus();
-            // auto topFlat = flat->getTopValue(infVal);
-            // delete flat;
-            // delete sync_nwa;
-            // delete det_nwa;
-            // return (topFlat >= x);
+            return res;
         }
         else {
             QUAK_FAIL("isNonEmpty: unsupported infinite aggregator with SumMinus");

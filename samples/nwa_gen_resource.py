@@ -174,8 +174,8 @@ def generate_resource_consumption_automaton(n: int, k: int) -> str:
 
 def main() -> None:
     # Hardcode bounds here.
-    N_MAX = 5
-    K_MAX = 5
+    N_MAX = 10
+    K_MAX = 10
 
     out_dir = Path("generated_resource_consumption")
     out_dir.mkdir(parents=True, exist_ok=True)

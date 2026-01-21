@@ -150,23 +150,20 @@ def generate_bounded_pending_automaton(n: int, k: int, q0_is_final: bool) -> str
 
 def main() -> None:
     # Hardcode bounds here.
-    N_MAX = 200
-    K_MAX = 200
-    N_LIST = [1, 2, 3, 4, 5, 8, 16, 32, 64, 128]
-    K_LIST = [1, 2, 3, 4, 5, 8, 16, 32, 64, 128, 256]
+    N_LIST = [1, 2, 3, 4, 5]
+    K_LIST = [1, 2, 3, 4, 5]
     Q0_IS_FINAL = True
 
     out_dir = Path("generated_response_time")
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # for n in range(1, N_MAX + 1):
-    #     for k in range(1, K_MAX + 1):
     for n in N_LIST:
         for k in K_LIST:
-            txt = generate_bounded_pending_automaton(n, k, Q0_IS_FINAL)
-            path = out_dir / f"response_n{n}_k{k}.txt"
-            path.write_text(txt, encoding="utf-8")
-            print(f"Wrote {path}  (n={n}, k={k})")
+            if (k >= n):
+                txt = generate_bounded_pending_automaton(n, k, Q0_IS_FINAL)
+                path = out_dir / f"response_n{n}_k{k}.txt"
+                path.write_text(txt, encoding="utf-8")
+                print(f"Wrote {path}  (n={n}, k={k})")
 
 
 if __name__ == "__main__":
