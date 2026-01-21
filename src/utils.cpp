@@ -27,7 +27,33 @@ const char *valueFunctionToStr(value_function_t v) {
     case LimInfAvg: return "LimInfAvg";
     case LimSupAvg: return "LimSupAvg";
     case Avg: return "Avg";
+    default: break;
   }
   abort();
 }
 
+// Finite aggregator parsing for nested automata
+value_function_t getFiniteAggregator(const char *str) {
+#define CMP(S) ((strncmp(str, (S), sizeof(S))) == 0)
+    if (CMP("Max") || CMP("Max_f")) { return Max_f; }
+    if (CMP("Min") || CMP("Min_f")) { return Min_f; }
+    if (CMP("SumB") || CMP("SumBound")) { return SumB; }
+    if (CMP("SumPlus")) { return SumPlus; }
+    if (CMP("SumMinus")) { return SumMinus; }
+#undef CMP
+
+    std::cerr << "Unknown finite aggregator: " << str << "\n";
+    abort();
+}
+
+const char *finiteAggregatorToStr(value_function_t v) {
+  switch(v) {
+    case Max_f: return "Max";
+    case Min_f: return "Min";
+    case SumB: return "SumB";
+    case SumPlus: return "SumPlus";
+    case SumMinus: return "SumMinus";
+    default: break;
+  }
+  abort();
+}
