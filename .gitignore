@@ -22,6 +22,7 @@ Makefile
 *.dylib
 *.exe
 quak-main
+/quak
 
 # Ignore executables in tests/ and /experiments (but not source)
 /tests/
