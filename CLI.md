@@ -1,6 +1,15 @@
 # QuAK CLI Documentation
 
-The QuAK command-line interface supports both **regular** and **nested** quantitative automata. File type is automatically detected based on the presence of the `@PARENT` marker.
+## Build
+
+```bash
+mkdir -p build && cd build
+cmake ..
+make -j4
+cd ..
+```
+
+The executable `quak` is placed in the project root.
 
 ## Usage
 
@@ -8,116 +17,79 @@ The QuAK command-line interface supports both **regular** and **nested** quantit
 ./quak [OPTIONS] automaton-file [ACTION ...]
 ```
 
-### Global Options
-
-| Option | Description |
-|--------|-------------|
-| `-cputime` | Display execution time in milliseconds |
-| `-v` | Verbose output |
-| `-d` | Dump automaton structure |
-| `-debug` | Show detailed debug information |
-| `-print-witness` | Print witness word when available |
+### Options
+| Option           | Description          |
+| ---------------- | -------------------- |
+| `-cputime`       | Show execution time  |
+| `-debug`         | Verbose debug output |
+| `-print-witness` | Print witness word   |
 
 ---
 
-## Regular Automata
+## Library Functions
 
-For automata files **without** the `@PARENT` marker.
+### Non-Nested Automata
 
-### Aggregators (VALF)
-`Inf | Sup | LimInf | LimSup | LimInfAvg | LimSupAvg`
+| #   | Library Function            | CLI Command                  |
+| --- | --------------------------- | ---------------------------- |
+| 1   | `A->isNonEmpty(Val, v)`     | `non-empty VALF <weight>`    |
+| 2   | `A->isUniversal(Val, v)`    | `universal VALF <weight>`    |
+| 3   | `A->isIncludedIn(B, Val)`   | `isIncluded VALF file2`      |
+| 4   | `A->isEquivalentTo(B, Val)` | `isEquivalent VALF file2`    |
+| 5   | `A->isConstant(Val)`        | `constant VALF`              |
+| 6   | `A->isSafe(Val)`            | `safe VALF`                  |
+| 7   | `A->isLive(Val)`            | `live VALF`                  |
+| 8   | `A->getTopValue(Val)`       | `top-value VALF`             |
+| 9   | `A->getBottomValue(Val)`    | `bottom-value VALF`          |
+| 10  | `safetyClosure(A, Val)`     | `safetyComponent VALF out`   |
+| 11  | `livenessComponent(A, Val)` | `livenessComponent VALF out` |
 
-### Actions
+**Aggregators (VALF):** `Inf | Sup | LimInf | LimSup | LimInfAvg | LimSupAvg`
 
-```bash
-# Statistics
-./quak file.txt stats
+### Nested Automata
 
-# Emptiness/Non-emptiness
-./quak file.txt non-empty VALF <threshold>
-./quak file.txt empty VALF <threshold>
-./quak file.txt universal VALF <threshold>
+| #   | Library Function                     | CLI Command                                 |
+| --- | ------------------------------------ | ------------------------------------------- |
+| 1   | `NA->isNonEmpty(InfVal, FinVal, x)`  | `non-empty VALF FINVAL <threshold> [bound]` |
+| 2   | `NA->isUniversal(InfVal, FinVal, x)` | `universal VALF FINVAL <threshold> [bound]` |
 
-# Properties
-./quak file.txt constant VALF
-./quak file.txt safe VALF
-./quak file.txt live VALF
+**Finite Aggregators (FINVAL):** `Max | Min | SumB | SumPlus | SumMinus`
 
-# Comparisons
-./quak file.txt isIncluded VALF file2.txt
-./quak file.txt isEquivalent VALF file2.txt
+Nested files are auto-detected by the `@PARENT` marker.
 
-# Decomposition
-./quak file.txt livenessComponent VALF output.txt
-./quak file.txt safetyComponent VALF output.txt
-./quak file.txt decompose VALF safety.txt liveness.txt
+### Supported Nested Combinations
 
-# Monitoring
-./quak file.txt eval <Inf|Sup|Avg> word-file
-./quak file.txt monitor <Inf|Sup|Avg> word-file
-```
-
----
-
-## Nested Automata
-
-For automata files **with** the `@PARENT` marker.
-
-### Infinite Aggregators (VALF)
-`Inf | Sup | LimInf | LimSup | LimInfAvg | LimSupAvg`
-
-### Finite Aggregators (FINVAL)
-`Max | Min | SumB | SumPlus | SumMinus`
-
-### Actions
-
-```bash
-# Non-emptiness: exists word with value >= threshold
-./quak nested.txt non-empty VALF FINVAL <threshold> [bound]
-
-# Universality: all words have value >= threshold
-./quak nested.txt universal VALF FINVAL <threshold> [bound]
-```
-
-### Supported Combinations
-
-| Decision | Finite Aggregator | Infinite Aggregator | Notes |
-|----------|-------------------|---------------------|-------|
-| non-empty | SumPlus | Inf, LimInf, Sup, LimSup | ✅ |
-| non-empty | SumPlus | LimInfAvg, LimSupAvg | ✅ |
-| non-empty | SumMinus | LimInfAvg, LimSupAvg | ✅ Only Avg |
-| non-empty | Max, Min | All | ✅ |
-| non-empty | SumB | All | ✅ Requires `bound` |
-| universal | Max, Min, SumB | Inf, LimInf, Sup, LimSup | ✅ |
-| universal | SumPlus, SumMinus | * | ❌ Undecidable |
-| universal | * | LimInfAvg, LimSupAvg | ❌ Undecidable |
+| Decision  | Finite Agg     | Infinite Agg             |
+| --------- | -------------- | ------------------------ |
+| non-empty | SumPlus        | All                      |
+| non-empty | SumMinus       | LimInfAvg, LimSupAvg     |
+| non-empty | Max, Min, SumB | All                      |
+| universal | Max, Min, SumB | Inf, LimInf, Sup, LimSup |
 
 ---
 
 ## Examples
 
 ```bash
-# Regular automaton: check if non-empty with LimInf threshold 5
-./quak -cputime samples/regular.txt non-empty LimInf 5
+# Non-nested
+./quak A.txt non-empty LimInf 0
+./quak A.txt top-value LimSup
+./quak A.txt isEquivalent LimInf B.txt
+./quak A.txt decompose LimInf safe.txt live.txt
+./quak -print-witness A.txt non-empty LimInf 0
 
-# Nested automaton: check emptiness with SumPlus finite aggregator
-./quak samples/nested/avg_resp_2_2.txt non-empty LimInf SumPlus 1
-
-# Nested automaton with debug info
-./quak -debug nested.txt non-empty LimInf Max 0
-
-# Nested automaton: universality with bound
-./quak nested.txt universal Sup SumB 2 10
+# Nested
+./quak nested.txt non-empty LimInf SumPlus 1
+./quak nested.txt universal LimInf Max 1
+./quak nested.txt non-empty LimSupAvg SumB 2 10
 ```
 
-## Output Format
+## Output
 
 ```
 ----------
-isNonEmpty(LimInf, SumPlus, threshold=1) = 1
-Cputime: 8 ms (with -cputime flag)
+isNonEmpty(LimInf, weight=0) = 1
 ----------
 ```
 
-- Result `1` = true (non-empty / universal)
-- Result `0` = false (empty / not universal)
+Result: `1` = true, `0` = false

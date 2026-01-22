@@ -90,6 +90,8 @@ static void printUsage(const char *bin) {
   std::cerr << "  constant VALF\n";
   std::cerr << "  safe VALF\n";
   std::cerr << "  live VALF\n";
+  std::cerr << "  top-value VALF\n";
+  std::cerr << "  bottom-value VALF\n";
   std::cerr << "  isIncluded VALF automaton2-file\n";
   std::cerr << "  isIncludedBool VALF automaton2-file\n";
   std::cerr << "  isEquivalent VALF automaton2-file\n";
@@ -214,6 +216,10 @@ Options parseArgs(int argc, char *argv[]) {
       cl.op = Operation::isSafe;
     } else if (streq(argv[idx], "live")) {
       cl.op = Operation::isLive;
+    } else if (streq(argv[idx], "top-value")) {
+      cl.op = Operation::topValue;
+    } else if (streq(argv[idx], "bottom-value")) {
+      cl.op = Operation::bottomValue;
     } else if (streq(argv[idx], "isIncluded")) {
       cl.op = Operation::isIncluded;
     } else if (streq(argv[idx], "isIncludedBool")) {
@@ -230,6 +236,8 @@ Options parseArgs(int argc, char *argv[]) {
       cl.op = Operation::isEquivalentBool;
     } else if (streq(argv[idx], "monitor")) {
       cl.op = Operation::monitor;
+    } else if (streq(argv[idx], "eval")) {
+      cl.op = Operation::eval;
     }
 
 
@@ -323,7 +331,9 @@ Options parseArgs(int argc, char *argv[]) {
       }
     } else if (cl.op == Operation::isConstant ||
                cl.op == Operation::isSafe ||
-               cl.op == Operation::isLive) {
+               cl.op == Operation::isLive ||
+               cl.op == Operation::topValue ||
+               cl.op == Operation::bottomValue) {
       if (idx + 1 >= argc) {
         return Options::createError("Invalid arguments for " + std::string(argv[idx]));
       }
@@ -358,7 +368,7 @@ Options parseArgs(int argc, char *argv[]) {
       O.actions.push_back(cl);
 
       idx += 4;
-    } else if (cl.op == Operation::monitor) {
+    } else if (cl.op == Operation::monitor || cl.op == Operation::eval) {
       if (idx + 2 >= argc) {
         return Options::createError("Invalid arguments for " + std::string(argv[idx]));
       }
@@ -633,6 +643,52 @@ int main(int argc, char **argv) {
         }
         break;
 
+      case Operation::topValue:
+        value_fun = std::get<value_function_t>(act.args[0]);
+        std::cout << "topValue("
+                  << valueFunctionToStr(value_fun)
+                  << ") = ";
+        {
+          weight_t r;
+          if (opts.print_witness || !act.witness_file.empty()) {
+            TIMER_START
+            r = A->getTopValue(value_fun, &witness);
+            TIMER_END
+          } else {
+            TIMER_START
+            r = A->getTopValue(value_fun);
+            TIMER_END
+          }
+          std::cout << r << "\n";
+          processWitness(witness, act, opts);
+          TIMER_PRINT("Cputime: ")
+          PRINT_DIV
+        }
+        break;
+
+      case Operation::bottomValue:
+        value_fun = std::get<value_function_t>(act.args[0]);
+        std::cout << "bottomValue("
+                  << valueFunctionToStr(value_fun)
+                  << ") = ";
+        {
+          weight_t r;
+          if (opts.print_witness || !act.witness_file.empty()) {
+            TIMER_START
+            r = A->getBottomValue(value_fun, &witness);
+            TIMER_END
+          } else {
+            TIMER_START
+            r = A->getBottomValue(value_fun);
+            TIMER_END
+          }
+          std::cout << r << "\n";
+          processWitness(witness, act, opts);
+          TIMER_PRINT("Cputime: ")
+          PRINT_DIV
+        }
+        break;
+
       case Operation::isIncluded:
       case Operation::isIncludedBool:
         {
@@ -767,6 +823,8 @@ int main(int argc, char **argv) {
 
         writeAutomaton(safeA.get(), std::get<std::string>(act.args[1]));
         writeAutomaton(liveA.get(), std::get<std::string>(act.args[2]));
+        std::cout << "Safety component written to: " << std::get<std::string>(act.args[1]) << "\n";
+        std::cout << "Liveness component written to: " << std::get<std::string>(act.args[2]) << "\n";
         TIMER_PRINT("Cputime: ")
         PRINT_DIV
         }
@@ -787,6 +845,37 @@ int main(int argc, char **argv) {
           monEvalTrace(M.get(), trace);
           TIMER_END
           TIMER_PRINT("Cputime (incl. prints): ")
+          PRINT_DIV
+        }
+        break;
+
+      case Operation::eval:
+        value_fun = std::get<value_function_t>(act.args[0]);
+        std::cout << "eval("
+                  << valueFunctionToStr(value_fun)
+                  << ") = ";
+
+        {
+          auto M = std::unique_ptr<Monitor>(
+            new Monitor(A.get(), value_fun)
+          );
+
+          auto trace = std::get<std::string>(act.args[1]);
+          std::ifstream stream(trace);
+          if (!stream.is_open()) {
+            std::cerr << "Failed opening file: " << trace << "\n";
+            return -1;
+          }
+
+          std::string symbol;
+          weight_t result = 0;
+          TIMER_START
+          while (stream >> symbol) {
+            result = M->next(symbol);
+          }
+          TIMER_END
+          std::cout << result << "\n";
+          TIMER_PRINT("Cputime: ")
           PRINT_DIV
         }
         break;
