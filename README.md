@@ -114,16 +114,14 @@ Not every (finVal, infVal) pair is supported for every decision problem:
 
 | finVal | Supported infVal |
 |--------|-----------------|
-| Max_f, Min_f | Inf, Sup, LimInf, LimSup, LimInfAvg, LimSupAvg |
-| SumB | Inf, Sup, LimInf, LimSup, LimInfAvg, LimSupAvg |
+| Max_f, Min_f, SumB, SumMinus | Inf, Sup, LimInf, LimSup, LimInfAvg, LimSupAvg |
 | SumPlus | Inf, Sup, LimInf, LimSup, LimSupAvg |
-| SumMinus | LimInfAvg, LimSupAvg |
 
 **Universality:**
 
 | finVal | Supported infVal |
 |--------|-----------------|
-| Max_f, Min_f, SumB | Inf, Sup, LimInf, LimSup |
+| Max_f, Min_f, SumB, SumPlus, SumMinus | Inf, Sup, LimInf, LimSup |
 
 ---
 
@@ -383,9 +381,9 @@ Non-determinism is resolved by the **Supremum** function: among all possible run
 
 ### Acceptance
 
-- **Parent**: Accepts infinite runs. By default all parent states are final (unless explicit final states are specified), so the run is always accepted and the value is determined by the aggregation functions.
+- **Parent**: A parent run is accepting if it visits a final state infinitely often **and** invokes a non-silent child infinitely often. By default all parent states are final (unless explicit final states are declared), so acceptance reduces to the non-silent child condition.
 - **Children**: Accept finite words. A child run terminates and produces a value when it reaches a final state.
-- **Flattened automata**: Use Buchi acceptance (the flattened run must visit accepting states infinitely often).
+- **Flattened automata**: Use Büchi acceptance. The flattening encodes both conditions (parent final states and infinitely many non-silent invocations) into the accepting-state set of the flattened automaton.
 
 ---
 
