@@ -1,0 +1,50 @@
+# Test Case 10: Three Children
+# =============================
+#
+# Structure:
+#   - Parent: Two states
+#       q0 --(a,1)--> q1
+#       q1 --(a,2)--> q0
+#   - Child 0: Returns 1
+#       s0 --(a,1)--> s1 (final)
+#       s1 --(a,0)--> s1
+#   - Child 1: Returns 2
+#       t0 --(a,2)--> t1 (final)
+#       t1 --(a,0)--> t1
+#   - Child 2: Returns 3
+#       u0 --(a,3)--> u1 (final)
+#       u1 --(a,0)--> u1
+#
+# Properties:
+#   - getChildrenSize() = 3
+#   - All children are deterministic
+#   - All children are complete
+#   - Each child has a distinct return value
+#
+# Expected Results:
+#   - synchronizeChildren() should merge 3 children into 1
+#   - The synchronized child should have product states
+#   - Synchronized child states >= max(2, 2, 2) = 2
+#   - Actually product = 2 * 2 * 2 = 8 states (upper bound)
+#
+# For flatten_regular(Max_f):
+#   - Max across children = max(1, 2, 3) = 3
+
+@PARENT
+a : 1, q0 -> q1
+a : 2, q1 -> q0
+
+@CHILD 0
+final: s1
+a : 1, s0 -> s1
+a : 0, s1 -> s1
+
+@CHILD 1
+final: t1
+a : 2, t0 -> t1
+a : 0, t1 -> t1
+
+@CHILD 2
+final: u1
+a : 3, u0 -> u1
+a : 0, u1 -> u1

@@ -1,0 +1,15 @@
+@PARENT
+a : 1, p0 -> p0
+b : 2, p0 -> p0
+
+@CHILD 0
+
+@CHILD 1
+final: f1
+a : 2, c0 -> f1
+b : 2, c0 -> f1
+
+@CHILD 2
+final: g1
+a : 8, d0 -> g1
+b : 8, d0 -> g1

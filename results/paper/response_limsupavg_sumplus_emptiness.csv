@@ -1,0 +1,2 @@
+experiment,n,k,file,problem,infval,finval,threshold,rep,timeout_s,warmup,status,mean_s,result01
+response_limsupavg_sumplus_emptiness,7,10,samples/generated_response_time_2/response_n7_k10.txt,emptiness,LimSupAvg,SumPlus,10.0,1,600.0,0,TIMEOUT,,

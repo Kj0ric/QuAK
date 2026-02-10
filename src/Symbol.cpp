@@ -1,7 +1,7 @@
 
 #include "Symbol.h"
-#include "utility.h"
 #include "Automaton.h"
+#include "utility.h"
 
 unsigned int ID_of_Symbols = 0;
 void Symbol::Symbol::RESET() { ID_of_Symbols = 0; }

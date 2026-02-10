@@ -1,0 +1,11 @@
+@PARENT
+final: q0
+a : 0, q0 -> q0
+b : 1, q0 -> q0
+
+@CHILD 0
+# dummy
+
+@CHILD 1
+final: s1
+a : 0, s0 -> s1

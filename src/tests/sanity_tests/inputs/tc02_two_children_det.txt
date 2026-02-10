@@ -1,0 +1,42 @@
+# Test Case 02: Two Children with Different Return Values
+# ========================================================
+#
+# Structure:
+#   - Parent: q0 --(a,1)--> q1, q1 --(a,1)--> q1
+#   - Child 0: Empty
+#   - Child 1: s0 --(a,3)--> s1 (final), s1 --(a,0)--> s1
+#
+# Properties:
+#   - Parent is deterministic: YES
+#   - Parent is complete: NO (q0 has no 'a' to q0 after first step... wait let me fix)
+#   - Child 1 is deterministic: YES
+#   - Child 1 is complete: YES (s1 has self-loop)
+#
+# Child 1 behavior:
+#   - First 'a': goes s0 -> s1, accumulates weight 3
+#   - Subsequent 'a's: stays at s1, accumulates weight 0
+#   - For SumB with bound >= 3: returns 3
+#   - For Max_f: returns 3 (max weight seen)
+#   - For Min_f: returns 0 (min weight on path to final)
+#
+# Expected Results:
+#   - flatten_regular(Max_f): output automaton should exist
+#   - flatten_regular(Min_f): output automaton should exist
+#   - flatten_regular(SumB, 5): child contributes 3
+#
+# isNonEmpty expectations:
+#   - isNonEmpty(LimSup, Max_f, 0) = true
+#   - isNonEmpty(LimSup, Max_f, 3) = true
+#   - isNonEmpty(LimSup, Max_f, 4) = false
+#   - isNonEmpty(LimInf, Min_f, 0) = true
+
+@PARENT
+a : 1, q0 -> q1
+a : 1, q1 -> q1
+
+@CHILD 0
+
+@CHILD 1
+final: s1
+a : 3, s0 -> s1
+a : 0, s1 -> s1

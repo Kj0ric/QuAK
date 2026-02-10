@@ -1,0 +1,26 @@
+# Priority Tasks Nested Automaton
+# Parent forces alternation between high-priority (h) and low-priority (l) tasks.
+# 'h' = high priority task, 'l' = low priority task, 'd' = done
+# Child measures task completion cost with different weights for h vs l.
+
+@PARENT
+h : 1, do_high -> do_low
+l : 0, do_high -> do_high
+d : 0, do_high -> do_high
+l : 1, do_low -> do_high
+h : 0, do_low -> do_low
+d : 0, do_low -> do_low
+
+@CHILD 0
+
+@CHILD 1
+final: complete
+h : 4, start -> high
+l : 2, start -> low
+d : 0, start -> complete
+h : 3, high -> high
+l : 0, high -> high
+d : 0, high -> complete
+h : 0, low -> low
+l : 1, low -> low
+d : 0, low -> complete

@@ -1,0 +1,9 @@
+@PARENT
+a : 1, p0 -> p0
+
+@CHILD 0
+
+@CHILD 1
+final: c2
+a : -3, c0 -> c1
+a : -5, c1 -> c2

@@ -1,11 +1,9 @@
 #ifndef QUAK_SET_H_
 #define QUAK_SET_H_
 
-#include <iostream>
 #include <vector>
 #include <string>
 #include <set>
-#include <unordered_set>
 #include <list>
 #include "hash.h"
 
@@ -33,6 +31,7 @@ public:
 	void insert(T_element element) { this->all.insert(element); }
 	void erase(T_element element) {  this->all.erase(element); }
 	bool contains (T_element element) const { return all.count(element) > 0; };
+	auto empty() const { return (this->all.size() == 0); }
 
 	std::string toString (std::string (*f) (T_element element)) const {
 		std::string s = "";

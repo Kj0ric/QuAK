@@ -1,48 +1,46 @@
-/Debug/
-.project
-.cproject
-.settings
-*.out
-
-# Build directories
-/build
-/cmake-build-*/
-CMakeFiles/
-/src/CMakeFiles/
+# CMake build artifacts
 CMakeCache.txt
+CMakeFiles/
 cmake_install.cmake
 CTestTestfile.cmake
 Makefile
+Testing/
+/build/
+/cmake-build-*/
 
-# Compiled binaries and libraries
+# Compiled objects and libraries
 *.o
 *.a
 *.so
-*.out
 *.dylib
+
+# Built executables
+*.out
 *.exe
-quak-main
-/quak
+/quak-nested
+/quak-experiment-single
 
-# Ignore executables in tests/ and /experiments (but not source)
-/tests/
-/experiments/
-/src/tests/
-!tests/*.cpp
-!tests/*.h
-!tests/*.py
-!experiments/*.cpp
-!experiments/*.h
-!experiments/*.py
-
-# MacOS
-.DS_Store
-
-# IDE files
+# IDE and editor files
 .vscode/
 .idea/
-
 .cache/
+.project
+.cproject
+.settings/
+*.swp
+*~
 
-# Environment
+# OS files
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.pyc
 venv/
+
+# Experiment results (regenerable)
+/results/*.csv
+
+# Legacy / Eclipse
+/Debug/

@@ -5,9 +5,6 @@
 
 #include "ContextOf.h"
 #include "../Word.h"
-#include "../State.h"
-#include "../Set.h"
-#include "../Map.h"
 
 
 class PostContextVariable : protected MapStd<State*, SetStd<std::pair<ContextOf*,std::pair<Word*, weight_t>>>*> {

@@ -1,455 +1,522 @@
-# QuAK: Quantitative Automata Kit
+# QuAK: Quantitative Automata Kit (Nested Quantitative Automata Extension)
 
-QuAK is an open source C++ library that helps automate the analysis of quantitative automata.
-Currently, QuAK supports the classes of quantitative automata with the following value functions:
-$\mathsf{Inf}, \mathsf{Sup}, \mathsf{LimInf}, \mathsf{LimSup}, \mathsf{LimInfAvg}, \mathsf{LimSupAvg}$.
+QuAK is an open source C++ library for analyzing quantitative automata. This version extends the original QuAK with support for **nested quantitative automata (NQA)** -- hierarchical automata where a parent automaton invokes finite-word child automata during its infinite run.
 
-Let $\mathsf{Val}$ be one of the value functions above. 
-Given two $\mathsf{Val}$ automata $\mathcal{A}$ and $\mathcal{B}$ with a rational number $v \in \mathbb{Q}$, QuAK is able to solve the following problems (whenever known to be computable):
-1. Check if $\mathcal{A}$ is non-empty with respect to $v$.
-2. Check if $\mathcal{A}$ is universal with respect to $v$.
-3. Check if $\mathcal{A}$ is included in $\mathcal{B}$.
-4. Check if $\mathcal{A}$ defines a constant function.
-5. Check if $\mathcal{A}$ defines a safety property.
-6. Check if $\mathcal{A}$ defines a liveness property.
-7. Compute the top value $\top$ of $\mathcal{A}$.
-8. Compute the bottom value $\bot$ of $\mathcal{A}$.
-9. Compute the safety closure of $\mathcal{A}$.
-10. Compute the safety-liveness decomposition of $\mathcal{A}$.
-11. Construct and execute a monitor for $\mathcal{A}$.
+## Overview
+
+A nested quantitative automaton consists of:
+- A **parent automaton** that reads an infinite word and invokes child automata along the way.
+- One or more **child automata** that process finite sub-words and produce a return value.
+- Two aggregation functions:
+  - **Finite aggregator (finVal)**: aggregates the weights within each child run into a single return value.
+  - **Infinite aggregator (infVal)**: aggregates the sequence of child return values over the infinite parent run.
+
+Given a nested automaton and a threshold, QuAK can answer:
+1. **Non-emptiness**: Does there exist an infinite word whose value is >= the threshold?
+2. **Universality**: Do all infinite words have value >= the threshold?
+
+---
 
 ## Building
-### Building through Dockerfile
 
-You can build a container with QuAK using Docker or Podman and the provided Dockerfile
-in the top-level project directory (there is also another Dockerfile in the directory `experiments/`,
-which does more things than just building QuAK.). From the top-level directory, run:
-```
-docker build . -t quak
-```
+### Requirements
 
-Note: the container built by the other Dockerfile (`experiments/Dockerfile`) is
-also named "quak" (if you precisely follow the instructions from
-`experiments/README.md`). The command above will then overwrite the image. To
-avoid this, change `-t quak` to `-t <new_name>` where `<new_name>` is the name of
-the container different from the name of the container with the experiments. Do
-not forget to use this new name when running the container later.
+- C++17 compatible compiler (g++ recommended)
+- CMake (>= 3.9)
+- Make
 
-Once you have the docker image built, you can start a terminal inside the docker image as follows:
-```
-docker run --rm -ti quak
-```
+No external dependencies.
 
+### Quick Start
 
-### Building from sources
-
-QuAK has no external dependencies. The only requirements are to have a C++ compiler that supports the C++17 standard or newer,
-and make. Recommended is to have also CMake, which is used by default to configure the project.
-
-#### Using CMake
-
-The easiest way to build QuAK is to use CMake + make. On Ubuntu, you can
-install CMake and Make with the following command:
-
-```
-apt-get install make cmake
-# install also C++ compiler if you do not have one
-# apt-get install g++
-```
-
-Then you can compile QuAK:
-
-```
+```bash
 cmake . -DCMAKE_BUILD_TYPE=Release
 make -j4
 ```
 
-For debug builds, use `Debug` instead of `Release`. You can tweak compile time
-options that enable the optimization of algorithms: use
-`-DENABLE_SCC_SEARCH_OPT=OFF` to turn off an SCC-based optimization of deciding
-language inclusion (and other problems where the inclusion algorithm is used as
-a subroutine).
+This produces:
+- `quak-nested` -- the main CLI executable
 
-To compile the code with link-time (i.e., inter-procedural) optimizations,
-use the option `-DENABLE_IPO=ON`.
+### Build Targets
 
-Once compiled, you can run tests with calling `make test`.
+| Command | What it builds |
+|---------|----------------|
+| `make` | Library + `quak-nested` CLI |
+| `make tests` | All test executables |
+| `make examples` | Example programs |
+| `make experiments` | Experiment runners |
+| `ctest` | Run all tests (must `make tests` first) |
 
+After building, run from the project root:
 
-##### Building with VAMOS integration
+```bash
+# Main CLI
+./quak-nested [OPTIONS] automaton-file [ACTION ...]
 
-First build [VAMOS](https://github.com/ista-vamos/vamos).
-Then run cmake with these parameters:
+# Tests
+make tests        # build test executables
+ctest             # run all tests
+./test_sanity_all # or run individual test executables directly
 
-```
-cmake . -Dvamos_DIR=/path/to/vamos/directory
-make -j4
-```
+# Examples
+make examples
+./example1_basic
+./example2_value_functions
+./example3_response_time
 
-#### Building with the legacy Makefile
-
-If you have trouble building QuAK with CMake, you can try using building it
-only with Make. To do this, run:
-
-```
-make -f Makefile.legacy
-```
-
-This makefile is likely out of date and does not support building tests,
-or integration with VAMOS. It is a subject of removal in the future.
-
-## Input Format
-
-QuAK reads and constructs automata from text files.
-Each automata is represented as a list of transitions of the following format:
-```
-a : v, q -> p
-```
-which encodes a transition from state $q$ to state $p$ with letter $a$ and weight $v$.
-Weight $v$ is either a C float number or an unsigned hexadecimal integer that represents
-the bits of a C float number.
-
-The initial state of the input automaton is the source state of the first transition in its text file.
-
-**Important:** QuAK requires that its input automata are complete (a.k.a. total),
-i.e., for every state $q$ and every letter $a$, there is at least one outgoing
-transition from $q$ with letter $a$.
-
-## Using QuAK (as a library)
-
-To use the library in your program, use the following directive:
-```cpp
-#include "FORKLIFT/inclusion.h"
-#include "Automaton.h"
-#include "Monitor.h"
+# Experiments
+make experiments
+./quak-experiment-single [args]   # single automaton experiment runner
 ```
 
-For a sample program that puts together the demonstrations below, see *examples/sampleProgram.cpp*.
+### Build Options
 
-Below, we consider two $\mathsf{Val}$ automata $\mathcal{A}$ and $\mathcal{B}$ with a rational number $v \in \mathbb{Q}$.
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-DCMAKE_BUILD_TYPE=Release` | Release | Build type (Release / Debug) |
+| `-DENABLE_SCC_SEARCH_OPT=ON` | ON | SCC-based optimization in FORKLIFT |
+| `-DENABLE_IPO=ON` | ON | Link-time (inter-procedural) optimizations |
 
-### Constructing Automata
-To construct an automaton from a file, use the following template:
-```cpp
-Automaton* A = new Automaton("A.txt");
+---
+
+## Value Functions
+
+### Infinite Aggregators (infVal)
+
+Applied over the infinite sequence of child return values:
+
+| Name | Description |
+|------|-------------|
+| `Inf` | Infimum (minimum over the entire run) |
+| `Sup` | Supremum (maximum over the entire run) |
+| `LimInf` | Limit inferior |
+| `LimSup` | Limit superior |
+| `LimInfAvg` | Limit inferior of the running average |
+| `LimSupAvg` | Limit superior of the running average |
+
+### Finite Aggregators (finVal)
+
+Applied to the weights within a single child run to produce a return value:
+
+| Name | Description |
+|------|-------------|
+| `Max_f` | Maximum weight seen during the child run |
+| `Min_f` | Minimum weight seen during the child run |
+| `SumB` | Bounded sum of weights (requires a `bound` parameter) |
+| `SumPlus` | Sum of positive weights |
+| `SumMinus` | Sum of negative weights (negated) |
+
+### Supported Combinations
+
+Not every (finVal, infVal) pair is supported for every decision problem:
+
+**Non-emptiness:**
+
+| finVal | Supported infVal |
+|--------|-----------------|
+| Max_f, Min_f | Inf, Sup, LimInf, LimSup, LimInfAvg, LimSupAvg |
+| SumB | Inf, Sup, LimInf, LimSup, LimInfAvg, LimSupAvg |
+| SumPlus | Inf, Sup, LimInf, LimSup, LimSupAvg |
+| SumMinus | LimInfAvg, LimSupAvg |
+
+**Universality:**
+
+| finVal | Supported infVal |
+|--------|-----------------|
+| Max_f, Min_f, SumB | Inf, Sup, LimInf, LimSup |
+
+---
+
+## Input File Format
+
+### Transition Syntax
+
+Each transition is written as:
 ```
-The value function is unspecified during construction, but it needs to be passed as a parameter to the functions below.
-
-<!-- To use the copy constructor (that also trims and completes the input), use the following:
-```cpp
-Automaton* B = new Automaton(A, valueFunction);
+symbol : weight, source_state -> target_state
 ```
-Here, the value function is needed because the weights of the transitions involving the new sink state depend on the value function. -->
+Comments start with `#`.
 
-### Non-emptiness Check
-To check the non-emptiness of $\mathcal{A}$ with respect to $v$, use the following:
-```cpp
-bool flag = A->isNonEmpty(Val, v);
-```
+### Nested Automaton File Structure
 
-### Universality Check
-To check the universality of $\mathcal{A}$ with respect to $v$, use the following:
-```cpp
-bool flag = A->isUniversal(Val, v);
-```
-
-### Inclusion Check
-To check the inclusion of $\mathcal{A}$ in $\mathcal{B}$, use the following:
-```cpp
-bool flag = A->isIncludedIn(B, Val, booleanized);
-```
-where *booleanized* determines which inclusion algorithm is called.
-If *booleanized* is false, then our quantitative extension of the antichain algorithm is used.
-If *booleanized* is true, then the standard inclusion algorithm (repeatedly booleanizing the quantitative automaton and calling the boolean antichain algorithm) is used.
-By default, *booleanized* is set to false.
-
-### Equivalence Check
-To check the equivalence of $\mathcal{A}$ and $\mathcal{B}$, use the following:
-```cpp
-bool flag = A->isEquivalentTo(B, Val, booleanized);
-```
-where *booleanized* is the same as for the inclusion check.
-
-
-### Constant-function Check
-To check if $\mathcal{A}$ defines a constant function, use the following:
-```cpp
-bool flag = A->isConstant(Val);
-```
-
-### Safety Check
-To check if $\mathcal{A}$ defines a safety property, use the following:
-```cpp
-bool flag = A->isSafe(Val);
-```
-
-### Liveness Check
-To check if $\mathcal{A}$ defines a liveness property, use the following:
-```cpp
-bool flag = A->isLive(Val);
-```
-
-### Top-value Computation
-To compute the top value of $\mathcal{A}$, use the following:
-```cpp
-weight_t top = A->getTopValue(Val);
-```
-
-### Bottom-value Computation
-To compute the bottom value of $\mathcal{A}$, use the following:
-```cpp
-weight_t bot = A->getBottomValue(Val);
-```
-
-### Safety Closure Construction
-To construct the safety closure of $\mathcal{A}$, use the following:
-```cpp
-Automaton* safe_A = safetyClosure(A, Val);
-```
-
-### Safety-Liveness Decomposition
-For the safety component of the decomposition, use the safety closure construction above.
-To construct the liveness component of the decomposition of $\mathcal{A}$, use the following:
-```cpp
-Automaton* live_A = livenessComponent(A, Val);
-```
-
-### Witnesses
-
-All the above-mentioned operations can return a witness for its results: an ultimately periodic word
-that witnesses the returned value. This is done via the optional argument `witness`:
+A nested automaton file contains a `@PARENT` section followed by `@CHILD` sections:
 
 ```
-UltimatelyPeriodicWord *witness;
-bool flag = A->isNonEmpty(Val, v, &witness);
-// ... process witness
-delete witness;
+@PARENT
+a : 1, p0 -> p0
+b : 0, p0 -> p1
+a : 1, p1 -> p0
+b : 0, p1 -> p1
 
-weight_t bot = A->getBottomValue(Val, &witness);
-// ... process witness
-delete witness;
+@CHILD 0
 
-UltimatelyPeriodicWord *witness1, *witness2;
-bool flag = A->isEquivalentTo(B, val, booleanized, &witness1, &witness2);
-// ... process witnesses
-delete witness1;
-delete witness2;
+@CHILD 1
+final: done
+a : 1, count -> count
+b : 0, count -> done
 ```
 
-Note that you must delete the witness manually once you are done with it.
-The witness format is `prefix(cycle)`, e.g., `aa(ab)` is the word `aaababab...`.
+**Sections:**
+- `@PARENT` -- The parent automaton. Weights on parent transitions encode which child automaton is invoked (0 = no child / dummy).
+- `@CHILD 0` -- Dummy child (always present, always empty). A placeholder for parent transitions that do not invoke any child.
+- `@CHILD n` (n >= 1) -- Actual child automata.
 
-### Monitor Construction and Execution
-QuAK can construct monitors from deterministic automata by either reading them from a file or copying an automaton object:
-```cpp
-Monitor* M = new Monitor("A.txt", Val);
-```
-```cpp
-Monitor* M = new Monitor(A, Val);
-```
-where $\mathsf{Val}$ is $\mathsf{Avg}$. 
+**Rules:**
 
-The monitor updates its state by reading a letter of type *std::string* and returning the current value:
-```cpp
-weight_t t = M->next(letter);
-```
-For example, a monitor can process a word file as follows: 
-```cpp
-std::ifstream stream("samples/wordfile.txt");
-std::string symbol;
-while (stream) {
-    stream >> symbol;
-    std::cout << symbol << " -> " << M->next(symbol) << "\n" << std::flush;
-}
-```
-<!-- 
-At any point, the monitor can provide the highest and lowest values achievable from the current state of its input automaton:
-```cpp
-weight_t h = M->getHighest(); 
-weight_t l = M->getLowest();
-``` -->
+1. **Initial state**: The source state of the first transition in each section.
+2. **Child final states**: Every non-dummy child must declare at least one final state with `final: state1 state2 ...`. A child run is accepted when it reaches a final state.
+3. **Parent final states**: All parent states are implicitly final unless explicit final states are declared with `final:` in the `@PARENT` section.
+4. **Child index 0**: Reserved for the dummy child. Must always be present (can be empty).
+5. **Completeness**: All automata (parent and children) should be complete -- for every state and symbol, at least one outgoing transition must exist.
+6. **Alphabet**: Parent and all non-dummy children share the same alphabet.
 
-## Using QuAK (as a tool)
+### Silent Transitions
 
-To use the tool directly, simply compile and follow the instructions below.
+The parent automaton may contain silent transitions by using `SILENT` as the weight value. Silent transitions represent steps where no child is invoked and no value is emitted. Internally, `SILENT` is stored as `std::numeric_limits<float>::max()`. Children should **not** contain silent transitions.
 
-```
-Usage: ./quak [-cputime] [-v] [-d] [-print-witness] automaton-file [ACTION ACTION ...]
-Where ACTIONs are the following, with VALF = <Inf | Sup | LimInf | LimSup | LimSupAvg | LimInfAvg>:
-  stats
-  dump 
-  empty VALF <weight>
-  non-empty VALF <weight>
-  universal VALF <weight>
-  constant VALF
-  safe VALF
-  live VALF
-  isIncluded VALF automaton2-file
-  isIncludedBool VALF automaton2-file
-  isEquivalent VALF automaton2-file
-  livenessComponent VALF output-file
-  safetyComponent VALF output-file
-  decompose VALF safety-output-file liveness-output-file
-  monitor <Inf | Sup | Avg> word-file
-  witness-file file-name
+---
+
+## Using the CLI
+
+### Usage
+
+```bash
+./quak-nested [OPTIONS] automaton-file [ACTION ...]
 ```
 
-The commands *stats* prints the size of the automaton and *dump* prints the automaton. Command *witness-file* instructs the preceding command to write a witness (if any) to the given file.
-Commands *livenessComponent* and *safetyComponent* compute and store the liveness and safety, resp., components into the specified file.
-Command *decompose* computes the safety-liveness decomposition and stores it into specified files.
-The remaining commands implement the decision procedures and monitoring algorithms as expected.
-For monitoring, the word files must contain one symbol per line.
-Use the option *-cputime* to print the running time, *-v* to print the input size, and *-d* to print the automaton.
-Option *-print-witness* will make each operation print the witness (if any).
-Some examples are given below.
+Nested automata files are auto-detected by the presence of the `@PARENT` marker.
+
+### Options
+
+| Option | Description |
+|--------|-------------|
+| `-cputime` | Print execution time |
+| `-v` | Print input size |
+| `-d` | Print automaton structure |
+| `-debug` | Verbose debug output |
+
+### Actions for Nested Automata
 
 ```
-$ ./quak -cputime -d  A.txt safe LimInfAvg
+VALF   = <Inf | Sup | LimInf | LimSup | LimInfAvg | LimSupAvg>
+FINVAL = <Max_f | Min_f | SumB | SumPlus | SumMinus>
 
-Cputime of building the automaton: 3 ms
-automaton (A.txt):
-	alphabet (2):
-		0 -> a
-		1 -> b
-	weights (5):
-		0 -> -9.545000
-		1 -> -5.077000
-		2 -> 0.634000
-		3 -> 1.100000
-		4 -> 6.122000
-		MIN = -9.545000
-		MAX = 6.122000
-	states (2):
-		0 -> q0, scc: 0
-		1 -> q1, scc: -1
-		INITIAL = q0
-	SCCs (1):
-		q0
-	edges (5):
-		a : -9.545, q0 -> q0
-		b : 1.1, q0 -> q0
-		a : 0.634, q1 -> q1
-		a : 6.122, q1 -> q0
-		b : -5.077, q1 -> q0
+non-empty VALF FINVAL <threshold> [bound]
+universal VALF FINVAL <threshold> [bound]
+```
 
+The `bound` parameter is **required** for `SumB` and optional otherwise.
+
+### Examples
+
+```bash
+# Non-emptiness with LimSup + Max_f, threshold 5
+./quak-nested nested.txt non-empty LimSup Max_f 5
+
+# Universality with Inf + Min_f, threshold 0
+./quak-nested nested.txt universal Inf Min_f 0
+
+# Non-emptiness with SumB (bound required)
+./quak-nested nested.txt non-empty LimInf SumB 3 10
+
+# Non-emptiness with LimSupAvg + SumPlus, threshold 2
+./quak-nested nested.txt non-empty LimSupAvg SumPlus 2
+
+# With timing
+./quak-nested -cputime nested.txt universal LimSup Max_f 1
+
+# Print the automaton structure first, then decide
+./quak-nested -d nested.txt non-empty Sup Max_f 3
+```
+
+### Output Format
+
+```
 ----------
-isSafe(LimInfAvg) = 0
-Cputime: 4 ms
+isNonEmpty(LimSup, Max_f, threshold=5) = 1
 ----------
 ```
 
-```
-$ ./quak A.txt constant Inf witness-file w.txt 
-----------
-isConstant(Inf) = 0
-----------
+Result: `1` = true, `0` = false.
 
-$ cat w.txt
-a(a)
-```
+---
 
-```
-$ ./quak -print-witness A.txt safe LimInfAvg witness-file w1.txt constant Sup witness-file w2.txt
-----------
-isSafe(LimInfAvg) = 0
-Witness: (a)
-----------
-isConstant(Sup) = 0
-Witness: (a)
-----------
+## Using the Library API
 
-$ cat w1.txt
-(a)
-$ cat w2.txt
-(a)
+### Include Headers
+
+```cpp
+#include "NestedAutomaton.h"
 ```
 
+### Loading and Querying
+
+```cpp
+// Load a nested automaton from file
+NestedAutomaton* NA = new NestedAutomaton("nested.txt");
+
+// Non-emptiness: exists a word with value >= threshold?
+bool exists = NA->isNonEmpty(LimSup, Max_f, 5.0);
+
+// With SumB (bound required)
+bool existsSumB = NA->isNonEmpty(LimInf, SumB, 3.0, 10);
+
+// Universality: all words have value >= threshold?
+bool universal = NA->isUniversal(Inf, Min_f, 0.0);
+
+// Inspect structure
+std::size_t nChildren = NA->getChildrenSize();
+ChildAutomaton* child = NA->getChild(1);
+
+// Print
+NA->print();
+
+delete NA;
 ```
-$ ./quak -d samples/ainf.txt decompose LimInf s.txt l.txt  
-automaton (samples/ainf.txt):
-	alphabet (2):
-		0 -> a
-		1 -> b
-	weights (4):
-		0 -> -1.000000
-		1 -> 0.000000
-		2 -> 1.000000
-		3 -> 2.000000
-		MIN = -1.000000
-		MAX = 2.000000
-	states (3):
-		0 -> 0, scc: 2
-		1 -> 1, scc: 0
-		2 -> 2, scc: 1
-		INITIAL = 0
-	SCCs (3):
-		0
-			1
-			2
-	edges (6):
-		a : 0, 0 -> 1
-		b : -1, 0 -> 2
-		a : 1, 1 -> 1
-		b : -1, 1 -> 1
-		a : -1, 2 -> 2
-		b : 2, 2 -> 2
 
-----------
-Safety component automaton:
-automaton (SafeOf(samples/ainf.txt)):
-	alphabet (2):
-		0 -> a
-		1 -> b
-	weights (2):
-		0 -> 1.000000
-		1 -> 2.000000
-		MIN = -1.000000
-		MAX = 2.000000
-	states (3):
-		0 -> 0, scc: 2
-		1 -> 1, scc: 0
-		2 -> 2, scc: 1
-		INITIAL = 0
-	SCCs (3):
-		0
-			1
-			2
-	edges (6):
-		a : 1, 0 -> 1
-		b : 2, 0 -> 2
-		a : 1, 1 -> 1
-		b : 1, 1 -> 1
-		a : 2, 2 -> 2
-		b : 2, 2 -> 2
+### API Reference
 
-Liveness component automaton:
-automaton (LiveOf(samples/ainf.txt)):
-	alphabet (2):
-		0 -> a
-		1 -> b
-	weights (4):
-		0 -> -1.000000
-		1 -> 0.000000
-		2 -> 1.000000
-		3 -> 2.000000
-		MIN = -1.000000
-		MAX = 2.000000
-	states (3):
-		0 -> 0, scc: 2
-		1 -> 1, scc: 0
-		2 -> 2, scc: 1
-		INITIAL = 0
-	SCCs (3):
-		0
-			1
-			2
-	edges (6):
-		a : 0, 0 -> 1
-		b : -1, 0 -> 2
-		a : 2, 1 -> 1
-		b : -1, 1 -> 1
-		a : -1, 2 -> 2
-		b : 2, 2 -> 2
+```cpp
+class NestedAutomaton : public Automaton {
+public:
+    NestedAutomaton(std::string filename);
 
-----------
+    // Decision procedures
+    bool isNonEmpty(value_function_t infVal, value_function_t finVal,
+                    weight_t threshold, weight_t bound = -1);
+    bool isUniversal(value_function_t infVal, value_function_t finVal,
+                     weight_t threshold, weight_t bound = -1);
+
+    // Flattening: convert nested automaton to equivalent non-nested automaton
+    Automaton* flatten_regular(value_function_t finVal, weight_t bound = -1);
+    Automaton* flatten_SumPlusMinus_Sup(value_function_t finVal, weight_t threshold);
+    Automaton* flatten_SumPlusMinus_Inf(value_function_t finVal, weight_t threshold);
+    Automaton* flatten_MinMax_Sup(value_function_t finVal, weight_t threshold);
+    Automaton* flatten_MinMax_Inf(value_function_t finVal, weight_t threshold);
+    Automaton* flatten_Avg_SumMinus(uint64_t c_bound);
+
+    // Structure inspection
+    std::size_t getChildrenSize() const;
+    ChildAutomaton* getChild(std::size_t index) const;
+    bool isDeterministicNested() const;
+    bool isCompleteNested() const;
+
+    void print() const;
+};
 ```
+
+### Flattening
+
+The flattening methods produce a non-nested `Automaton*` that can be used with all standard `Automaton` operations (emptiness, universality, inclusion, etc.). The caller is responsible for deleting the returned automaton.
+
+```cpp
+NestedAutomaton* NA = new NestedAutomaton("nested.txt");
+
+// Flatten with Max_f aggregator
+Automaton* flat = NA->flatten_regular(Max_f);
+
+// Use standard operations on the flattened automaton
+bool result = flat->isNonEmpty(LimSup, 5.0);
+
+delete flat;
+delete NA;
+```
+
+Which flattening method to use depends on the aggregator combination (see the Internal Algorithm section below).
+
+---
+
+## Internal Algorithm
+
+The decision procedures work by **flattening** the nested automaton into an equivalent non-nested automaton, then applying standard decision procedures on the result. The flattening methods are also available as public API (see above).
+
+The flattening approach depends on the aggregator combination:
+
+| finVal | infVal | Flattening method |
+|--------|--------|-------------------|
+| SumPlus/SumMinus | Sup, LimSup, Inf, LimInf | Monotonic 0/1 encoding |
+| SumPlus | LimSupAvg | Fast path (Sup-based), then SumB fallback |
+| SumMinus | LimInfAvg, LimSupAvg | Pseudo-determinization + synchronization |
+| Max_f/Min_f | Sup, LimSup, Inf, LimInf | Monotonic min/max construction |
+| Max_f/Min_f | LimInfAvg, LimSupAvg | Regular flattening |
+| SumB | All | Regular flattening with bound |
+
+After flattening, silent transitions are removed (when necessary), and the standard `isNonEmpty` or `isUniversal` of the base `Automaton` class is invoked on the resulting non-nested automaton.
+
+For **universality**, the implementation converts SumPlus and SumMinus to SumB internally and always uses the regular flattening path.
+
+---
+
+## Assumptions and Requirements
+
+### Structural
+
+- **Single initial state** per automaton (parent and each child). Determined by the source state of the first transition.
+- **Completeness**: All automata must be complete (total). For every state `q` and symbol `a`, there must be at least one transition from `q` labeled `a`. Incomplete automata are completed by adding a sink state.
+- **Immutability**: Automata are immutable after construction.
+- **State ownership**: Each state object is owned by exactly one automaton instance.
+
+### Internal Details: SCC and Reachability
+
+- SCCs are computed via Tarjan's algorithm during construction and are never recomputed.
+- State tags: `tag >= 0` = reachable (value is SCC ID); `tag == -1` = unreachable.
+- Lower SCC IDs are reachable from higher SCC IDs.
+- Unreachable states are trimmed during construction.
+
+### Non-Determinism
+
+Non-determinism is resolved by the **Supremum** function: among all possible runs, the one producing the highest value is chosen.
+
+### Nested-Specific
+
+- **Child index 0** is always the dummy child (no alphabet, one dummy state, no transitions, no final states). It serves as a placeholder for parent transitions that don't invoke a child.
+- **Child final states** are mandatory for non-dummy children. The parser aborts if a `@CHILD n` (n >= 1) section has no `final:` declaration.
+- **Parent final states**: If no `final:` declaration is given, all parent states are implicitly final. Explicit final states can be specified with `final: state1 state2 ...` in the `@PARENT` section.
+- **Alphabet synchronization**: parent and all non-dummy children must use the same alphabet.
+- **Silent transitions** (`SILENT` keyword, stored as max float) are allowed only in the parent. Using them in children leads to undefined behavior.
+
+### Weight Precision
+
+- Weights are `float` values.
+- Weight comparisons use epsilon tolerance: `WEIGHT_EQ_EPSILON = 1e-5`.
+- Hexadecimal float representation is also supported for exact bit-level specification.
+
+### Acceptance
+
+- **Parent**: Accepts infinite runs. By default all parent states are final (unless explicit final states are specified), so the run is always accepted and the value is determined by the aggregation functions.
+- **Children**: Accept finite words. A child run terminates and produces a value when it reaches a final state.
+- **Flattened automata**: Use Buchi acceptance (the flattened run must visit accepting states infinitely often).
+
+---
+
+## Example Programs
+
+Three example programs are provided in `examples/nested/`:
+
+```bash
+make examples
+./example1_basic             # Comparing finVals (Max_f, Min_f, SumPlus, SumB)
+./example2_value_functions   # Varying finVal + non-emptiness vs universality
+./example3_response_time     # Comparing infVals (Sup, LimSup, LimSupAvg, LimInf, Inf)
+```
+
+See `examples/nested/README.md` for details.
+
+---
+
+## Experiments
+
+### Single Runner (`quak-experiment-single`)
+
+Build the experiment runner:
+
+```bash
+make experiments -j4
+```
+
+Usage:
+
+```bash
+./quak-experiment-single <file> <problem> <InfVal> <FinVal> <threshold> \
+    [--rep R] [--timeout-s T] [--warmup 0|1]
+```
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `file` | (required) | Path to a nested automaton `.txt` file |
+| `problem` | (required) | `emptiness` or `universality` |
+| `InfVal` | (required) | Infinite aggregator (e.g. `Sup`, `LimSupAvg`) |
+| `FinVal` | (required) | Finite aggregator (e.g. `SumPlus`, `Max`, `SumB:auto`) |
+| `threshold` | (required) | Numeric threshold |
+| `--rep R` | 3 | Number of timed repetitions |
+| `--timeout-s T` | 300 | Per-repetition timeout in seconds |
+| `--warmup 0\|1` | 1 | Run one untimed warmup repetition first |
+
+**SumB variants:** `SumB:auto` (infer bound from filename `_kY.txt`), `SumB:<B>`, `SumB(<B>)`.
+
+**Output format:**
+
+```
+MEAN_S=<double> RESULT=<0|1> STATUS=<OK|TIMEOUT|ERR|INCONSISTENT>
+```
+
+Example:
+
+```bash
+./quak-experiment-single samples/generated_response_time_1/response_n2_k2.txt \
+    emptiness Sup SumPlus 2 --rep 1 --timeout-s 30 --warmup 1
+```
+
+### Python Orchestrator (`experiment.py`)
+
+Runs all configured experiments in batch, with resume support (skips already-completed `(n, k)` pairs).
+
+```bash
+python3 experiment.py --exe ./quak-experiment-single \
+    [--rep R] [--timeout T] [--warmup W] [--memory-limit 30G] [--outdir results]
+```
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `--exe` | (required) | Path to `quak-experiment-single` binary |
+| `--rep` | 3 | Repetitions per instance |
+| `--timeout` | 300 | Per-repetition timeout (seconds) |
+| `--warmup` | 1 | Warmup (0 or 1) |
+| `--memory-limit` | none | Memory limit per process (e.g. `30G`, `8192M`) |
+| `--outdir` | `results` | Output directory for CSV files |
+
+**Configured experiments:**
+
+| Name | Input dir | Problem | InfVal | FinVal |
+|------|-----------|---------|--------|--------|
+| `response_sup_sumplus_emptiness` | `generated_response_time_1` | emptiness | Sup | SumPlus |
+| `response_limsupavg_sumplus_emptiness` | `generated_response_time_2` | emptiness | LimSupAvg | SumPlus |
+| `response_sup_sumb_universality` | `generated_response_time_3` | universality | Sup | SumB:auto |
+| `resource_sup_max_emptiness` | `generated_resource_consumption_1` | emptiness | Sup | Max |
+| `resource_limsupavg_max_emptiness` | `generated_resource_consumption_2` | emptiness | LimSupAvg | Max |
+
+Each experiment produces one CSV file in the output directory with columns: `experiment`, `n`, `k`, `file`, `problem`, `infval`, `finval`, `threshold`, `rep`, `timeout_s`, `warmup`, `status`, `mean_s`, `result01`.
+
+---
+
+## Project Structure
+
+```
+QuAK/
+├── src/
+│   ├── Automaton.cpp/h         # Base automaton class
+│   ├── NestedAutomaton.cpp/h   # Nested automaton (parent + children)
+│   ├── ChildAutomaton.cpp/h    # Child automaton (finite-word)
+│   ├── Parser.cpp/h            # Input file parser
+│   ├── Monitor.cpp/h           # Runtime monitoring
+│   ├── utils.cpp/h             # Value function string conversion
+│   ├── FORKLIFT/               # Language inclusion algorithm
+│   ├── quak-nested-main.cpp    # Main CLI
+│   ├── quak-experiment-single.cpp  # Experiment runner
+│   └── tests/
+│       ├── sanity_tests/       # Flattening, synchronization, etc.
+│       └── correctness_tests/  # Emptiness/universality correctness
+├── examples/
+│   └── nested/                 # Example programs + sample automata
+├── samples/                    # Sample automata files
+├── experiment.py               # Python experiment orchestrator
+├── CMakeLists.txt
+└── README.md
+```
+
+---
+
+## Differences from the Original QuAK (Non-Nested)
+
+This version of QuAK extends the original with nested automata support. For non-nested automata, the CLI still supports all original operations:
+
+```
+stats, dump, empty, non-empty, universal, constant, safe, live,
+top-value, bottom-value, isIncluded, isIncludedBool, isEquivalent,
+isEquivalentBool, livenessComponent, safetyComponent, decompose,
+eval, monitor, witness-file
+```
+
+These work exactly as in the original QuAK (see the original QuAK documentation for details). The one addition for non-nested automata is:
+
+**Final state declarations**: Non-nested automata can now optionally specify final states using the `final: state1 state2 ...` syntax in their input files. If no `final:` line is present, all states are final (matching the original QuAK behavior, where F = Q).

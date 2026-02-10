@@ -1,0 +1,40 @@
+@PARENT
+a : 1, p0 -> p1
+b : 2, p1 -> p2
+b : 3, p0 -> p1
+c : 2, p0 -> p1
+a : 1, p1 -> p2
+c : 3, p1 -> p2
+a : 2, p2 -> p1
+b : 1, p2 -> p2
+c : 1, p2 -> p2
+
+@CHILD 0
+
+@CHILD 1
+final: c1s2
+a : 4, c1s0 -> c1s1
+b : 0, c1s1 -> c1s2
+b : 4, c1s0 -> c1s1
+c : 5, c1s0 -> c1s2
+a : 2, c1s1 -> c1s2
+c : 3, c1s1 -> c1s2
+
+@CHILD 2
+final: c2s2
+a : 2, c2s0 -> c2s1
+b : 3, c2s1 -> c2s2
+b : 0, c2s0 -> c2s0
+c : 0, c2s0 -> c2s2
+a : 1, c2s1 -> c2s2
+c : 3, c2s1 -> c2s1
+
+@CHILD 3
+final: c3s2
+a : 4, c3s0 -> c3s1
+b : 5, c3s1 -> c3s2
+b : 4, c3s0 -> c3s1
+c : 5, c3s0 -> c3s0
+a : 0, c3s1 -> c3s2
+c : 3, c3s1 -> c3s1
+

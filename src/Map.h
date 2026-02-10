@@ -6,7 +6,6 @@
 #include <map>
 #include <cassert>
 #include <cstring>
-
 #include "hash.h"
 
 

@@ -13,14 +13,14 @@
 class SCC_Dag; // Implementation in Automaton.cpp
 
 typedef enum {
-	//finite words
+	// Finite words
 	Max_f,
 	Min_f,
 	SumB,
 	SumPlus,
 	SumMinus,
-	Avg, // only word monitoring
-	// infinite words
+	Avg,
+	// Infinite words
 	Inf,
 	Sup,
 	LimInf,
@@ -37,7 +37,8 @@ typedef enum {
 	Times
 } aggregator_t;
 
-struct UltimatelyPeriodicWord { // same as "lasso" word
+// Lasso word representation
+struct UltimatelyPeriodicWord {
     Word* prefix{nullptr};
     Word* cycle{nullptr};
 	
@@ -57,12 +58,12 @@ public:
 	MapArray<Symbol*>* alphabet;
 	MapArray<State*>* states;
 	MapArray<Weight*>* weights;
-	weight_t min_domain;	// Min weight of the transitions of A
-	weight_t max_domain;	// Max weight of the transitions of A
-	State* initial;			// Initial state
-	unsigned int nb_SCCs;	// ?
-	bool* final_SCCs; //CHANGE WITH ACCEPTANCE
-	SCC_Dag** SCCs;			// ?
+	weight_t min_domain;
+	weight_t max_domain;
+	State* initial;
+	unsigned int nb_SCCs;
+	bool* final_SCCs;
+	SCC_Dag** SCCs;
 
 	Automaton(std::string newname, Parser* parser, MapStd<std::string, Symbol*> sync_register);
 	Automaton(
@@ -91,23 +92,19 @@ private:
 	weight_t top_LimSup (weight_t* top_values) const;
 	void top_safety_scc_recursive(Edge* edge, SetStd<Edge*>* done_edge, bool in_scc, int* done_symbol, weight_t* values, weight_t** value_symbol, int** counters) const;
 	void top_safety_scc (weight_t* values, bool in_scc) const;
-	//weight_t top_safety (bool in_scc, weight_t* values, weight_t* top_values) const;
 	weight_t top_Inf (weight_t* top_values) const;
 	weight_t top_LimInf (weight_t* top_values) const;
 	weight_t top_LimAvg (weight_t* top_values) const;
-	//...................................................//
 	weight_t top_Sup_with_final () const;
 	weight_t top_Inf_with_final () const;
 	weight_t top_LimSup_with_final () const;
 	weight_t top_LimInf_with_final () const;
 	weight_t top_LimAvg_with_final () const;
-	//...................................................//
 	
 
 	void constructWitness(value_function_t f, UltimatelyPeriodicWord** witness, const weight_t* scc_values, const weight_t* top_values, SetList<Edge*>** scc_cycles, SetList<Edge*>* path, SetList<Edge*>* loop) const;
 	
 	weight_t top_LimAvg_cycles (weight_t* top_values, SetList<Edge*>** scc_cycles, UltimatelyPeriodicWord** witness = nullptr) const;
-	// State* top_cycles_explore (State* state, bool* spot, weight_t (*filter)(weight_t,weight_t), weight_t* top_values, SetList<Edge*>** scc_cycles) const;
 	bool top_cycles_explore (State* target, State* state, bool* spot, weight_t (*filter)(weight_t,weight_t), weight_t* top_values, SetList<Edge*>** scc_cycles) const;
 	void top_cycles (weight_t (*filter)(weight_t,weight_t), weight_t* scc_values, weight_t* top_values, SetList<Edge*>** scc_cycles) const;
 	weight_t top_LimInf_cycles (weight_t* top_values, SetList<Edge*>** scc_cycles, UltimatelyPeriodicWord** witness = nullptr) const;
@@ -161,6 +158,7 @@ public:
 
 	static Automaton* removeSilentTransitions(const Automaton* A, value_function_t f, bool withShortcuts = false);
 	bool emptiness_LimAvg_with_final(weight_t threshold) const;
+	bool isNonEmpty_withFinal(value_function_t f, weight_t threshold) const;
 	unsigned int getNbSCCs() const;
 	unsigned int getNbAcceptingSCCs() const;
 	unsigned int getNbStates() const;
@@ -190,28 +188,27 @@ public:
 	bool isDeterministic () const;
   	bool isComplete () const;
 
-    /// Print the automaton to stdout
-    ///  - `full` print the weights with full precision
-    ///  - `bv_weights` print the weights also as bitvectors (unsigned int) type instead of as a floating-point type.
-    ///  - `bv_only` print only weights as bitvectors (otherwise they are printed also as a floating-point number).
-    ///     Overrides `full` if given.
+	// Print the automaton to stdout
 	virtual void print(bool full = false, bool bv_weights = false, bool bv_only = false) const;
 	virtual void print(std::ostream& out, bool full = false, bool bv_weights = false, bool bv_only = false) const;
 	void write(std::ostream& out) const;
 
 	const std::string &getName() const;
 
-	bool isNonEmpty (value_function_t f, weight_t x, UltimatelyPeriodicWord** witness = nullptr);	// checks if A(w) >= v for some w
-	bool isUniversal (value_function_t f, weight_t x, UltimatelyPeriodicWord** witness = nullptr);	// checks if A(w) >= v for all w
-                                                                                                    //
-    // checks if A(w) <= B(w) for all w. If `booleanized` is set to true, the inclusion algorithm based
-    // on booleanization is used, otherwise the one on anti-chains is used
+	// Checks if A(w) >= x for some w
+	bool isNonEmpty (value_function_t f, weight_t x, UltimatelyPeriodicWord** witness = nullptr);
+	// Checks if A(w) >= x for all w
+	bool isUniversal (value_function_t f, weight_t x, UltimatelyPeriodicWord** witness = nullptr);
+	// Checks if A(w) <= B(w) for all w
 	bool isIncludedIn (const Automaton* B, value_function_t f, bool booleanized = false, UltimatelyPeriodicWord** witness = nullptr) const;
 	bool isEquivalentTo (const Automaton* B, value_function_t f, bool booleanized = false, UltimatelyPeriodicWord** witness = nullptr) const;
 
-	bool isSafe (value_function_t f, UltimatelyPeriodicWord** witness = nullptr);	// checks if A = SafetyClosure(A)
-	bool isConstant (value_function_t f, UltimatelyPeriodicWord** witness = nullptr);	// checks if Universal(A, Top_A)
-	bool isLive (value_function_t f, UltimatelyPeriodicWord** witness = nullptr);	// checks if SafetyClosure(A) = Top_A
+	// Checks if A = SafetyClosure(A)
+	bool isSafe (value_function_t f, UltimatelyPeriodicWord** witness = nullptr);
+	// Checks if Universal(A, Top_A)
+	bool isConstant (value_function_t f, UltimatelyPeriodicWord** witness = nullptr);
+	// Checks if SafetyClosure(A) = Top_A
+	bool isLive (value_function_t f, UltimatelyPeriodicWord** witness = nullptr);
 	weight_t getTopValue (value_function_t f, UltimatelyPeriodicWord** witness = nullptr) const;
 	weight_t getBottomValue (value_function_t f, UltimatelyPeriodicWord** witness = nullptr);
 	weight_t computeValue(value_function_t f, UltimatelyPeriodicWord* w);

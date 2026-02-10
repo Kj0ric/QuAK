@@ -103,9 +103,9 @@ static void printUsage(const char *bin) {
   std::cerr << "  monitor <Inf | Sup | Avg> word-file\n";
   std::cerr << "  witness-file file-name\n";
   std::cerr << "\nFor nested automata (files with @PARENT), ACTIONs are:\n";
-  std::cerr << "  FINVAL = <Max | Min | SumB | SumPlus | SumMinus>\n";
+  std::cerr << "  FINVAL = <Max_f | Min_f | SumB | SumPlus | SumMinus>\n";
   std::cerr << "  non-empty VALF FINVAL <threshold> [bound]\n";
-  std::cerr << "  universal VALF FINVAL <threshold> [bound]  (only Max/Min/SumB with Inf/Sup/LimInf/LimSup)\n";
+  std::cerr << "  universal VALF FINVAL <threshold> [bound]  (only Max_f/Min_f/SumB with Inf/Sup/LimInf/LimSup)\n";
   std::cerr << "\nThe action 'witness-file' instructs the previous action to store the witness into the given name.\n";
 }
 

@@ -2,9 +2,8 @@
 
 #include <sstream>
 #include <cstring> // errno
-#include "utility.h"
 #include "Parser.h"
-#include "State.h"
+#include "utility.h"
 
 std::string name = "";
 int line_counter = 0;

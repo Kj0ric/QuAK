@@ -1,6 +1,5 @@
 #include <iostream>
 #include <cstring>
-
 #include "Automaton.h"
 
 value_function_t getValueFunction(const char *str) {
@@ -32,28 +31,31 @@ const char *valueFunctionToStr(value_function_t v) {
   abort();
 }
 
-// Finite aggregator parsing for nested automata
 value_function_t getFiniteAggregator(const char *str) {
 #define CMP(S) ((strncmp(str, (S), sizeof(S))) == 0)
-    if (CMP("Max") || CMP("Max_f")) { return Max_f; }
-    if (CMP("Min") || CMP("Min_f")) { return Min_f; }
-    if (CMP("SumB") || CMP("SumBound")) { return SumB; }
+    if (CMP("Max_f")) { return Max_f; }
+    if (CMP("Min_f")) { return Min_f; }
+    if (CMP("SumB")) { return SumB; }
     if (CMP("SumPlus")) { return SumPlus; }
     if (CMP("SumMinus")) { return SumMinus; }
+    if (CMP("Avg")) { return Avg; }
 #undef CMP
 
     std::cerr << "Unknown finite aggregator: " << str << "\n";
+    std::cerr << "Valid aggregators: Max_f, Min_f, SumB, SumPlus, SumMinus, Avg\n";
     abort();
 }
 
 const char *finiteAggregatorToStr(value_function_t v) {
   switch(v) {
-    case Max_f: return "Max";
-    case Min_f: return "Min";
+    case Max_f: return "Max_f";
+    case Min_f: return "Min_f";
     case SumB: return "SumB";
     case SumPlus: return "SumPlus";
     case SumMinus: return "SumMinus";
+    case Avg: return "Avg";
     default: break;
   }
   abort();
 }
+

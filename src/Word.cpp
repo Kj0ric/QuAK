@@ -1,5 +1,4 @@
 #include "Word.h"
-#include <vector>
 
 Word::~Word() {
     if (all) {

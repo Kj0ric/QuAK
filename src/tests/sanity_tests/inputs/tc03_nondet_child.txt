@@ -1,0 +1,42 @@
+# Test Case 03: Non-deterministic Child
+# ======================================
+#
+# Structure:
+#   - Parent: q0 --(a,1)--> q0 (deterministic self-loop)
+#   - Child 0: Empty
+#   - Child 1: Non-deterministic!
+#       s0 --(a,1)--> s1 (final)
+#       s0 --(a,5)--> s2 (final)
+#       s1 --(a,0)--> s1
+#       s2 --(a,0)--> s2
+#
+# Properties:
+#   - Parent is deterministic: YES
+#   - Child 1 is deterministic: NO (s0 has two 'a' transitions)
+#   - isDeterministicNested() = false
+#
+# Child 1 behavior (non-deterministic choice):
+#   - Path 1: s0 -> s1, weight 1, then stay at s1 with weight 0
+#   - Path 2: s0 -> s2, weight 5, then stay at s2 with weight 0
+#   - For Max_f: can achieve 5 (by choosing path 2)
+#   - For Min_f: can achieve 1 (by choosing path 1)
+#   - For SumB: path 1 gives 1, path 2 gives 5
+#
+# Expected Results:
+#   - isDeterministicNested() = false
+#   - After determinizeWithMacroAlphabet(): should become deterministic
+#   - isNonEmpty(LimSup, Max_f, 5) = true (path 2 achieves 5)
+#   - isNonEmpty(LimSup, Max_f, 6) = false (no path achieves > 5)
+
+@PARENT
+a : 1, q0 -> q0
+
+@CHILD 0
+
+@CHILD 1
+final: s1
+final: s2
+a : 1, s0 -> s1
+a : 5, s0 -> s2
+a : 0, s1 -> s1
+a : 0, s2 -> s2

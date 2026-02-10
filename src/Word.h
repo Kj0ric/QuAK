@@ -4,7 +4,6 @@
 
 #include <string>
 #include <vector>
-#include "Set.h"
 #include "Symbol.h"
 
 class Word {

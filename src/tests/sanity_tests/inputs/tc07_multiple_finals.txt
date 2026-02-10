@@ -1,0 +1,49 @@
+# Test Case 07: Multiple Final States in Child
+# =============================================
+#
+# Structure:
+#   - Parent: Simple loop
+#       q0 --(a,1)--> q0
+#   - Child 0: Empty
+#   - Child 1: Three final states with different paths
+#       s0 --(a,1)--> s1 (final)
+#       s0 --(a,2)--> s2 (final)
+#       s1 --(a,3)--> s3 (final)
+#       s2 --(a,0)--> s2
+#       s3 --(a,0)--> s3
+#
+# Properties:
+#   - Child has 3 final states: s1, s2, s3
+#   - Non-deterministic (s0 has two 'a' transitions)
+#   - Different paths yield different values
+#
+# Path analysis:
+#   - Path to s1 (1 step): weight 1
+#   - Path to s2 (1 step): weight 2
+#   - Path to s3 (2 steps): weight 1 + 3 = 4
+#
+# Expected Results (SumB):
+#   - Possible return values: 1, 2, 4
+#   - Max achievable = 4
+#   - Min achievable = 1
+#
+# Expected Results (Max_f):
+#   - Path to s1: max = 1
+#   - Path to s2: max = 2
+#   - Path to s3: max = max(1,3) = 3
+#   - Overall max achievable = 3
+
+@PARENT
+a : 1, q0 -> q0
+
+@CHILD 0
+
+@CHILD 1
+final: s1
+final: s2
+final: s3
+a : 1, s0 -> s1
+a : 2, s0 -> s2
+a : 3, s1 -> s3
+a : 0, s2 -> s2
+a : 0, s3 -> s3

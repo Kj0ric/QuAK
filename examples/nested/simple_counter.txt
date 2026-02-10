@@ -1,0 +1,14 @@
+# Simple Counter Nested Automaton
+# Parent loops on single state, child counts 'a' symbols before 'b' terminates
+# 'b' has weight 0 in parent (silent transition that triggers child termination)
+
+@PARENT
+a : 1, p0 -> p0
+b : 0, p0 -> p0
+
+@CHILD 0
+
+@CHILD 1
+final: done
+a : 1, count -> count
+b : 0, count -> done

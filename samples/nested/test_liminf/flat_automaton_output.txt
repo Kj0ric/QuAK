@@ -1,0 +1,38 @@
+automaton (Flat(PsuedoDet(/home/ege/Desktop/QuAK-playground/samples/nested/avg_resp/avg_resp_1_1.txt)_parent)):
+	alphabet (3):
+		0 -> a0
+		1 -> a1
+		2 -> a2
+	weights (2):
+		0 -> 340282346638528859811704183484516925440.000000
+		1 -> 1.000000
+		MIN = 1.000000
+		MAX = 340282346638528859811704183484516925440.000000
+	states (6):
+		0 -> Flat_0, scc: 1
+		1 -> Flat_1, scc: 0
+		2 -> Flat_2, scc: 1
+		3 -> Flat_3, scc: 0
+		4 -> Flat_4, scc: 0
+		5 -> Flat_5, scc: 0
+		INITIAL = Flat_0
+		FINAL = Flat_0, Flat_5
+	SCCs (2):
+		Flat_0
+			Flat_1
+	edges (14):
+		a0 : 1, Flat_0 -> Flat_1
+		a1 : 3.40282e+38, Flat_0 -> Flat_2
+		a2 : 3.40282e+38, Flat_0 -> Flat_2
+		a2 : 3.40282e+38, Flat_1 -> Flat_3
+		a0 : 1, Flat_2 -> Flat_4
+		a1 : 3.40282e+38, Flat_2 -> Flat_0
+		a2 : 3.40282e+38, Flat_2 -> Flat_0
+		a0 : 1, Flat_3 -> Flat_4
+		a1 : 3.40282e+38, Flat_3 -> Flat_3
+		a2 : 3.40282e+38, Flat_3 -> Flat_3
+		a2 : 3.40282e+38, Flat_4 -> Flat_5
+		a0 : 1, Flat_5 -> Flat_1
+		a1 : 3.40282e+38, Flat_5 -> Flat_3
+		a2 : 3.40282e+38, Flat_5 -> Flat_3
+

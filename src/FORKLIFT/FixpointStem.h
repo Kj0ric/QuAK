@@ -3,8 +3,6 @@
 #define FIXPOINTSTEM_H_
 
 #include "PostTargetVariable.h"
-#include "TargetOf.h"
-#include "../Word.h"
 
 class FixpointStem {
 private:

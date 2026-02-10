@@ -1,0 +1,25 @@
+# Test Case 09: All Children Empty
+# =================================
+#
+# Structure:
+#   - Parent: Simple loop
+#       q0 --(a,5)--> q0
+#   - Child 0: Empty (no transitions, no finals)
+#   - Child 1: Empty (no transitions, no finals)
+#
+# Properties:
+#   - Both children are completely empty
+#   - getChildrenSize() = 2
+#   - Children have no final states
+#
+# Expected Results:
+#   - synchronizeChildren() should handle empty children
+#   - flatten operations may produce trivial automata
+#   - This tests edge case handling
+
+@PARENT
+a : 5, q0 -> q0
+
+@CHILD 0
+
+@CHILD 1

@@ -1,0 +1,34 @@
+# Test Case 05: Zero Weights (Edge Case)
+# =======================================
+#
+# Structure:
+#   - Parent: All transitions have weight 0
+#       q0 --(a,0)--> q0
+#   - Child 0: Empty
+#   - Child 1: All transitions have weight 0
+#       s0 --(a,0)--> s1 (final)
+#       s1 --(a,0)--> s1
+#
+# Properties:
+#   - All weights are 0
+#   - getMinDomain() = 0
+#   - getMaxDomain() = 0
+#
+# Expected Results:
+#   - flatten_regular(SumB, any_bound): all output weights should be 0
+#   - flatten_regular(Max_f): output weights = 0
+#   - flatten_regular(Min_f): output weights = 0
+#   - isNonEmpty(LimSup, Max_f, 0) = true (achieves exactly 0)
+#   - isNonEmpty(LimSup, Max_f, 1) = false (cannot achieve > 0)
+#   - isUniversal(LimSup, Max_f, 0) = true (all words achieve >= 0)
+#   - isUniversal(LimInf, Min_f, 0) = true (all words achieve >= 0)
+
+@PARENT
+a : 0, q0 -> q0
+
+@CHILD 0
+
+@CHILD 1
+final: s1
+a : 0, s0 -> s1
+a : 0, s1 -> s1

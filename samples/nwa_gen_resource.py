@@ -89,7 +89,6 @@ def emit_child_i(proc: int, n: int, k: int, syms: List[str]) -> List[str]:
     lines: List[str] = []
     lines.append(f"@CHILD {proc}")
     lines.append(f"# Resource-tracking child for process {proc} with k={k} resources")
-    lines.append("# FIXED SEMANTICS: this child consumes the call letter s_i immediately.")
     lines.append(f"# States: init + {2**k} tracking subsets + rej + acc = {2**k + 3}")
     lines.append(f"final: {acc}")
     lines.append("")
@@ -152,12 +151,6 @@ def emit_child_i(proc: int, n: int, k: int, syms: List[str]) -> List[str]:
     for sym in syms:
         lines.append(f"{sym} : 0, {rej} -> {rej}")
     lines.append("")
-
-    # # --- Accept state ---
-    # lines.append(f"# Accept state {acc}: loops on all symbols with weight 0")
-    # for sym in syms:
-    #     lines.append(f"{sym} : 0, {acc} -> {acc}")
-    # lines.append("")
 
     return lines
 

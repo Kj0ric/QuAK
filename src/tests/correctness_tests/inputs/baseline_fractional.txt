@@ -1,0 +1,10 @@
+@PARENT
+a : 1, p0 -> p0
+
+@CHILD 0
+
+@CHILD 1
+final: c3
+a : 1.5, c0 -> c1
+a : 2.7, c1 -> c2
+a : 0.8, c2 -> c3

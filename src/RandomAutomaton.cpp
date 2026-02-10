@@ -1,11 +1,8 @@
 #include <random>
 #include <map>
-#include <vector>
 
 #include "Automaton.h"
-#include "State.h"
 #include "Edge.h"
-#include "Weight.h"
 
 Automaton *Automaton::randomAutomaton(const std::string& name,
                                       unsigned states_num,

@@ -1,0 +1,16 @@
+# Request-Response Nested Automaton
+# Models a system where 'r' = request, 'g' = grant
+# Child measures time between request and grant
+
+@PARENT
+r : 1, idle -> waiting
+g : 0, idle -> idle
+r : 1, waiting -> waiting
+g : 0, waiting -> idle
+
+@CHILD 0
+
+@CHILD 1
+final: done
+r : 1, start -> start
+g : 0, start -> done

@@ -1,0 +1,2 @@
+experiment,n,k,file,problem,infval,finval,threshold,rep,timeout_s,warmup,status,mean_s,result01
+response_sup_sumb_universality,8,9,samples/generated_response_time_3/response_n8_k9.txt,universality,Sup,SumB:auto,1.0,1,600.0,0,OK,568.853385814,1

@@ -1,0 +1,36 @@
+# Test Case 08: Chain Structure in Parent
+# ========================================
+#
+# Structure:
+#   - Parent: Linear chain q0 -> q1 -> q2 -> q2 (loop at end)
+#       q0 --(a,1)--> q1
+#       q1 --(a,2)--> q2
+#       q2 --(a,3)--> q2
+#   - Child 0: Empty
+#   - Child 1: Simple accumulator
+#       s0 --(a,1)--> s1 (final)
+#       s1 --(a,1)--> s1
+#
+# Properties:
+#   - Parent has 3 states
+#   - Parent is deterministic: YES
+#   - Parent is NOT complete (q0 only goes to q1, not back)
+#   - Eventually reaches q2 and loops with weight 3
+#
+# Expected Results:
+#   - Parent LimSup value = 3 (loops at q2)
+#   - Parent LimInf value = 3 (eventually always 3)
+#   - After makeCompleteNested(): should add sink transitions
+#   - getNbStates() on parent = 3
+
+@PARENT
+a : 1, q0 -> q1
+a : 2, q1 -> q2
+a : 3, q2 -> q2
+
+@CHILD 0
+
+@CHILD 1
+final: s1
+a : 1, s0 -> s1
+a : 1, s1 -> s1

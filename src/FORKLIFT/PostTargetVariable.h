@@ -3,9 +3,6 @@
 #define POSTTARGETVARIABLE_H_
 
 #include "../Word.h"
-#include "../State.h"
-#include "../Set.h"
-#include "../Map.h"
 #include "TargetOf.h"
 
 class PostTargetVariable : protected MapStd<State*,SetStd<std::pair<TargetOf*,Word*>>*> {

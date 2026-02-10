@@ -1,7 +1,7 @@
 
 #ifndef WEIGHT_H_
 #define WEIGHT_H_
-#define WEIGHT_EQ_EPSILON 10e-5f
+#define WEIGHT_EQ_EPSILON 1e-5f
 
 #include <string>
 #include <cmath>
@@ -78,7 +78,7 @@ namespace std {
 
   template <> struct hash<weight_t> {
     size_t operator()(const weight_t x) const {
-      return static_cast<size_t>(x.value);
+      return std::hash<float>{}(x.value);
     }
   };
 }

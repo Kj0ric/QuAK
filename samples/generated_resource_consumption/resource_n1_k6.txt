@@ -1,0 +1,681 @@
+@PARENT
+# Resource-consumption NWA: n=1 processes, k=6 resources
+# Single-state parent: on s_i it calls child i, otherwise SILENT.
+final: q0
+
+s1 : 1, q0 -> q0     # Call child 1
+t1 : 0, q0 -> q0     # Silent transition
+a1_1 : 0, q0 -> q0   # Silent transition
+a1_2 : 0, q0 -> q0   # Silent transition
+a1_3 : 0, q0 -> q0   # Silent transition
+a1_4 : 0, q0 -> q0   # Silent transition
+a1_5 : 0, q0 -> q0   # Silent transition
+a1_6 : 0, q0 -> q0   # Silent transition
+
+@CHILD 0
+# Silent/dummy child used by SILENT parent edges.
+# Intended to accept epsilon immediately (no letter consumed).
+
+@CHILD 1
+# Resource-tracking child for process 1 with k=6 resources
+# States: init + 64 tracking subsets + rej + acc = 67
+final: acc1
+
+s1 : 0, init1 -> track1_0   # consume call letter, start tracking
+t1 : 0, init1 -> rej1
+a1_1 : 0, init1 -> rej1
+a1_2 : 0, init1 -> rej1
+a1_3 : 0, init1 -> rej1
+a1_4 : 0, init1 -> rej1
+a1_5 : 0, init1 -> rej1
+a1_6 : 0, init1 -> rej1
+
+# Tracking state track1_0: mask=0 (popcount=0)
+s1 : 0, track1_0 -> rej1
+t1 : 0, track1_0 -> acc1
+a1_1 : 0, track1_0 -> track1_1
+a1_2 : 0, track1_0 -> track1_2
+a1_3 : 0, track1_0 -> track1_4
+a1_4 : 0, track1_0 -> track1_8
+a1_5 : 0, track1_0 -> track1_16
+a1_6 : 0, track1_0 -> track1_32
+
+# Tracking state track1_1: mask=1 (popcount=1)
+s1 : 0, track1_1 -> rej1
+t1 : 1, track1_1 -> acc1
+a1_1 : 0, track1_1 -> track1_1
+a1_2 : 0, track1_1 -> track1_3
+a1_3 : 0, track1_1 -> track1_5
+a1_4 : 0, track1_1 -> track1_9
+a1_5 : 0, track1_1 -> track1_17
+a1_6 : 0, track1_1 -> track1_33
+
+# Tracking state track1_2: mask=2 (popcount=1)
+s1 : 0, track1_2 -> rej1
+t1 : 1, track1_2 -> acc1
+a1_1 : 0, track1_2 -> track1_3
+a1_2 : 0, track1_2 -> track1_2
+a1_3 : 0, track1_2 -> track1_6
+a1_4 : 0, track1_2 -> track1_10
+a1_5 : 0, track1_2 -> track1_18
+a1_6 : 0, track1_2 -> track1_34
+
+# Tracking state track1_3: mask=3 (popcount=2)
+s1 : 0, track1_3 -> rej1
+t1 : 2, track1_3 -> acc1
+a1_1 : 0, track1_3 -> track1_3
+a1_2 : 0, track1_3 -> track1_3
+a1_3 : 0, track1_3 -> track1_7
+a1_4 : 0, track1_3 -> track1_11
+a1_5 : 0, track1_3 -> track1_19
+a1_6 : 0, track1_3 -> track1_35
+
+# Tracking state track1_4: mask=4 (popcount=1)
+s1 : 0, track1_4 -> rej1
+t1 : 1, track1_4 -> acc1
+a1_1 : 0, track1_4 -> track1_5
+a1_2 : 0, track1_4 -> track1_6
+a1_3 : 0, track1_4 -> track1_4
+a1_4 : 0, track1_4 -> track1_12
+a1_5 : 0, track1_4 -> track1_20
+a1_6 : 0, track1_4 -> track1_36
+
+# Tracking state track1_5: mask=5 (popcount=2)
+s1 : 0, track1_5 -> rej1
+t1 : 2, track1_5 -> acc1
+a1_1 : 0, track1_5 -> track1_5
+a1_2 : 0, track1_5 -> track1_7
+a1_3 : 0, track1_5 -> track1_5
+a1_4 : 0, track1_5 -> track1_13
+a1_5 : 0, track1_5 -> track1_21
+a1_6 : 0, track1_5 -> track1_37
+
+# Tracking state track1_6: mask=6 (popcount=2)
+s1 : 0, track1_6 -> rej1
+t1 : 2, track1_6 -> acc1
+a1_1 : 0, track1_6 -> track1_7
+a1_2 : 0, track1_6 -> track1_6
+a1_3 : 0, track1_6 -> track1_6
+a1_4 : 0, track1_6 -> track1_14
+a1_5 : 0, track1_6 -> track1_22
+a1_6 : 0, track1_6 -> track1_38
+
+# Tracking state track1_7: mask=7 (popcount=3)
+s1 : 0, track1_7 -> rej1
+t1 : 3, track1_7 -> acc1
+a1_1 : 0, track1_7 -> track1_7
+a1_2 : 0, track1_7 -> track1_7
+a1_3 : 0, track1_7 -> track1_7
+a1_4 : 0, track1_7 -> track1_15
+a1_5 : 0, track1_7 -> track1_23
+a1_6 : 0, track1_7 -> track1_39
+
+# Tracking state track1_8: mask=8 (popcount=1)
+s1 : 0, track1_8 -> rej1
+t1 : 1, track1_8 -> acc1
+a1_1 : 0, track1_8 -> track1_9
+a1_2 : 0, track1_8 -> track1_10
+a1_3 : 0, track1_8 -> track1_12
+a1_4 : 0, track1_8 -> track1_8
+a1_5 : 0, track1_8 -> track1_24
+a1_6 : 0, track1_8 -> track1_40
+
+# Tracking state track1_9: mask=9 (popcount=2)
+s1 : 0, track1_9 -> rej1
+t1 : 2, track1_9 -> acc1
+a1_1 : 0, track1_9 -> track1_9
+a1_2 : 0, track1_9 -> track1_11
+a1_3 : 0, track1_9 -> track1_13
+a1_4 : 0, track1_9 -> track1_9
+a1_5 : 0, track1_9 -> track1_25
+a1_6 : 0, track1_9 -> track1_41
+
+# Tracking state track1_10: mask=10 (popcount=2)
+s1 : 0, track1_10 -> rej1
+t1 : 2, track1_10 -> acc1
+a1_1 : 0, track1_10 -> track1_11
+a1_2 : 0, track1_10 -> track1_10
+a1_3 : 0, track1_10 -> track1_14
+a1_4 : 0, track1_10 -> track1_10
+a1_5 : 0, track1_10 -> track1_26
+a1_6 : 0, track1_10 -> track1_42
+
+# Tracking state track1_11: mask=11 (popcount=3)
+s1 : 0, track1_11 -> rej1
+t1 : 3, track1_11 -> acc1
+a1_1 : 0, track1_11 -> track1_11
+a1_2 : 0, track1_11 -> track1_11
+a1_3 : 0, track1_11 -> track1_15
+a1_4 : 0, track1_11 -> track1_11
+a1_5 : 0, track1_11 -> track1_27
+a1_6 : 0, track1_11 -> track1_43
+
+# Tracking state track1_12: mask=12 (popcount=2)
+s1 : 0, track1_12 -> rej1
+t1 : 2, track1_12 -> acc1
+a1_1 : 0, track1_12 -> track1_13
+a1_2 : 0, track1_12 -> track1_14
+a1_3 : 0, track1_12 -> track1_12
+a1_4 : 0, track1_12 -> track1_12
+a1_5 : 0, track1_12 -> track1_28
+a1_6 : 0, track1_12 -> track1_44
+
+# Tracking state track1_13: mask=13 (popcount=3)
+s1 : 0, track1_13 -> rej1
+t1 : 3, track1_13 -> acc1
+a1_1 : 0, track1_13 -> track1_13
+a1_2 : 0, track1_13 -> track1_15
+a1_3 : 0, track1_13 -> track1_13
+a1_4 : 0, track1_13 -> track1_13
+a1_5 : 0, track1_13 -> track1_29
+a1_6 : 0, track1_13 -> track1_45
+
+# Tracking state track1_14: mask=14 (popcount=3)
+s1 : 0, track1_14 -> rej1
+t1 : 3, track1_14 -> acc1
+a1_1 : 0, track1_14 -> track1_15
+a1_2 : 0, track1_14 -> track1_14
+a1_3 : 0, track1_14 -> track1_14
+a1_4 : 0, track1_14 -> track1_14
+a1_5 : 0, track1_14 -> track1_30
+a1_6 : 0, track1_14 -> track1_46
+
+# Tracking state track1_15: mask=15 (popcount=4)
+s1 : 0, track1_15 -> rej1
+t1 : 4, track1_15 -> acc1
+a1_1 : 0, track1_15 -> track1_15
+a1_2 : 0, track1_15 -> track1_15
+a1_3 : 0, track1_15 -> track1_15
+a1_4 : 0, track1_15 -> track1_15
+a1_5 : 0, track1_15 -> track1_31
+a1_6 : 0, track1_15 -> track1_47
+
+# Tracking state track1_16: mask=16 (popcount=1)
+s1 : 0, track1_16 -> rej1
+t1 : 1, track1_16 -> acc1
+a1_1 : 0, track1_16 -> track1_17
+a1_2 : 0, track1_16 -> track1_18
+a1_3 : 0, track1_16 -> track1_20
+a1_4 : 0, track1_16 -> track1_24
+a1_5 : 0, track1_16 -> track1_16
+a1_6 : 0, track1_16 -> track1_48
+
+# Tracking state track1_17: mask=17 (popcount=2)
+s1 : 0, track1_17 -> rej1
+t1 : 2, track1_17 -> acc1
+a1_1 : 0, track1_17 -> track1_17
+a1_2 : 0, track1_17 -> track1_19
+a1_3 : 0, track1_17 -> track1_21
+a1_4 : 0, track1_17 -> track1_25
+a1_5 : 0, track1_17 -> track1_17
+a1_6 : 0, track1_17 -> track1_49
+
+# Tracking state track1_18: mask=18 (popcount=2)
+s1 : 0, track1_18 -> rej1
+t1 : 2, track1_18 -> acc1
+a1_1 : 0, track1_18 -> track1_19
+a1_2 : 0, track1_18 -> track1_18
+a1_3 : 0, track1_18 -> track1_22
+a1_4 : 0, track1_18 -> track1_26
+a1_5 : 0, track1_18 -> track1_18
+a1_6 : 0, track1_18 -> track1_50
+
+# Tracking state track1_19: mask=19 (popcount=3)
+s1 : 0, track1_19 -> rej1
+t1 : 3, track1_19 -> acc1
+a1_1 : 0, track1_19 -> track1_19
+a1_2 : 0, track1_19 -> track1_19
+a1_3 : 0, track1_19 -> track1_23
+a1_4 : 0, track1_19 -> track1_27
+a1_5 : 0, track1_19 -> track1_19
+a1_6 : 0, track1_19 -> track1_51
+
+# Tracking state track1_20: mask=20 (popcount=2)
+s1 : 0, track1_20 -> rej1
+t1 : 2, track1_20 -> acc1
+a1_1 : 0, track1_20 -> track1_21
+a1_2 : 0, track1_20 -> track1_22
+a1_3 : 0, track1_20 -> track1_20
+a1_4 : 0, track1_20 -> track1_28
+a1_5 : 0, track1_20 -> track1_20
+a1_6 : 0, track1_20 -> track1_52
+
+# Tracking state track1_21: mask=21 (popcount=3)
+s1 : 0, track1_21 -> rej1
+t1 : 3, track1_21 -> acc1
+a1_1 : 0, track1_21 -> track1_21
+a1_2 : 0, track1_21 -> track1_23
+a1_3 : 0, track1_21 -> track1_21
+a1_4 : 0, track1_21 -> track1_29
+a1_5 : 0, track1_21 -> track1_21
+a1_6 : 0, track1_21 -> track1_53
+
+# Tracking state track1_22: mask=22 (popcount=3)
+s1 : 0, track1_22 -> rej1
+t1 : 3, track1_22 -> acc1
+a1_1 : 0, track1_22 -> track1_23
+a1_2 : 0, track1_22 -> track1_22
+a1_3 : 0, track1_22 -> track1_22
+a1_4 : 0, track1_22 -> track1_30
+a1_5 : 0, track1_22 -> track1_22
+a1_6 : 0, track1_22 -> track1_54
+
+# Tracking state track1_23: mask=23 (popcount=4)
+s1 : 0, track1_23 -> rej1
+t1 : 4, track1_23 -> acc1
+a1_1 : 0, track1_23 -> track1_23
+a1_2 : 0, track1_23 -> track1_23
+a1_3 : 0, track1_23 -> track1_23
+a1_4 : 0, track1_23 -> track1_31
+a1_5 : 0, track1_23 -> track1_23
+a1_6 : 0, track1_23 -> track1_55
+
+# Tracking state track1_24: mask=24 (popcount=2)
+s1 : 0, track1_24 -> rej1
+t1 : 2, track1_24 -> acc1
+a1_1 : 0, track1_24 -> track1_25
+a1_2 : 0, track1_24 -> track1_26
+a1_3 : 0, track1_24 -> track1_28
+a1_4 : 0, track1_24 -> track1_24
+a1_5 : 0, track1_24 -> track1_24
+a1_6 : 0, track1_24 -> track1_56
+
+# Tracking state track1_25: mask=25 (popcount=3)
+s1 : 0, track1_25 -> rej1
+t1 : 3, track1_25 -> acc1
+a1_1 : 0, track1_25 -> track1_25
+a1_2 : 0, track1_25 -> track1_27
+a1_3 : 0, track1_25 -> track1_29
+a1_4 : 0, track1_25 -> track1_25
+a1_5 : 0, track1_25 -> track1_25
+a1_6 : 0, track1_25 -> track1_57
+
+# Tracking state track1_26: mask=26 (popcount=3)
+s1 : 0, track1_26 -> rej1
+t1 : 3, track1_26 -> acc1
+a1_1 : 0, track1_26 -> track1_27
+a1_2 : 0, track1_26 -> track1_26
+a1_3 : 0, track1_26 -> track1_30
+a1_4 : 0, track1_26 -> track1_26
+a1_5 : 0, track1_26 -> track1_26
+a1_6 : 0, track1_26 -> track1_58
+
+# Tracking state track1_27: mask=27 (popcount=4)
+s1 : 0, track1_27 -> rej1
+t1 : 4, track1_27 -> acc1
+a1_1 : 0, track1_27 -> track1_27
+a1_2 : 0, track1_27 -> track1_27
+a1_3 : 0, track1_27 -> track1_31
+a1_4 : 0, track1_27 -> track1_27
+a1_5 : 0, track1_27 -> track1_27
+a1_6 : 0, track1_27 -> track1_59
+
+# Tracking state track1_28: mask=28 (popcount=3)
+s1 : 0, track1_28 -> rej1
+t1 : 3, track1_28 -> acc1
+a1_1 : 0, track1_28 -> track1_29
+a1_2 : 0, track1_28 -> track1_30
+a1_3 : 0, track1_28 -> track1_28
+a1_4 : 0, track1_28 -> track1_28
+a1_5 : 0, track1_28 -> track1_28
+a1_6 : 0, track1_28 -> track1_60
+
+# Tracking state track1_29: mask=29 (popcount=4)
+s1 : 0, track1_29 -> rej1
+t1 : 4, track1_29 -> acc1
+a1_1 : 0, track1_29 -> track1_29
+a1_2 : 0, track1_29 -> track1_31
+a1_3 : 0, track1_29 -> track1_29
+a1_4 : 0, track1_29 -> track1_29
+a1_5 : 0, track1_29 -> track1_29
+a1_6 : 0, track1_29 -> track1_61
+
+# Tracking state track1_30: mask=30 (popcount=4)
+s1 : 0, track1_30 -> rej1
+t1 : 4, track1_30 -> acc1
+a1_1 : 0, track1_30 -> track1_31
+a1_2 : 0, track1_30 -> track1_30
+a1_3 : 0, track1_30 -> track1_30
+a1_4 : 0, track1_30 -> track1_30
+a1_5 : 0, track1_30 -> track1_30
+a1_6 : 0, track1_30 -> track1_62
+
+# Tracking state track1_31: mask=31 (popcount=5)
+s1 : 0, track1_31 -> rej1
+t1 : 5, track1_31 -> acc1
+a1_1 : 0, track1_31 -> track1_31
+a1_2 : 0, track1_31 -> track1_31
+a1_3 : 0, track1_31 -> track1_31
+a1_4 : 0, track1_31 -> track1_31
+a1_5 : 0, track1_31 -> track1_31
+a1_6 : 0, track1_31 -> track1_63
+
+# Tracking state track1_32: mask=32 (popcount=1)
+s1 : 0, track1_32 -> rej1
+t1 : 1, track1_32 -> acc1
+a1_1 : 0, track1_32 -> track1_33
+a1_2 : 0, track1_32 -> track1_34
+a1_3 : 0, track1_32 -> track1_36
+a1_4 : 0, track1_32 -> track1_40
+a1_5 : 0, track1_32 -> track1_48
+a1_6 : 0, track1_32 -> track1_32
+
+# Tracking state track1_33: mask=33 (popcount=2)
+s1 : 0, track1_33 -> rej1
+t1 : 2, track1_33 -> acc1
+a1_1 : 0, track1_33 -> track1_33
+a1_2 : 0, track1_33 -> track1_35
+a1_3 : 0, track1_33 -> track1_37
+a1_4 : 0, track1_33 -> track1_41
+a1_5 : 0, track1_33 -> track1_49
+a1_6 : 0, track1_33 -> track1_33
+
+# Tracking state track1_34: mask=34 (popcount=2)
+s1 : 0, track1_34 -> rej1
+t1 : 2, track1_34 -> acc1
+a1_1 : 0, track1_34 -> track1_35
+a1_2 : 0, track1_34 -> track1_34
+a1_3 : 0, track1_34 -> track1_38
+a1_4 : 0, track1_34 -> track1_42
+a1_5 : 0, track1_34 -> track1_50
+a1_6 : 0, track1_34 -> track1_34
+
+# Tracking state track1_35: mask=35 (popcount=3)
+s1 : 0, track1_35 -> rej1
+t1 : 3, track1_35 -> acc1
+a1_1 : 0, track1_35 -> track1_35
+a1_2 : 0, track1_35 -> track1_35
+a1_3 : 0, track1_35 -> track1_39
+a1_4 : 0, track1_35 -> track1_43
+a1_5 : 0, track1_35 -> track1_51
+a1_6 : 0, track1_35 -> track1_35
+
+# Tracking state track1_36: mask=36 (popcount=2)
+s1 : 0, track1_36 -> rej1
+t1 : 2, track1_36 -> acc1
+a1_1 : 0, track1_36 -> track1_37
+a1_2 : 0, track1_36 -> track1_38
+a1_3 : 0, track1_36 -> track1_36
+a1_4 : 0, track1_36 -> track1_44
+a1_5 : 0, track1_36 -> track1_52
+a1_6 : 0, track1_36 -> track1_36
+
+# Tracking state track1_37: mask=37 (popcount=3)
+s1 : 0, track1_37 -> rej1
+t1 : 3, track1_37 -> acc1
+a1_1 : 0, track1_37 -> track1_37
+a1_2 : 0, track1_37 -> track1_39
+a1_3 : 0, track1_37 -> track1_37
+a1_4 : 0, track1_37 -> track1_45
+a1_5 : 0, track1_37 -> track1_53
+a1_6 : 0, track1_37 -> track1_37
+
+# Tracking state track1_38: mask=38 (popcount=3)
+s1 : 0, track1_38 -> rej1
+t1 : 3, track1_38 -> acc1
+a1_1 : 0, track1_38 -> track1_39
+a1_2 : 0, track1_38 -> track1_38
+a1_3 : 0, track1_38 -> track1_38
+a1_4 : 0, track1_38 -> track1_46
+a1_5 : 0, track1_38 -> track1_54
+a1_6 : 0, track1_38 -> track1_38
+
+# Tracking state track1_39: mask=39 (popcount=4)
+s1 : 0, track1_39 -> rej1
+t1 : 4, track1_39 -> acc1
+a1_1 : 0, track1_39 -> track1_39
+a1_2 : 0, track1_39 -> track1_39
+a1_3 : 0, track1_39 -> track1_39
+a1_4 : 0, track1_39 -> track1_47
+a1_5 : 0, track1_39 -> track1_55
+a1_6 : 0, track1_39 -> track1_39
+
+# Tracking state track1_40: mask=40 (popcount=2)
+s1 : 0, track1_40 -> rej1
+t1 : 2, track1_40 -> acc1
+a1_1 : 0, track1_40 -> track1_41
+a1_2 : 0, track1_40 -> track1_42
+a1_3 : 0, track1_40 -> track1_44
+a1_4 : 0, track1_40 -> track1_40
+a1_5 : 0, track1_40 -> track1_56
+a1_6 : 0, track1_40 -> track1_40
+
+# Tracking state track1_41: mask=41 (popcount=3)
+s1 : 0, track1_41 -> rej1
+t1 : 3, track1_41 -> acc1
+a1_1 : 0, track1_41 -> track1_41
+a1_2 : 0, track1_41 -> track1_43
+a1_3 : 0, track1_41 -> track1_45
+a1_4 : 0, track1_41 -> track1_41
+a1_5 : 0, track1_41 -> track1_57
+a1_6 : 0, track1_41 -> track1_41
+
+# Tracking state track1_42: mask=42 (popcount=3)
+s1 : 0, track1_42 -> rej1
+t1 : 3, track1_42 -> acc1
+a1_1 : 0, track1_42 -> track1_43
+a1_2 : 0, track1_42 -> track1_42
+a1_3 : 0, track1_42 -> track1_46
+a1_4 : 0, track1_42 -> track1_42
+a1_5 : 0, track1_42 -> track1_58
+a1_6 : 0, track1_42 -> track1_42
+
+# Tracking state track1_43: mask=43 (popcount=4)
+s1 : 0, track1_43 -> rej1
+t1 : 4, track1_43 -> acc1
+a1_1 : 0, track1_43 -> track1_43
+a1_2 : 0, track1_43 -> track1_43
+a1_3 : 0, track1_43 -> track1_47
+a1_4 : 0, track1_43 -> track1_43
+a1_5 : 0, track1_43 -> track1_59
+a1_6 : 0, track1_43 -> track1_43
+
+# Tracking state track1_44: mask=44 (popcount=3)
+s1 : 0, track1_44 -> rej1
+t1 : 3, track1_44 -> acc1
+a1_1 : 0, track1_44 -> track1_45
+a1_2 : 0, track1_44 -> track1_46
+a1_3 : 0, track1_44 -> track1_44
+a1_4 : 0, track1_44 -> track1_44
+a1_5 : 0, track1_44 -> track1_60
+a1_6 : 0, track1_44 -> track1_44
+
+# Tracking state track1_45: mask=45 (popcount=4)
+s1 : 0, track1_45 -> rej1
+t1 : 4, track1_45 -> acc1
+a1_1 : 0, track1_45 -> track1_45
+a1_2 : 0, track1_45 -> track1_47
+a1_3 : 0, track1_45 -> track1_45
+a1_4 : 0, track1_45 -> track1_45
+a1_5 : 0, track1_45 -> track1_61
+a1_6 : 0, track1_45 -> track1_45
+
+# Tracking state track1_46: mask=46 (popcount=4)
+s1 : 0, track1_46 -> rej1
+t1 : 4, track1_46 -> acc1
+a1_1 : 0, track1_46 -> track1_47
+a1_2 : 0, track1_46 -> track1_46
+a1_3 : 0, track1_46 -> track1_46
+a1_4 : 0, track1_46 -> track1_46
+a1_5 : 0, track1_46 -> track1_62
+a1_6 : 0, track1_46 -> track1_46
+
+# Tracking state track1_47: mask=47 (popcount=5)
+s1 : 0, track1_47 -> rej1
+t1 : 5, track1_47 -> acc1
+a1_1 : 0, track1_47 -> track1_47
+a1_2 : 0, track1_47 -> track1_47
+a1_3 : 0, track1_47 -> track1_47
+a1_4 : 0, track1_47 -> track1_47
+a1_5 : 0, track1_47 -> track1_63
+a1_6 : 0, track1_47 -> track1_47
+
+# Tracking state track1_48: mask=48 (popcount=2)
+s1 : 0, track1_48 -> rej1
+t1 : 2, track1_48 -> acc1
+a1_1 : 0, track1_48 -> track1_49
+a1_2 : 0, track1_48 -> track1_50
+a1_3 : 0, track1_48 -> track1_52
+a1_4 : 0, track1_48 -> track1_56
+a1_5 : 0, track1_48 -> track1_48
+a1_6 : 0, track1_48 -> track1_48
+
+# Tracking state track1_49: mask=49 (popcount=3)
+s1 : 0, track1_49 -> rej1
+t1 : 3, track1_49 -> acc1
+a1_1 : 0, track1_49 -> track1_49
+a1_2 : 0, track1_49 -> track1_51
+a1_3 : 0, track1_49 -> track1_53
+a1_4 : 0, track1_49 -> track1_57
+a1_5 : 0, track1_49 -> track1_49
+a1_6 : 0, track1_49 -> track1_49
+
+# Tracking state track1_50: mask=50 (popcount=3)
+s1 : 0, track1_50 -> rej1
+t1 : 3, track1_50 -> acc1
+a1_1 : 0, track1_50 -> track1_51
+a1_2 : 0, track1_50 -> track1_50
+a1_3 : 0, track1_50 -> track1_54
+a1_4 : 0, track1_50 -> track1_58
+a1_5 : 0, track1_50 -> track1_50
+a1_6 : 0, track1_50 -> track1_50
+
+# Tracking state track1_51: mask=51 (popcount=4)
+s1 : 0, track1_51 -> rej1
+t1 : 4, track1_51 -> acc1
+a1_1 : 0, track1_51 -> track1_51
+a1_2 : 0, track1_51 -> track1_51
+a1_3 : 0, track1_51 -> track1_55
+a1_4 : 0, track1_51 -> track1_59
+a1_5 : 0, track1_51 -> track1_51
+a1_6 : 0, track1_51 -> track1_51
+
+# Tracking state track1_52: mask=52 (popcount=3)
+s1 : 0, track1_52 -> rej1
+t1 : 3, track1_52 -> acc1
+a1_1 : 0, track1_52 -> track1_53
+a1_2 : 0, track1_52 -> track1_54
+a1_3 : 0, track1_52 -> track1_52
+a1_4 : 0, track1_52 -> track1_60
+a1_5 : 0, track1_52 -> track1_52
+a1_6 : 0, track1_52 -> track1_52
+
+# Tracking state track1_53: mask=53 (popcount=4)
+s1 : 0, track1_53 -> rej1
+t1 : 4, track1_53 -> acc1
+a1_1 : 0, track1_53 -> track1_53
+a1_2 : 0, track1_53 -> track1_55
+a1_3 : 0, track1_53 -> track1_53
+a1_4 : 0, track1_53 -> track1_61
+a1_5 : 0, track1_53 -> track1_53
+a1_6 : 0, track1_53 -> track1_53
+
+# Tracking state track1_54: mask=54 (popcount=4)
+s1 : 0, track1_54 -> rej1
+t1 : 4, track1_54 -> acc1
+a1_1 : 0, track1_54 -> track1_55
+a1_2 : 0, track1_54 -> track1_54
+a1_3 : 0, track1_54 -> track1_54
+a1_4 : 0, track1_54 -> track1_62
+a1_5 : 0, track1_54 -> track1_54
+a1_6 : 0, track1_54 -> track1_54
+
+# Tracking state track1_55: mask=55 (popcount=5)
+s1 : 0, track1_55 -> rej1
+t1 : 5, track1_55 -> acc1
+a1_1 : 0, track1_55 -> track1_55
+a1_2 : 0, track1_55 -> track1_55
+a1_3 : 0, track1_55 -> track1_55
+a1_4 : 0, track1_55 -> track1_63
+a1_5 : 0, track1_55 -> track1_55
+a1_6 : 0, track1_55 -> track1_55
+
+# Tracking state track1_56: mask=56 (popcount=3)
+s1 : 0, track1_56 -> rej1
+t1 : 3, track1_56 -> acc1
+a1_1 : 0, track1_56 -> track1_57
+a1_2 : 0, track1_56 -> track1_58
+a1_3 : 0, track1_56 -> track1_60
+a1_4 : 0, track1_56 -> track1_56
+a1_5 : 0, track1_56 -> track1_56
+a1_6 : 0, track1_56 -> track1_56
+
+# Tracking state track1_57: mask=57 (popcount=4)
+s1 : 0, track1_57 -> rej1
+t1 : 4, track1_57 -> acc1
+a1_1 : 0, track1_57 -> track1_57
+a1_2 : 0, track1_57 -> track1_59
+a1_3 : 0, track1_57 -> track1_61
+a1_4 : 0, track1_57 -> track1_57
+a1_5 : 0, track1_57 -> track1_57
+a1_6 : 0, track1_57 -> track1_57
+
+# Tracking state track1_58: mask=58 (popcount=4)
+s1 : 0, track1_58 -> rej1
+t1 : 4, track1_58 -> acc1
+a1_1 : 0, track1_58 -> track1_59
+a1_2 : 0, track1_58 -> track1_58
+a1_3 : 0, track1_58 -> track1_62
+a1_4 : 0, track1_58 -> track1_58
+a1_5 : 0, track1_58 -> track1_58
+a1_6 : 0, track1_58 -> track1_58
+
+# Tracking state track1_59: mask=59 (popcount=5)
+s1 : 0, track1_59 -> rej1
+t1 : 5, track1_59 -> acc1
+a1_1 : 0, track1_59 -> track1_59
+a1_2 : 0, track1_59 -> track1_59
+a1_3 : 0, track1_59 -> track1_63
+a1_4 : 0, track1_59 -> track1_59
+a1_5 : 0, track1_59 -> track1_59
+a1_6 : 0, track1_59 -> track1_59
+
+# Tracking state track1_60: mask=60 (popcount=4)
+s1 : 0, track1_60 -> rej1
+t1 : 4, track1_60 -> acc1
+a1_1 : 0, track1_60 -> track1_61
+a1_2 : 0, track1_60 -> track1_62
+a1_3 : 0, track1_60 -> track1_60
+a1_4 : 0, track1_60 -> track1_60
+a1_5 : 0, track1_60 -> track1_60
+a1_6 : 0, track1_60 -> track1_60
+
+# Tracking state track1_61: mask=61 (popcount=5)
+s1 : 0, track1_61 -> rej1
+t1 : 5, track1_61 -> acc1
+a1_1 : 0, track1_61 -> track1_61
+a1_2 : 0, track1_61 -> track1_63
+a1_3 : 0, track1_61 -> track1_61
+a1_4 : 0, track1_61 -> track1_61
+a1_5 : 0, track1_61 -> track1_61
+a1_6 : 0, track1_61 -> track1_61
+
+# Tracking state track1_62: mask=62 (popcount=5)
+s1 : 0, track1_62 -> rej1
+t1 : 5, track1_62 -> acc1
+a1_1 : 0, track1_62 -> track1_63
+a1_2 : 0, track1_62 -> track1_62
+a1_3 : 0, track1_62 -> track1_62
+a1_4 : 0, track1_62 -> track1_62
+a1_5 : 0, track1_62 -> track1_62
+a1_6 : 0, track1_62 -> track1_62
+
+# Tracking state track1_63: mask=63 (popcount=6)
+s1 : 0, track1_63 -> rej1
+t1 : 6, track1_63 -> acc1
+a1_1 : 0, track1_63 -> track1_63
+a1_2 : 0, track1_63 -> track1_63
+a1_3 : 0, track1_63 -> track1_63
+a1_4 : 0, track1_63 -> track1_63
+a1_5 : 0, track1_63 -> track1_63
+a1_6 : 0, track1_63 -> track1_63
+
+# Reject sink rej1: loops on all symbols with weight 0
+s1 : 0, rej1 -> rej1
+t1 : 0, rej1 -> rej1
+a1_1 : 0, rej1 -> rej1
+a1_2 : 0, rej1 -> rej1
+a1_3 : 0, rej1 -> rej1
+a1_4 : 0, rej1 -> rej1
+a1_5 : 0, rej1 -> rej1
+a1_6 : 0, rej1 -> rej1

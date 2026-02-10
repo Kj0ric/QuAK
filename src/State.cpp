@@ -1,8 +1,8 @@
 
 #include "State.h"
 #include "Symbol.h"
-#include "utility.h"
 #include "Automaton.h"
+#include "utility.h"
 
 
 unsigned int ID_of_States = 0;

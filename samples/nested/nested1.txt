@@ -2,8 +2,6 @@
 a : 1, q0 -> q0
 b : 2, q0 -> q0
 
-@CHILD 0
-
 @CHILD 1
 final: q_f
 a : 1, q_a -> q_a

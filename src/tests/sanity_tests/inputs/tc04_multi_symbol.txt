@@ -1,0 +1,47 @@
+# Test Case 04: Multiple Symbols (a, b)
+# ======================================
+#
+# Structure:
+#   - Parent: Two states, alternating between them
+#       q0 --(a,2)--> q1
+#       q1 --(b,3)--> q0
+#       q0 --(b,1)--> q0
+#       q1 --(a,1)--> q1
+#   - Child 0: Empty
+#   - Child 1:
+#       s0 --(a,1)--> s1 (final)
+#       s0 --(b,2)--> s1 (final)
+#       s1 --(a,0)--> s1
+#       s1 --(b,0)--> s1
+#
+# Properties:
+#   - Alphabet size = 2 (a, b)
+#   - Parent is deterministic: YES
+#   - Parent is complete: YES
+#   - Child 1 is deterministic: YES
+#   - Child 1 is complete: YES
+#
+# Child 1 return values:
+#   - First 'a': weight 1
+#   - First 'b': weight 2
+#   - For Max_f: max(1, 2) = 2
+#   - For Min_f: depends on which symbol used first
+#
+# Expected Results:
+#   - generateMacroAlphabet() size >= 2 (at least as many as parent alphabet)
+#   - flatten_regular produces automaton with same alphabet
+
+@PARENT
+a : 2, q0 -> q1
+b : 3, q1 -> q0
+b : 1, q0 -> q0
+a : 1, q1 -> q1
+
+@CHILD 0
+
+@CHILD 1
+final: s1
+a : 1, s0 -> s1
+b : 2, s0 -> s1
+a : 0, s1 -> s1
+b : 0, s1 -> s1

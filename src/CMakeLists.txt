@@ -11,7 +11,6 @@ add_library(quak STATIC
 	    Parser.cpp
 	    Monitor.cpp
 	    RandomAutomaton.cpp
-		functionality_tests.cpp        
 	    FORKLIFT/inclusion.cpp
 	    FORKLIFT/FixpointLoop.cpp
 	    FORKLIFT/FixpointStem.cpp

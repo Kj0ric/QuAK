@@ -1,15 +1,11 @@
 
 #include "inclusion.h"
 
-#include "../Map.h"
-#include "../Word.h"
 #include "TargetOf.h"
 #include "FixpointLoop.h"
 #include "FixpointStem.h"
 #include "ContextOf.h"
 #include "StateRelation.h"
-#include "PostContextVariable.h"
-#include "PostTargetVariable.h"
 
 #include <chrono>
 

@@ -1,0 +1,33 @@
+# Adversarial LimAvg + SumMinus test: Minimize negative accumulation
+#
+# Child 1 has multiple paths with different negative accumulations.
+# For SumMinus, we want to MAXIMIZE (least negative is better).
+#
+# Paths:
+# - Path 1: c0 -> f1 (weight -6) = value -6 (direct but very bad)
+# - Path 2: c0 -> c1 -> f1 (weights -2 + -2) = value -4
+# - Path 3: c0 -> c1 -> c2 -> f1 (weights -2 + 0 + -1) = value -3 (optimal!)
+# - Path 4: c0 -> c2 -> f1 (weights -4 + -1) = value -5
+# - Path 5: c0 -> c3 -> f1 (weights -1 + -3) = value -4
+#
+# The direct path looks tempting (only 1 step) but has worst value.
+# Path 4 reaches c2 faster but with more accumulated negative weight.
+# Optimal requires the longer path 3 through c1 with the 0-weight edge.
+#
+# Expected LimSupAvg with SumMinus = -3
+
+@PARENT
+a : 1, p0 -> p0
+
+@CHILD 0
+
+@CHILD 1
+final: f1
+a : -6, c0 -> f1
+a : -2, c0 -> c1
+a : -4, c0 -> c2
+a : -1, c0 -> c3
+a : -2, c1 -> f1
+a : 0, c1 -> c2
+a : -1, c2 -> f1
+a : -3, c3 -> f1

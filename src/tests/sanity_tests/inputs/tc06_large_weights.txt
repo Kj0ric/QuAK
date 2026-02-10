@@ -1,0 +1,34 @@
+# Test Case 06: Large Weights
+# ============================
+#
+# Structure:
+#   - Parent: Weight 100
+#       q0 --(a,100)--> q0
+#   - Child 0: Empty
+#   - Child 1: Weight 1000
+#       s0 --(a,1000)--> s1 (final)
+#       s1 --(a,0)--> s1
+#
+# Properties:
+#   - Tests handling of larger weight values
+#   - Parent max weight = 100
+#   - Child max weight = 1000
+#
+# Expected Results:
+#   - flatten_regular(SumB, bound=500): child contributes min(1000, 500) = 500
+#   - flatten_regular(SumB, bound=2000): child contributes 1000
+#   - flatten_regular(Max_f): child returns 1000
+#   - isNonEmpty(LimSup, Max_f, 1000) = true
+#   - isNonEmpty(LimSup, Max_f, 1001) = false
+#
+# Note: SumB semantics cap the sum at the bound
+
+@PARENT
+a : 100, q0 -> q0
+
+@CHILD 0
+
+@CHILD 1
+final: s1
+a : 1000, s0 -> s1
+a : 0, s1 -> s1

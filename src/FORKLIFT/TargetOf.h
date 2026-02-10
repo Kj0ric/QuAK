@@ -3,7 +3,6 @@
 #define TARGETOF_H_
 
 #include "../State.h"
-#include "../Set.h"
 #include "../Symbol.h"
 
 class TargetOf : protected SetStd<State*> {

@@ -1,4 +1,3 @@
-#include <string>
 #include <vector>
 #include <memory>
 #include <cassert>
@@ -7,13 +6,13 @@
 #include <algorithm>
 #include <stack>
 #include <queue>
+#include <unordered_map>
 #include "Automaton.h"
-#include "Parser.h"
 #include "Edge.h"
 #include "utility.h"
 #include "FORKLIFT/inclusion.h"
 
-// Represent Strongly Connected Compononets of the automaton as DAGs
+// Strongly connected component DAG representation
 class SCC_Dag {
 public:
 	State* origin;
@@ -60,13 +59,14 @@ Automaton::~Automaton () {
 		delete[] this->final_SCCs;
 	}
 }
-// -------------------------------- Constructors -------------------------------- //
-// To construct from parsed data (file)
+// Constructors
+
+// Construct from parsed data
 Automaton::Automaton(std::string newname, Parser* parser, MapStd<std::string, Symbol*> sync_register) {
 	build(newname, parser, sync_register);
 }
 
-// To construct from direct data, when all components are already there
+// Construct from direct data
 Automaton::Automaton (
 		std::string name,
 		MapArray<Symbol*>* alphabet,
@@ -148,8 +148,7 @@ Automaton::Automaton(const Automaton& other) :
 }
 
 
-// Verifies that each state is not already owned by another automaton
-// Assigns ownership to each state
+// Assign ownership of states to this automaton
 void Automaton::appropriateStates() {
   for (auto *state : *states) {
     assert(state->automaton == nullptr);
@@ -157,7 +156,7 @@ void Automaton::appropriateStates() {
   }
 }
 
-// Build an automaton instance using data from a Parser object
+// Build automaton from parser data
 void Automaton::build(std::string newname, Parser* parser, MapStd<std::string, Symbol*> sync_register){
 	this->name = newname;
 
@@ -297,7 +296,7 @@ Parser Automaton::parse_trim() {
     return parser;
 }
 
-// Creates an automaton (out of "filename") that shares the alphabet of "other"
+// Create automaton from file with optional alphabet sync
 Automaton::Automaton(std::string filename, Automaton* other) {
 	MapStd<std::string, Symbol*> sync_register;
 	if (other != nullptr) {
@@ -484,7 +483,7 @@ Automaton* Automaton::copy_trim_complete(const Automaton* A, value_function_t f)
 
 
 
-// -------------------------------- SCCs -------------------------------- //
+// SCC computation
 
 void compute_SCC_dag(State* startState, int* spot, int* low, bool* stackMem, SCC_Dag** SCCs) {
     
@@ -732,7 +731,7 @@ void Automaton::compute_SCC (void) {
 	delete [] stackMem;
 }
 
-// -------------------------------- Getters -------------------------------- //
+// Getters
 weight_t Automaton::getTopValue (value_function_t f, UltimatelyPeriodicWord** witness) const {
 	weight_t *top_values = new weight_t[this->nb_SCCs];
 	weight_t top = compute_Top(f, top_values, witness);
@@ -779,7 +778,7 @@ void Automaton::invert_weights() {
 	this->setMinDomain(-temp);
 }
 
-// -------------------------------- Tranformations -------------------------------- //
+// Transformations
 Automaton* Automaton::constantAutomaton (const Automaton* A, weight_t x) {
 	State::RESET();
 	Symbol::RESET();
@@ -795,6 +794,7 @@ Automaton* Automaton::constantAutomaton (const Automaton* A, weight_t x) {
 	MapArray<State*>* newstates = new MapArray<State*>(1);
 	newstates->insert(0, new State("unique", newalphabet->size(), x, x));
 	State* newinitial = newstates->at(0);
+	newinitial->setFinal(true);
 
 	Weight* weight = new Weight(x);
 	MapArray<Weight*>* newweights = new MapArray<Weight*>(1);
@@ -861,7 +861,7 @@ Automaton* Automaton::removeSilentTransitionsHelperStandard_prefixIndependent(co
 
     std::string newname = "NonSilentAccSCC(" + A->getName() + ")";
 
-    // -------- 1. copy alphabet & states ----------------------------
+    // Copy alphabet and states
     MapArray<Symbol*>* newalphabet = new MapArray<Symbol*>(A->alphabet->size());
     for (unsigned int sid = 0; sid < A->alphabet->size(); ++sid) {
         newalphabet->insert(sid, new Symbol(A->alphabet->at(sid)));
@@ -873,7 +873,7 @@ Automaton* Automaton::removeSilentTransitionsHelperStandard_prefixIndependent(co
     }
     State* newinitial = newstates->at(A->initial->getId());
 
-    // -------- 2. weights: keep original SILENT weights, add one "replacement" weight ----
+    // Copy weights and add replacement weight
     const unsigned int oldW = A->weights->size();
     MapArray<Weight*>* newweights = new MapArray<Weight*>(oldW + 1);
 
@@ -892,7 +892,7 @@ Automaton* Automaton::removeSilentTransitionsHelperStandard_prefixIndependent(co
     if (replacement < newmin_domain) newmin_domain = replacement;
     if (replacement > newmax_domain) newmax_domain = replacement;
 
-    // -------- 3. accepting SCC predicate ---------------------------
+    // Accepting SCC predicate
     const unsigned int nbSCC = A->nb_SCCs;
 
     auto is_accepting_scc_id = [&](int cid) -> bool {
@@ -918,7 +918,7 @@ Automaton* Automaton::removeSilentTransitionsHelperStandard_prefixIndependent(co
         return is_accepting_scc_id(cu);
     };
 
-    // -------- 4. copy transitions; only "de-silence" internal silent edges in accepting SCCs ----
+    // Copy transitions, de-silence internal edges in accepting SCCs
     for (unsigned int state_id = 0; state_id < A->states->size(); ++state_id) {
         State* oldFrom = A->states->at(state_id);
 
@@ -1013,7 +1013,7 @@ Automaton* Automaton::removeSilentTransitionsHelperLimitAverage_prefixIndependen
     Symbol::RESET();
     Weight::RESET();
 
-    // -------- Custom hash for tuple<uint, uint, uint> -----------------------
+    // Custom hash for tuple<uint, uint, uint>
     struct TupleHash {
         size_t operator()(const std::tuple<unsigned int, unsigned int, unsigned int>& t) const {
             auto h1 = std::hash<unsigned int>{}(std::get<0>(t));
@@ -1026,7 +1026,7 @@ Automaton* Automaton::removeSilentTransitionsHelperLimitAverage_prefixIndependen
     using EdgeKey = std::tuple<unsigned int, unsigned int, unsigned int>;
     using EdgeMap = std::unordered_map<EdgeKey, weight_t, TupleHash>;
 
-    // -------- 1. copy alphabet & states ----------------------------
+    // Copy alphabet and states
     MapArray<Symbol*>* newalphabet = new MapArray<Symbol*>(A->alphabet->size());
     for (unsigned int sid = 0; sid < A->alphabet->size(); ++sid) {
         newalphabet->insert(sid, new Symbol(A->alphabet->at(sid)));
@@ -1041,7 +1041,7 @@ Automaton* Automaton::removeSilentTransitionsHelperLimitAverage_prefixIndependen
     const unsigned int n = A->states->size();
     const unsigned int nbSCC = A->nb_SCCs;
 
-    // -------- Helper lambdas ----------------------------------------
+    // Helper lambdas
     auto is_accepting_scc_id = [&](int cid) -> bool {
         if (cid < 0) return false;
         unsigned int ucid = static_cast<unsigned int>(cid);
@@ -1064,7 +1064,7 @@ Automaton* Automaton::removeSilentTransitionsHelperLimitAverage_prefixIndependen
         return is_accepting_scc_id(cu);
     };
 
-    // -------- 2. Restricted ε-closure (store IDs for cache locality) --------
+    // Compute restricted epsilon-closure
     std::vector<std::vector<unsigned int>> silentSucc(n);
 
     for (unsigned int i = 0; i < n; ++i) {
@@ -1112,7 +1112,7 @@ Automaton* Automaton::removeSilentTransitionsHelperLimitAverage_prefixIndependen
         }
     }
 
-    // -------- 2b. Compute reverse closure: silentPred[i] = {j : i ∈ silentSucc[j]} ----
+    // Compute reverse closure
     std::vector<std::vector<unsigned int>> silentPred(n);
     for (unsigned int j = 0; j < n; ++j) {
         for (unsigned int reached : silentSucc[j]) {
@@ -1120,7 +1120,7 @@ Automaton* Automaton::removeSilentTransitionsHelperLimitAverage_prefixIndependen
         }
     }
 
-    // -------- 3. Gather best compressed NON-silent edges (inverted iteration) ----
+    // Gather best compressed non-silent edges
     // Estimate capacity: at most O(m) entries where m = number of non-silent edges
     EdgeMap best;
     best.reserve(n * 4);  // heuristic; adjust based on typical density
@@ -1142,7 +1142,7 @@ Automaton* Automaton::removeSilentTransitionsHelperLimitAverage_prefixIndependen
                 unsigned int tId = t->getId();
                 unsigned int symId = sym->getId();
 
-                // Cross-product: all states that can reach s via silent × 
+                // Cross-product: all states that can reach s via silent *
                 //                all states reachable from t via silent
                 for (unsigned int pId : silentPred[sId]) {
                     for (unsigned int rId : silentSucc[tId]) {
@@ -1159,7 +1159,7 @@ Automaton* Automaton::removeSilentTransitionsHelperLimitAverage_prefixIndependen
         }
     }
 
-    // -------- 4. Build final transition set in a single pass ----------------
+    // Build final transition set
     EdgeMap final_edges;
     final_edges.reserve(best.size() + n * 4);
 
@@ -1199,7 +1199,7 @@ Automaton* Automaton::removeSilentTransitionsHelperLimitAverage_prefixIndependen
         }
     }
 
-    // -------- 5. Collect unique weights and materialise Weight objects ------
+    // Collect unique weights
     SetSorted<weight_t> weight_vals;
     // weight_vals.reserve(final_edges.size());  // upper bound
     for (const auto& [key, w] : final_edges) {
@@ -1214,7 +1214,7 @@ Automaton* Automaton::removeSilentTransitionsHelperLimitAverage_prefixIndependen
         wreg.insert(v, wobj);
     }
 
-    // -------- 6. Create the new transition relation -------------------------
+    // Create new transition relation
     for (const auto& [key, wval] : final_edges) {
         auto [pId, symId, rId] = key;
 
@@ -1228,7 +1228,7 @@ Automaton* Automaton::removeSilentTransitionsHelperLimitAverage_prefixIndependen
         to->addPredecessor(edge);
     }
 
-    // -------- 7. Wrap-up ----------------------------------------------------
+    // Wrap-up
     std::string newname = "NonSilentAccSCC(" + A->getName() + ")";
     return new Automaton(
         newname, newalphabet, newstates, newweights,
@@ -1239,12 +1239,12 @@ Automaton* Automaton::removeSilentTransitionsHelperLimitAverage_prefixIndependen
 
 
 Automaton* Automaton::removeSilentTransitionsHelperLimitAverage(const Automaton* A) {
-	//  --------  A_fix : compress every ε* ­ a ­ ε* pattern  --------
+	//  --------  A_fix : compress every (silent)*(nonSilent)(silent)* pattern  --------
 	State::RESET();
 	Symbol::RESET();
 	Weight::RESET();
 
-	// -------- 1. copy alphabet & states ----------------------------
+	// Copy alphabet and states
 	MapArray<Symbol*>* newalphabet = new MapArray<Symbol*>(A->alphabet->size());
 	for (unsigned int sid = 0; sid < A->alphabet->size(); ++sid)
 		newalphabet->insert(sid, new Symbol(A->alphabet->at(sid)));
@@ -1254,7 +1254,7 @@ Automaton* Automaton::removeSilentTransitionsHelperLimitAverage(const Automaton*
 		newstates->insert(stid, new State(A->states->at(stid)));
 	State* newinitial = newstates->at(A->initial->getId());
 
-	// -------- 2. ε-closure -------------------
+	// Compute silent-closure
 	const unsigned int n = A->states->size();
 	std::vector< SetStd<State*> > silentSucc(n);
 
@@ -1279,8 +1279,8 @@ Automaton* Automaton::removeSilentTransitionsHelperLimitAverage(const Automaton*
 		}
 	}
 
-	// -------- 3. gather best compressed edges ----------------------
-	std::map< std::tuple<unsigned,int,unsigned>, weight_t > best;      // (p,a,r) ↦ min weight NOT MIN BUT MAX
+	// Gather best compressed edges
+	std::map< std::tuple<unsigned,int,unsigned>, weight_t > best;      // (p,a,r) -> max weight
 	SetSorted<weight_t>                weight_vals;
 
 	for (unsigned int pId = 0; pId < n; ++pId) {
@@ -1302,7 +1302,7 @@ Automaton* Automaton::removeSilentTransitionsHelperLimitAverage(const Automaton*
 
 	for (const auto &kv : best) weight_vals.insert(kv.second);
 
-	// -------- 4. materialise the new weight objects ----------------
+	// Materialize new weight objects
 	MapArray<Weight*>* newweights = new MapArray<Weight*>(weight_vals.size());
 	MapStd<weight_t, Weight*> wreg;
 	for (weight_t v : weight_vals) {
@@ -1311,7 +1311,7 @@ Automaton* Automaton::removeSilentTransitionsHelperLimitAverage(const Automaton*
 		wreg.insert(v, w);
 	}
 
-	// -------- 5. create the compressed transition relation ---------
+	// Create compressed transition relation
 	for (const auto &kv : best) {
 		unsigned pId, symId, rId;
 		std::tie(pId, symId, rId) = kv.first;
@@ -1325,7 +1325,7 @@ Automaton* Automaton::removeSilentTransitionsHelperLimitAverage(const Automaton*
 		to->addPredecessor(e);
 	}
 
-	// -------- 6. wrap-up ------------------------------------------
+	// Wrap-up
 	std::string newname = "NonSilent(" + A->getName() + ")";
 	return new Automaton(
 		newname, newalphabet, newstates, newweights,
@@ -1989,7 +1989,7 @@ Automaton* Automaton::determinizeInf (const Automaton* A) {
 }
 
 
-// -------------------------------- Decisions -------------------------------- //
+// Decision procedures
 
 
 
@@ -2247,7 +2247,7 @@ bool Automaton::isLive (value_function_t f, UltimatelyPeriodicWord** witness) {
 
 
 
-// -------------------------------- Tops -------------------------------- //
+// Top value computation
 
 void Automaton::top_dag (SCC_Dag* dag, bool* done, weight_t* top_values) const {
 	if (done[dag->origin->getTag()] == true) return;
@@ -3664,7 +3664,7 @@ weight_t Automaton::computeValue(value_function_t f, UltimatelyPeriodicWord* w) 
 	}
 }
 
-// -------------------------------- toStrings -------------------------------- //
+// String representations
 
 
 void Automaton::print(bool full, bool bv_weights, bool bv_only) const {
@@ -3943,10 +3943,6 @@ weight_t Automaton::compute_top_with_final(value_function_t f) const {
 
 //...................................................//
 
-
-
-
-// Put this in an anonymous namespace or a .cpp file near Automaton methods.
 namespace {
 
 	// Local adjacency type inside an SCC
@@ -4023,8 +4019,8 @@ namespace {
 		if (!has_cycle_edge) {
 			// Single state without self-loop, or something degenerate:
 			// cannot form a cycle with length ≥ 1.
-			// return A->min_domain;
-			return std::numeric_limits<weight_t>::lowest();
+			// Use float's lowest to ensure a proper sentinel value
+			return weight_t(std::numeric_limits<float>::lowest());
 		}
 	
 		const unsigned int N = n;
@@ -4038,7 +4034,7 @@ namespace {
 		vector<weight_t> dp_prev(N), dp_curr(N);
 		vector<char> valid_prev(N, 0), valid_curr(N, 0);
 	
-		// ---------- PASS 1: compute H_n[v] for all v ----------
+		// Pass 1: compute H_n[v] for all v
 	
 		std::fill(valid_prev.begin(), valid_prev.end(), 0);
 		valid_prev[src] = 1;
@@ -4075,7 +4071,7 @@ namespace {
 			valid_prev.swap(valid_curr);
 		}
 	
-		// ---------- PASS 2: recompute H_k[v], accumulate min_k (H_n - H_k)/(n-k) ----------
+		// Pass 2: recompute H_k[v], accumulate min_k (H_n - H_k)/(n-k)
 	
 		vector<weight_t> min_ratio(N);   // per-vertex min over k
 		vector<char> ratio_defined(N, 0);
@@ -4099,7 +4095,6 @@ namespace {
 			}
 		}
 	
-		// k = 1..n-1
 		for (unsigned int k = 1; k < N; ++k) {
 			std::fill(valid_curr.begin(), valid_curr.end(), 0);
 	
@@ -4142,7 +4137,7 @@ namespace {
 			valid_prev.swap(valid_curr);
 		}
 	
-		// µ_max = max_v min_ratio[v]
+		// mu_max = max_v min_ratio[v]
 		bool any = false;
 		weight_t best = A->min_domain; // lower bound
 	
@@ -4161,8 +4156,8 @@ namespace {
 	
 		if (!any) {
 			// Shouldn't happen for an SCC with at least one cycle, but be safe.
-			// return A->min_domain;
-			return std::numeric_limits<weight_t>::lowest();
+			// Use float's lowest to ensure a proper sentinel value
+			return weight_t(std::numeric_limits<float>::lowest());
 		}
 		return best;
 	}
@@ -4178,8 +4173,8 @@ bool Automaton::emptiness_LimAvg_with_final(weight_t threshold) const {
     std::vector<std::vector<unsigned int>> states_in_scc(this->nb_SCCs);
     for (unsigned int sid = 0; sid < n; ++sid) {
         // if (!state_reachable[sid]) continue;  // prune unreachable early
-        unsigned int tag = this->states->at(sid)->getTag();
-        states_in_scc[tag].push_back(sid);
+        int tag = this->states->at(sid)->getTag();
+        if (tag > -1) states_in_scc[tag].push_back(sid);
     }
 
     // For each reachable, final SCC: compute max mean cycle and compare
@@ -4194,7 +4189,7 @@ bool Automaton::emptiness_LimAvg_with_final(weight_t threshold) const {
 		std::vector<unsigned int> touched;
 		weight_t mu_scc = max_mean_cycle_on_scc(this, vec, scc_id, global_to_local, touched);
 
-		if (mu_scc == std::numeric_limits<weight_t>::lowest()) continue;
+		if (mu_scc == weight_t(std::numeric_limits<float>::lowest())) continue;
 
         if (mu_scc >= threshold) {
             // Witness found: there is a run with limavg ≥ threshold
@@ -4203,7 +4198,16 @@ bool Automaton::emptiness_LimAvg_with_final(weight_t threshold) const {
         }
     }
 
-    return false; // no accepting SCC with mean ≥ threshold
+    return false; // no accepting SCC with mean >= threshold
+}
+
+bool Automaton::isNonEmpty_withFinal(value_function_t f, weight_t threshold) const {
+    if (f == LimInfAvg || f == LimSupAvg) {
+        return this->emptiness_LimAvg_with_final(threshold);
+    } else {
+        weight_t top = this->compute_top_with_final(f);
+        return (top >= threshold);
+    }
 }
 
 unsigned int Automaton::getNbSCCs() const {

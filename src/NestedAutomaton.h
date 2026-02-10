@@ -1,48 +1,38 @@
 #ifndef NESTED_AUTOMATON_H_
 #define NESTED_AUTOMATON_H_
 
-#include <string>
-#include <memory>
+#include <unordered_set>
 #include <vector>
-#include <queue>
-#include "Map.h"
-#include "Set.h"
-#include "Parser.h"
-#include "Weight.h"
-#include "State.h"
-#include "Symbol.h"
-#include "Word.h"
 #include "Automaton.h"
 #include "ChildAutomaton.h"
 
-// Global debug flag (defined in CLI main)
-extern bool g_debug_mode;
+// Forward declaration for test access
+class NestedAutomatonTester;
 
 class NestedAutomaton : public Automaton {
+	// Allow test class to access private members
+	friend class NestedAutomatonTester;
+
 private:
-	MapArray<ChildAutomaton*>* children_;	// list of Child Automata, instead of weights
-	//size_t children_size;
+	MapArray<ChildAutomaton*>* children_;
 
-	NestedAutomaton(const Automaton* parent, MapArray<ChildAutomaton*>* children);	// Helper constructor for removeSilentTransitions
+	NestedAutomaton(const Automaton* parent, MapArray<ChildAutomaton*>* children);
 
-	// TODO: Decide if domain ranges are needed
 
-    bool emptiness_monotonic_nesting_supremum(value_function_t infinite_aggregator, value_function_t finite_aggregator, weight_t threshold);
-    bool emptiness_monotonic_nesting(value_function_t infinite_aggregator, value_function_t finite_aggregator, weight_t threshold);
-    bool emptiness_monotonic_nesting_min_max(value_function_t infinite_aggregator, value_function_t finite_aggregator, weight_t threshold);
-    bool emptiness_monotonic_nesting_min_max_supremum(value_function_t infinite_aggregator, value_function_t finite_aggregator, weight_t threshold);
-    bool emptiness_Avg_SumPlus (weight_t threshold);
+	bool allParentStatesFinal() const;
+	SetStd<weight_t> computeChildReturnValuesParentAware(size_t child_index, value_function_t finVal, weight_t bound);
+	SetStd<weight_t> computeChildReturnValues(ChildAutomaton* child, value_function_t finVal, weight_t bound);
 
-    bool allParentStatesFinal() const;
-    SetStd<weight_t> computeChildReturnValuesParentAware(size_t child_index, value_function_t finVal, weight_t bound);
-    SetStd<weight_t> computeChildReturnValues(ChildAutomaton* child, value_function_t finVal, weight_t bound);
-    SetStd<weight_t> computeGlobalReturnValues(value_function_t finVal, weight_t bound);
+	// Ensures child 0 exists with a default trivial automaton if missing
+	void ensureChild0Exists();
 
 public:
 	virtual ~NestedAutomaton();
 	NestedAutomaton(std::string name, Parser* parser, MapStd<std::string, Symbol*> sync_register);
 	NestedAutomaton(std::string filename, Automaton* other = nullptr);
-    NestedAutomaton(std::string name, MapArray<Symbol*>* alphabet, MapArray<State*>* states, MapArray<Weight*>* weights, weight_t min_domain, weight_t max_domain, State* initial, MapArray<ChildAutomaton*>* children);
+	NestedAutomaton(std::string name, MapArray<Symbol*>* alphabet, MapArray<State*>* states,
+	                MapArray<Weight*>* weights, weight_t min_domain, weight_t max_domain,
+	                State* initial, MapArray<ChildAutomaton*>* children);
 
 	void print(bool full = false, bool bv_weights = false, bool bv_only = false) const;
 	void print(std::ostream& out, bool full = false, bool bv_weights = false, bool bv_only = false) const;
@@ -51,156 +41,32 @@ public:
 	std::size_t getChildrenSize() const;
 	ChildAutomaton* getChild(std::size_t index) const;
 
-    std::unordered_set<MacroSymbol*, MacroSymbolPtrHash, MacroSymbolPtrEqual> generateMacroAlphabet();
-    NestedAutomaton* determinizeWithMacroAlphabet();
-    NestedAutomaton* synchronizeChildren();
-    Automaton* flatten_Avg_SumMinus(uint64_t c_bound);
+	std::unordered_set<MacroSymbol*, MacroSymbolPtrHash, MacroSymbolPtrEqual> generateMacroAlphabet();
+	NestedAutomaton* determinizeWithMacroAlphabet();
+	NestedAutomaton* synchronizeChildren();
+	Automaton* flatten_Avg_SumMinus(uint64_t c_bound);
 	Automaton* flatten_regular(value_function_t finVal, weight_t bound = -1);
-    Automaton* flatten_regular_parent_trivial(value_function_t finVal, weight_t bound = -1);
-	Automaton* flatten_regular_parent_acceptance(value_function_t finVal, weight_t bound = -1);
-    Automaton* flattenNestedAutomaton();
+	Automaton* flatten_SumPlusMinus_Sup(value_function_t finite_aggregator, weight_t threshold);
+	Automaton* flatten_SumPlusMinus_Inf(value_function_t finite_aggregator, weight_t threshold);
+	Automaton* flatten_MinMax_Sup(value_function_t finite_aggregator, weight_t threshold);
+	Automaton* flatten_MinMax_Inf(value_function_t finite_aggregator, weight_t threshold);
+	Automaton* flatten_MinMax_Inf_v1(value_function_t finite_aggregator, weight_t threshold);  // archived: original buggy
+	Automaton* flatten_MinMax_Inf_v2(value_function_t finite_aggregator, weight_t threshold);  // archived: fixed but complex
 
-    NestedAutomaton* makeCompleteNested(std::vector<bool>* complete_flags = nullptr, weight_t parent_sink_w = weight_t(0), weight_t child_sink_w = weight_t(0)) const;
 
-    bool isDeterministicNested() const;
-    bool isCompleteNested(std::vector<bool>* complete_flags = nullptr) const;
-    bool isDeterministicAndCompleteNested() const;
-    bool isNonEmpty(value_function_t infVal, value_function_t finVal, weight_t x, weight_t bound = -1);
-    bool isUniversal(value_function_t infVal, value_function_t finVal, weight_t x, weight_t bound = -1);
+	NestedAutomaton* makeCompleteNested(std::vector<bool>* complete_flags = nullptr,
+	                                    weight_t parent_sink_w = weight_t(0),
+	                                    weight_t child_sink_w = weight_t(0)) const;
+
+	bool isDeterministicNested() const;
+	bool isCompleteNested(std::vector<bool>* complete_flags = nullptr) const;
+	bool isDeterministicAndCompleteNested() const;
+	bool isNonEmpty(value_function_t infVal, value_function_t finVal, weight_t x, weight_t bound = -1);
+	bool isUniversal(value_function_t infVal, value_function_t finVal, weight_t x, weight_t bound = -1);
 };
 
-// ------------------- Type definitions ----------------------
 const weight_t INIT_BUCHI_VALUE = 0;
-using MonitorKey = std::pair<size_t, weight_t>;  // (i, j)
 
-struct BuchiState {
-    State* parent_state;	// Current state in the parent automaton
-    weight_t last_guess;	// Last guessed return value
-    SetStd<State*> P1;		// Set of active monitor states (current epoch)
-	SetStd<State*> P2;		// Set of active monitor states (previous epoch)
-
-    BuchiState() : parent_state(nullptr), last_guess(0), P1(), P2() {}
-    BuchiState(State* parent, weight_t guess, const SetStd<State*>& p1, const SetStd<State*>& p2)
-        : parent_state(parent), last_guess(guess), P1(p1), P2(p2) {}
-    
-    // Required for std::map - defines strict weak ordering
-    bool operator<(const BuchiState& other) const {
-        // Compare all four fields lexicographically
-        if (parent_state != other.parent_state) {
-            return parent_state < other.parent_state;  // Compare pointers
-        }
-        
-        if (last_guess != other.last_guess) {
-            return last_guess < other.last_guess;  // weight_t has operator<
-        }
-        
-        if (P1 != other.P1) {
-            return P1 < other.P1;  // SetStd has operator< defined
-        }
-        
-        return P2 < other.P2;
-    }
-    
-    bool operator==(const BuchiState& other) const {
-        return parent_state == other.parent_state &&
-            last_guess == other.last_guess &&
-            P1 == other.P1 &&
-            P2 == other.P2;
-    }
-};
-
-struct BuchiState_acceptance {
-    State* parent_state;	// Current state in the parent automaton
-    weight_t last_guess;	// Last guessed return value
-    SetStd<State*> P1;		// Set of active monitor states (current epoch)
-	SetStd<State*> P2;		// Set of active monitor states (previous epoch)
-    bool acceptance_flag;   // Tracking if parent state is accepting
-
-    BuchiState_acceptance() : parent_state(nullptr), last_guess(0), P1(), P2(), acceptance_flag(false) {}
-    BuchiState_acceptance(State* parent, weight_t guess, const SetStd<State*>& p1, const SetStd<State*>& p2, bool af)
-        : parent_state(parent), last_guess(guess), P1(p1), P2(p2), acceptance_flag(af) {}
-    
-    // Required for std::map - defines strict weak ordering
-    bool operator<(const BuchiState_acceptance& other) const {
-        // Compare all four fields lexicographically
-        if (parent_state != other.parent_state) {
-            return parent_state < other.parent_state;  // Compare pointers
-        }
-        
-        if (last_guess != other.last_guess) {
-            return last_guess < other.last_guess;  // weight_t has operator<
-        }
-        
-        if (P1 != other.P1) {
-            return P1 < other.P1;  // SetStd has operator< defined
-        }
-
-        if (P2 != other.P2) {
-            return P2 < other.P2;
-        }
-
-        return acceptance_flag < other.acceptance_flag;
-    }
-
-    bool operator==(const BuchiState_acceptance& other) const {
-        return parent_state == other.parent_state &&
-            last_guess == other.last_guess &&
-            P1 == other.P1 &&
-            P2 == other.P2 &&
-            acceptance_flag == other.acceptance_flag;
-    }
-};
-
-// ----------------- Free function declarations --------------------
 weight_t applyBound(weight_t value, weight_t bound);
-SetStd<weight_t> computeChildReturnValues(ChildAutomaton* child, value_function_t finVal, weight_t bound = -1);
 
-SetStd<weight_t> computeGlobalReturnValues(const NestedAutomaton* nwa, value_function_t finVal, weight_t bound = -1);
-void computeGlobalDomains(const NestedAutomaton* nwa, weight_t& global_min, weight_t& global_max);
-
-void constructMonitors(
-    const NestedAutomaton* nwa,
-    const SetStd<weight_t>& global_return_values,
-    MapStd<MonitorKey, ChildAutomaton*>& monitors,
-    SetStd<State*>& Q_S,
-    SetStd<State*>& F_S,
-    value_function_t finVal,
-    weight_t bound = -1
-);
-// Monitor stepping functions
-SetStd<State*> stepMonitors(const SetStd<State*>& P, Symbol* a, const SetStd<State*>& F_S);
-void removeFinalStates(SetStd<State*>& P, const SetStd<State*>& F_S);
-
-State* initializeBuchi(
-    const NestedAutomaton* nwa,
-    MapArray<Symbol*>*& new_alphabet,
-    MapArray<Weight*>*& new_weights,
-    MapStd<weight_t, Weight*>& weight_register,
-    SetStd<weight_t>& global_return_values,
-    MapStd<BuchiState, State*>& state_map,
-    BuchiState init_buchi,
-    weight_t global_min,
-    weight_t global_max,
-    std::queue<BuchiState>& worklist,
-    unsigned int& state_counter
-);
-
-// Büchi transition processing
-void processBuchiTransition(
-    const BuchiState& current_gs,
-    unsigned int symbol_id,
-    MapStd<BuchiState, State*>& state_map,
-    MapArray<Symbol*>* new_alphabet,
-    MapArray<Weight*>* new_weights,
-    MapStd<weight_t, Weight*>& weight_register,
-    const MapStd<MonitorKey, ChildAutomaton*>& monitors,
-    const SetStd<State*>& F_S,
-    unsigned int& state_counter,
-    SetStd<weight_t>& global_return_values,
-    weight_t global_min,
-    weight_t global_max,
-    std::queue<BuchiState>& worklist,
-    long long int count
-);
-
-#endif /* NESTED_AUTOMATON_H_ */
+#endif

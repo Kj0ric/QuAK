@@ -1,0 +1,27 @@
+@PARENT
+a : 1, p0 -> p0
+b : 2, p0 -> p0
+a : 3, p0 -> p1
+b : 3, p1 -> p1
+a : 1, p1 -> p0
+
+@CHILD 0
+
+@CHILD 1
+final: f1
+a : 5, c0 -> f1
+b : 5, c0 -> f1
+
+@CHILD 2
+final: g1 g2
+a : 2, d0 -> d1
+b : 8, d0 -> g2
+a : 3, d1 -> g1
+b : 3, d1 -> g1
+
+@CHILD 3
+final: h1
+a : 4, e0 -> e1
+b : 4, e0 -> e1
+a : 6, e1 -> h1
+b : 6, e1 -> h1

@@ -3,8 +3,6 @@
 #define CONTEXTOF_H_
 
 #include "StateRelation.h"
-#include "../Map.h"
-#include "../State.h"
 #include "../Symbol.h"
 
 

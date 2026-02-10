@@ -1,0 +1,42 @@
+# Test Case 01: Simple Deterministic Nested Automaton
+# =====================================================
+#
+# Structure:
+#   - Parent: Single state q0 with self-loop on 'a', weight 1
+#   - Child 0: Empty (no transitions)
+#   - Child 1: Two states, s0 -> s1 on 'a' with weight 2, s1 is final
+#
+# Properties:
+#   - Parent is deterministic: YES
+#   - Parent is complete: YES (only symbol 'a')
+#   - Child 1 is deterministic: YES
+#   - Child 1 is complete: NO (s1 has no outgoing transitions)
+#
+# Expected Behavior:
+#   - getChildrenSize() = 2
+#   - isDeterministic() on parent = true
+#   - After synchronization: 1 child
+#
+# For flatten_regular(SumB, bound=5):
+#   - Child returns value 2 (single transition s0->s1)
+#   - Parent contributes 1 per step
+#   - Expected: flattening should succeed, output has states
+#
+# For isNonEmpty(LimSup, Max_f, threshold):
+#   - Max child return value = 2
+#   - threshold <= 2: should be NON-EMPTY (true)
+#   - threshold > 2: should be EMPTY (false)
+#
+# For isUniversal(LimSup, Max_f, threshold):
+#   - All words go through child with max=2
+#   - threshold <= 2: should be UNIVERSAL (true)
+#   - threshold > 2: should be NOT UNIVERSAL (false)
+
+@PARENT
+a : 1, q0 -> q0
+
+@CHILD 0
+
+@CHILD 1
+final: s1
+a : 2, s0 -> s1
