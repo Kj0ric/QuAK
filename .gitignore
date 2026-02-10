@@ -20,6 +20,12 @@ Testing/
 /quak-nested
 /quak-experiment-single
 
+# Test executables
+/test_*
+
+# Claude Code
+CLAUDE.md
+
 # IDE and editor files
 .vscode/
 .idea/
