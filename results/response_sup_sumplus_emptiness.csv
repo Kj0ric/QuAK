@@ -1,4 +1,0 @@
-experiment,n,k,file,problem,infval,finval,threshold,rep,timeout_s,warmup,status,mean_s,result01
-response_sup_sumplus_emptiness,1,1,samples/generated_response_time_1/response_n1_k1.txt,emptiness,Sup,SumPlus,1.0,3,300.0,1,OK,0.000239938,1
-response_sup_sumplus_emptiness,2,2,samples/generated_response_time_1/response_n2_k2.txt,emptiness,Sup,SumPlus,2.0,3,300.0,1,OK,0.000344605,1
-response_sup_sumplus_emptiness,3,3,samples/generated_response_time_1/response_n3_k3.txt,emptiness,Sup,SumPlus,3.0,3,300.0,1,OK,0.000438042,1

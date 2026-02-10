@@ -1,4 +1,0 @@
-experiment,n,k,file,problem,infval,finval,threshold,rep,timeout_s,warmup,status,mean_s,result01
-response_sup_sumb_universality,1,1,samples/generated_response_time_3/response_n1_k1.txt,universality,Sup,SumB:auto,1.0,3,300.0,1,OK,0.000194894,1
-response_sup_sumb_universality,2,2,samples/generated_response_time_3/response_n2_k2.txt,universality,Sup,SumB:auto,1.0,3,300.0,1,OK,0.000354741,1
-response_sup_sumb_universality,3,3,samples/generated_response_time_3/response_n3_k3.txt,universality,Sup,SumB:auto,1.0,3,300.0,1,OK,0.000671728,1
