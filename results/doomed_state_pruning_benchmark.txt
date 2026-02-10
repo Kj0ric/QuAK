@@ -1,0 +1,23 @@
+Doomed-State Pruning Benchmark Results
+=======================================
+Date: 2026-02-10
+Optimization: Prune states where an active non-final-reachable child has tracking=1
+              (tracking can never reach all-zero → no more epoch boundaries → dead state)
+Applies to: flatten_MinMax_Sup (Sup/LimSup + Max_f/Min_f)
+
+resource_consumption_1 (Sup + Max_f, threshold=k, 3-run mean)
+--------------------------------------------------------------
+  n  k  | Baseline (s) | Optimized (s) | Speedup
+  2  5  |    2.367      |    1.498      |  1.58x
+  3  3  |    5.613      |    3.626      |  1.55x
+  4  2  |   12.873      |    8.429      |  1.53x
+  5  1  |    9.319      |    6.005      |  1.55x
+
+resource_consumption_2 (Sup + Max_f, threshold=k, single run)
+--------------------------------------------------------------
+  n  k  | Optimized (s) | (no baseline available)
+  2  6  |    7.825      |
+  3  4  |   34.176      |
+  4  3  |  148.804      |
+  5  2  |  156.703      |
+  6  1  |   58.664      |

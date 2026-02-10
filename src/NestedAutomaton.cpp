@@ -4497,6 +4497,46 @@ static std::string vec_to_string(const std::vector<unsigned int>& v) {
 }
 
 
+// Backward BFS: can child state reach a final state?
+static std::vector<bool> compute_can_reach_final_child(ChildAutomaton* child) {
+    auto* states = child->getStates();
+    if (!states) return {};
+
+    const unsigned int n = states->size();
+    std::vector<bool> can_reach(n, false);
+    std::vector<bool> visited(n, false);
+    std::queue<unsigned int> q;
+    for (unsigned int i = 0; i < n; ++i) {
+        if (states->at(i)->getFinal()) {
+            can_reach[i] = true;
+            q.push(i);
+            visited[i] = true;
+        }
+    }
+    while (!q.empty()) {
+        unsigned int cur = q.front();
+        q.pop();
+        for (unsigned int pred = 0; pred < n; ++pred) {
+            if (visited[pred]) continue;
+            State* pred_state = states->at(pred);
+            for (Symbol* sym : *pred_state->getAlphabet()) {
+                auto* succs = pred_state->getSuccessors(sym->getId());
+                if (!succs) continue;
+                for (Edge* e : *succs) {
+                    if ((unsigned int)e->getTo()->getId() == cur) {
+                        can_reach[pred] = true;
+                        visited[pred] = true;
+                        q.push(pred);
+                        goto next_pred;
+                    }
+                }
+            }
+            next_pred:;
+        }
+    }
+    return can_reach;
+}
+
 // Worklist item for Min_f/Max_f under Sup/LimSup: track ONE distinguished child-token,
 // and represent activation/tracking as variable-length vectors (no fixed-size bitmasks).
 struct min_max_sup_work_item {
@@ -4530,6 +4570,9 @@ typedef struct global_exploration_data_min_max_supremum {
 
     // worklist for iterative DFS
     std::vector<min_max_sup_work_item>* worklist = nullptr;
+
+    // precomputed: can child state i reach a final state?
+    std::vector<bool> can_reach_final;
 
     // given (input for current exploration frame)
     std::string global_from;
@@ -4613,6 +4656,19 @@ static void explore_global_finalization_min_max_supremum(data_min_max_supremum_t
     if (tracking_all_zero(data->tracking_from)) {
         tracking_to = data->track_them_all; // reset obligations
         global_final = data->A->getStates()->at(data->parent_state_id_to)->getFinal();
+    }
+
+    // Doomed-state pruning: if any position has activation=1, tracking=1,
+    // and can_reach_final=false, tracking can never reach all-zero again
+    // (that position is a non-final sink that perpetuates its tracking bit).
+    // No more epoch boundaries → no more final states → redirect to sink.
+    if (!tracking_all_zero(tracking_to)) {
+        for (unsigned int i = 0; i < data->children_all; ++i) {
+            if (activation_to[i] && tracking_to[i] && !data->can_reach_final[i]) {
+                explore_global_failure_min_max_supremum(data);
+                return;
+            }
+        }
     }
 
     // Encode destination state:
@@ -4955,6 +5011,15 @@ Automaton* NestedAutomaton::flatten_MinMax_Sup(value_function_t finite_aggregato
         finite_is_max ? 0u : 1u
     });
 
+    // Precompute can_reach_final for doomed-state pruning
+    std::vector<bool> crf_all(children_all, false);
+    for (unsigned int cid = 0; cid < this->getChildrenSize(); ++cid) {
+        auto crf = compute_can_reach_final_child(this->getChild(cid));
+        for (unsigned int sid = 0; sid < crf.size(); ++sid) {
+            crf_all[cumulative_size[cid] + sid] = crf[sid];
+        }
+    }
+
     data_min_max_supremum_t data{};
     data.A = this;
     data.parser = parser;
@@ -4964,6 +5029,7 @@ Automaton* NestedAutomaton::flatten_MinMax_Sup(value_function_t finite_aggregato
     data.finite_is_max = finite_is_max;
     data.track_them_all = std::move(track_them_all);
     data.worklist = &worklist;
+    data.can_reach_final = std::move(crf_all);
 
     while (!worklist.empty()) {
         min_max_sup_work_item item = std::move(worklist.back());
