@@ -8,6 +8,7 @@
 #include <cassert>
 #include <chrono>
 #include <functional>
+#include <algorithm>
 
 #include "../../NestedAutomaton.h"
 #include "../../ChildAutomaton.h"
