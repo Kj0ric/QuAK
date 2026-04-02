@@ -2635,13 +2635,15 @@ NestedAutomaton* NestedAutomaton::synchronizeChildren() {
     State* minitial = mstates->at(this->getInitial()->getId());
 
     // Copy finals
-    SetStd<State*>* mfinals = new SetStd<State*>();
-    for (uint32_t sid = 0; sid < static_cast<uint32_t>(M); ++sid) {
-        State* os = this->getStates()->at(sid);
-        if (os->getFinal()) {
-            State* ns = mstates->at(sid);
-            ns->setFinal(true);
-            mfinals->insert(ns);
+    {
+        SetStd<State*> mfinals;
+        for (uint32_t sid = 0; sid < static_cast<uint32_t>(M); ++sid) {
+            State* os = this->getStates()->at(sid);
+            if (os->getFinal()) {
+                State* ns = mstates->at(sid);
+                ns->setFinal(true);
+                mfinals.insert(ns);
+            }
         }
     }
 
@@ -3097,6 +3099,8 @@ Automaton* NestedAutomaton::flatten_Avg_SumMinus(uint64_t c_bound) {
 
     for (State* st : fstates_vec)   fstates->insert(st->getId(), st);
     for (Weight* wt : fweights_vec) fweights->insert(wt->getId(), wt);
+
+    delete ffinals;
 
     Automaton* flat = new Automaton(
         "Flat(" + this->getName() + ")",

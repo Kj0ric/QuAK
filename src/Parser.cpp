@@ -342,6 +342,9 @@ void readNestedFile(std::ifstream& file, Parser* parser) {
         if (child->final_states.size() == 0) {
 			QUAK_FAIL("No final states detected in a child automaton. Check the automaton description .txt file.\n");
         }
+        if (child->initial.empty()) {
+            QUAK_FAIL("A child automaton has no transitions (initial state cannot be determined). Check the automaton description .txt file.\n");
+        }
     }
 
 	// Check final states for the PARENT automaton (if provided)
