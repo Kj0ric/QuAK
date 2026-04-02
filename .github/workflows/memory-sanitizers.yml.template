@@ -1,0 +1,31 @@
+# Template only. This file is intentionally not active because it does not use a
+# .yml/.yaml workflow filename. Rename it to `memory-sanitizers.yml` when ready.
+name: Memory Sanitizers
+
+on:
+  workflow_dispatch:
+
+jobs:
+  asan:
+    name: asan (ubuntu-latest, Debug, gcc)
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Configure CMake
+      run: >
+        cmake -B build_asan
+        -DCMAKE_BUILD_TYPE=Debug
+        -DCMAKE_C_COMPILER=gcc
+        -DCMAKE_CXX_COMPILER=g++
+        -DCMAKE_C_FLAGS="-fsanitize=address"
+        -DCMAKE_CXX_FLAGS="-fsanitize=address"
+        -S ${{ github.workspace }}
+
+    - name: Build Tests
+      run: cmake --build build_asan --target tests -j4
+
+    - name: Run Tests
+      working-directory: build_asan
+      run: ctest --output-on-failure
