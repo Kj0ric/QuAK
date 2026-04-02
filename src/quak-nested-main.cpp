@@ -274,13 +274,6 @@ Options parseArgs(int argc, char *argv[]) {
           return Options::createError("Operation " + std::string(argv[idx]) + " not supported for nested automata.");
         }
         
-        // for non-empty: SumMinus only supports LimInfAvg/LimSupAvg
-        if (cl.op == Operation::nestedNonEmpty && finval == SumMinus) {
-          if (valf != LimInfAvg && valf != LimSupAvg) {
-            return Options::createError("SumMinus finite aggregator only supports LimInfAvg or LimSupAvg.");
-          }
-        }
-
         cl.args.push_back(valf);      // INFVAL
         cl.args.push_back(finval);    // FINVAL
         
