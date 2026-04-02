@@ -84,6 +84,7 @@ set_target_properties(test_sanity_all PROPERTIES EXCLUDE_FROM_ALL TRUE)
 set(CORRECTNESS_TEST_SOURCES
     src/tests/correctness_tests/test_emptiness_correctness.cpp
     src/tests/correctness_tests/test_universality_correctness.cpp
+    src/tests/correctness_tests/test_non_nested_backward_compat.cpp
 )
 
 foreach(TEST_SOURCE ${CORRECTNESS_TEST_SOURCES})
@@ -91,6 +92,10 @@ foreach(TEST_SOURCE ${CORRECTNESS_TEST_SOURCES})
     add_executable(${TEST_NAME} ${TEST_SOURCE})
     target_include_directories(${TEST_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/src)
     target_link_libraries(${TEST_NAME} PUBLIC quak quak-private)
+    if(TEST_NAME STREQUAL "test_non_nested_backward_compat")
+        add_dependencies(${TEST_NAME} quak-nested)
+        target_compile_definitions(${TEST_NAME} PRIVATE QUAK_NESTED_PATH="$<TARGET_FILE:quak-nested>")
+    endif()
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME} WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
     set_target_properties(${TEST_NAME} PROPERTIES EXCLUDE_FROM_ALL TRUE)
 endforeach()
@@ -98,6 +103,7 @@ endforeach()
 # Custom target to build all tests
 add_custom_target(tests
     DEPENDS
+        quak-nested
         test_sanity_all
         test_flatten_regular
         test_flatten_avg_summinus
@@ -111,6 +117,7 @@ add_custom_target(tests
         test_auxiliary_functions
         test_emptiness_correctness
         test_universality_correctness
+        test_non_nested_backward_compat
     COMMENT "Building all test executables"
 )
 
