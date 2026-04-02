@@ -1,0 +1,30 @@
+# Test Case 11: Sup/Max positive cycle without overlapping doomed children
+# Expected:
+#   - isNonEmpty(Sup, Max_f, 1) = true
+#   - isNonEmpty(Sup, Max_f, 2) = false
+#   - isNonEmpty(LimSup, Max_f, 1) = true via (s a t u)^omega
+
+@PARENT
+s : 1, p0 -> p0
+a : 0, p0 -> p0
+t : 0, p0 -> p0
+u : 0, p0 -> p0
+
+@CHILD 0
+
+@CHILD 1
+final: acc
+s : 0, init -> c1
+a : 0, init -> rej
+t : 0, init -> rej
+u : 0, init -> rej
+
+s : 0, c1 -> rej
+a : 1, c1 -> c1
+t : 0, c1 -> acc
+u : 0, c1 -> c1
+
+s : 0, rej -> rej
+a : 0, rej -> rej
+t : 0, rej -> rej
+u : 0, rej -> rej

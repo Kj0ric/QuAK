@@ -274,6 +274,68 @@ void test_flatten_MinMax_Sup_output_properties() {
     delete nwa;
 }
 
+void test_isNonEmpty_Sup_Max_cycle_true() {
+    NestedAutomaton* nwa = new NestedAutomaton(TestFiles::SUP_MAX_CYCLE_TRUE);
+    verifyNestedAutomatonBasics(nwa, "input");
+
+    TEST_ASSERT(nwa->isNonEmpty(Sup, Max_f, weight_t(1)),
+        "Sup/Max should reach threshold 1 on repeated s-a-t-u cycles");
+    TEST_ASSERT(!nwa->isNonEmpty(Sup, Max_f, weight_t(2)),
+        "Sup/Max should not reach threshold 2 in tc11");
+
+    delete nwa;
+}
+
+void test_isNonEmpty_LimSup_Max_cycle_true() {
+    NestedAutomaton* nwa = new NestedAutomaton(TestFiles::SUP_MAX_CYCLE_TRUE);
+    verifyNestedAutomatonBasics(nwa, "input");
+
+    TEST_ASSERT(nwa->isNonEmpty(LimSup, Max_f, weight_t(1)),
+        "LimSup/Max should see infinitely many threshold-1 child returns in tc11");
+    TEST_ASSERT(!nwa->isNonEmpty(LimSup, Max_f, weight_t(2)),
+        "LimSup/Max should not reach threshold 2 in tc11");
+
+    delete nwa;
+}
+
+static State* findStateByName(const Automaton* automaton, const std::string& name) {
+    for (unsigned int i = 0; i < automaton->getStates()->size(); ++i) {
+        State* state = automaton->getStates()->at(i);
+        if (state->getName() == name) {
+            return state;
+        }
+    }
+    return nullptr;
+}
+
+void test_flatten_MinMax_Sup_doomed_state_redirects_to_sink() {
+    NestedAutomaton* nwa = new NestedAutomaton(TestFiles::SUP_MAX_DOOMED_FALSE);
+    Automaton* flat = NestedAutomatonTester::flatten_MinMax_Sup(nwa, Max_f, weight_t(1));
+    verifyAutomatonBasics(flat, "flattened doomed-overlap case");
+
+    State* doomed = findStateByName(flat, "0/000001/000000/1/4/0");
+    TEST_ASSERT_NOT_NULL(doomed, "Expected tracked-rej state to exist before pruning redirects its successors");
+
+    State* sink = findStateByName(flat, "@sink@");
+    TEST_ASSERT_NOT_NULL(sink, "Expected flattened automaton to contain @sink@ state");
+
+    unsigned int redirect_edges = 0;
+    for (Symbol* symbol : *(doomed->getAlphabet())) {
+        SetStd<Edge*>* succs = doomed->getSuccessors(symbol->getId());
+        TEST_ASSERT_NOT_NULL(succs, "Expected successors set on doomed state");
+        TEST_ASSERT_EQ(succs->size(), 1u, "Doomed state should deterministically redirect on each symbol");
+        for (Edge* edge : *succs) {
+            redirect_edges++;
+            TEST_ASSERT(edge->getTo() == sink,
+                "Doomed tracked state should redirect to @sink@ on every next symbol");
+        }
+    }
+    TEST_ASSERT_EQ(redirect_edges, 3u, "Doomed tracked state should have one redirect per alphabet symbol");
+
+    delete flat;
+    delete nwa;
+}
+
 // ============================================================================
 // Main
 // ============================================================================
@@ -312,6 +374,9 @@ int main() {
     RUN_TEST(test_flatten_MinMax_Sup_nested_Sij);
     RUN_TEST(test_flatten_MinMax_Sup_nested_Sij2);
     RUN_TEST(test_flatten_MinMax_Sup_output_properties);
+    RUN_TEST(test_isNonEmpty_Sup_Max_cycle_true);
+    RUN_TEST(test_isNonEmpty_LimSup_Max_cycle_true);
+    RUN_TEST(test_flatten_MinMax_Sup_doomed_state_redirects_to_sink);
 
     printTestSummary();
 
