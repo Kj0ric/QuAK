@@ -353,6 +353,35 @@ namespace ChildPumpLoop {
     }
 }
 
+// Automaton 11: mixed_sign
+// Deterministic unary automaton. Child path: [3, -2, 4].
+// On word a^omega: constant sequence — all infVal give the same result.
+// SumMinus is tested on the ORIGINAL file (not a negated version) because
+// the automaton already has negative child weights.
+//
+// Expected values (all infVal):
+//   Max_f    = 4   Min_f    = -2   SumB  = 5
+//   SumPlus  = 7   SumMinus = -2
+namespace MixedSign {
+    constexpr weight_t MAX_F_VAL    = 4;
+    constexpr weight_t MIN_F_VAL    = -2;
+    constexpr weight_t SUMB_VAL     = 5;
+    constexpr weight_t SUMPLUS_VAL  = 7;
+    constexpr weight_t SUMMINUS_VAL = -2;
+
+    weight_t getExpected(value_function_t infVal, value_function_t finVal) {
+        (void)infVal;  // Deterministic unary: all infVal give same result
+        switch (finVal) {
+            case Max_f:    return MAX_F_VAL;
+            case Min_f:    return MIN_F_VAL;
+            case SumB:     return SUMB_VAL;
+            case SumPlus:  return SUMPLUS_VAL;
+            case SumMinus: return SUMMINUS_VAL;
+            default: return 0;
+        }
+    }
+}
+
 // ============================================================================
 // Expected Values for Negated Automata (Part 2)
 // These test Max_f, Min_f, SumB on automata with negative child weights
@@ -570,14 +599,17 @@ weight_t getExpectedNonEmpty(const std::string& automaton, value_function_t infV
     if (automaton == "epsilon_boundary") return EpsilonBoundary::getExpected(infVal, finVal);
     if (automaton == "positive_only_nondet") return PositiveOnlyNondet::getExpected(infVal, finVal);
     if (automaton == "child_pump_loop") return ChildPumpLoop::getExpected(infVal, finVal);
+    if (automaton == "mixed_sign") return MixedSign::getExpected(infVal, finVal);
     return 0;
 }
 
 // Get the file path for an automaton name
-// For SumMinus, use the negated automata (negative weights)
+// For SumMinus, use the negated automata (negative weights).
+// Exception: mixed_sign already has negative weights — use the original file.
 std::string getFilePath(const std::string& automaton, value_function_t finVal = Max_f) {
     if (finVal == SumMinus) {
         // Use negated automata for SumMinus tests
+        if (automaton == "mixed_sign") return CorrectnessTestFiles::MIXED_SIGN;
         if (automaton == "baseline_det") return CorrectnessTestFiles::BASELINE_DET_NEG;
         if (automaton == "baseline_fractional") return CorrectnessTestFiles::BASELINE_FRACTIONAL_NEG;
         if (automaton == "nondet_child_binary") return CorrectnessTestFiles::NONDET_CHILD_BINARY_NEG;
@@ -601,6 +633,7 @@ std::string getFilePath(const std::string& automaton, value_function_t finVal = 
     if (automaton == "epsilon_boundary") return CorrectnessTestFiles::EPSILON_BOUNDARY;
     if (automaton == "positive_only_nondet") return CorrectnessTestFiles::POSITIVE_ONLY_NONDET;
     if (automaton == "child_pump_loop") return CorrectnessTestFiles::CHILD_PUMP_LOOP;
+    if (automaton == "mixed_sign") return CorrectnessTestFiles::MIXED_SIGN;
     return "";
 }
 
@@ -1073,6 +1106,41 @@ DEFINE_NONEMPTY_TEST(child_pump_loop, LimSupAvg, Min_f)
 DEFINE_NONEMPTY_TEST(child_pump_loop, LimSupAvg, SumB)
 DEFINE_NONEMPTY_TEST(child_pump_loop, LimSupAvg, SumPlus)
 
+// Automaton 11: mixed_sign
+// LimInfAvg+SumMinus and LimSupAvg+SumMinus are included (not via adversarial
+// files) because the original automaton already has negative child weights.
+// LimInfAvg+SumPlus is omitted (invalid combination).
+DEFINE_NONEMPTY_TEST(mixed_sign, Inf, Max_f)
+DEFINE_NONEMPTY_TEST(mixed_sign, Inf, Min_f)
+DEFINE_NONEMPTY_TEST(mixed_sign, Inf, SumB)
+DEFINE_NONEMPTY_TEST(mixed_sign, Inf, SumPlus)
+DEFINE_NONEMPTY_TEST(mixed_sign, Inf, SumMinus)
+DEFINE_NONEMPTY_TEST(mixed_sign, Sup, Max_f)
+DEFINE_NONEMPTY_TEST(mixed_sign, Sup, Min_f)
+DEFINE_NONEMPTY_TEST(mixed_sign, Sup, SumB)
+DEFINE_NONEMPTY_TEST(mixed_sign, Sup, SumPlus)
+DEFINE_NONEMPTY_TEST(mixed_sign, Sup, SumMinus)
+DEFINE_NONEMPTY_TEST(mixed_sign, LimInf, Max_f)
+DEFINE_NONEMPTY_TEST(mixed_sign, LimInf, Min_f)
+DEFINE_NONEMPTY_TEST(mixed_sign, LimInf, SumB)
+DEFINE_NONEMPTY_TEST(mixed_sign, LimInf, SumPlus)
+DEFINE_NONEMPTY_TEST(mixed_sign, LimInf, SumMinus)
+DEFINE_NONEMPTY_TEST(mixed_sign, LimSup, Max_f)
+DEFINE_NONEMPTY_TEST(mixed_sign, LimSup, Min_f)
+DEFINE_NONEMPTY_TEST(mixed_sign, LimSup, SumB)
+DEFINE_NONEMPTY_TEST(mixed_sign, LimSup, SumPlus)
+DEFINE_NONEMPTY_TEST(mixed_sign, LimSup, SumMinus)
+DEFINE_NONEMPTY_TEST(mixed_sign, LimInfAvg, Max_f)
+DEFINE_NONEMPTY_TEST(mixed_sign, LimInfAvg, Min_f)
+DEFINE_NONEMPTY_TEST(mixed_sign, LimInfAvg, SumB)
+// LimInfAvg + SumPlus: not valid -- omitted
+DEFINE_NONEMPTY_TEST(mixed_sign, LimInfAvg, SumMinus)
+DEFINE_NONEMPTY_TEST(mixed_sign, LimSupAvg, Max_f)
+DEFINE_NONEMPTY_TEST(mixed_sign, LimSupAvg, Min_f)
+DEFINE_NONEMPTY_TEST(mixed_sign, LimSupAvg, SumB)
+DEFINE_NONEMPTY_TEST(mixed_sign, LimSupAvg, SumPlus)
+DEFINE_NONEMPTY_TEST(mixed_sign, LimSupAvg, SumMinus)
+
 // ============================================================================
 // Part 2: Negated Automata Tests (Max_f, Min_f, SumB on negative weights)
 // 10 automata x 6 infVal x 3 finVal = 180 tests
@@ -1386,6 +1454,25 @@ void test_limavg_summinus_diamond() {
                       LimSupAvg, SumMinus, -3.0f);
 }
 
+// LimInfAvg + SumMinus tests (same inputs; sequences are constant so LimInfAvg == LimSupAvg)
+void test_limavg_inf_summinus_unary() {
+    testLimAvgBounded("SumMinus Unary (LimInfAvg)",
+                      CorrectnessTestFiles::LIMAVG_SUMMINUS_UNARY,
+                      LimInfAvg, SumMinus, 0.0f);
+}
+
+void test_limavg_inf_summinus_unbounded() {
+    testLimAvgBounded("SumMinus Unbounded (LimInfAvg)",
+                      CorrectnessTestFiles::LIMAVG_SUMMINUS_UNBOUNDED,
+                      LimInfAvg, SumMinus, -1.0f);
+}
+
+void test_limavg_inf_summinus_diamond() {
+    testLimAvgBounded("SumMinus Diamond (LimInfAvg)",
+                      CorrectnessTestFiles::LIMAVG_SUMMINUS_DIAMOND,
+                      LimInfAvg, SumMinus, -3.0f);
+}
+
 // LimAvg + Max_f/Min_f/SumB tests
 void test_limavg_max() {
     testLimAvgBounded("Max_f",
@@ -1420,9 +1507,9 @@ void test_limavg_sumb() {
 int main() {
     std::cout << "========================================" << std::endl;
     std::cout << "CORRECTNESS TESTS: isNonEmpty()" << std::endl;
-    std::cout << "Part 1: 10 automata x 27 valid combinations = 270 + 10 LimAvg = 280 tests" << std::endl;
+    std::cout << "Part 1: standard automata, mixed_sign regression, and LimAvg cases = 312 tests" << std::endl;
     std::cout << "Part 2: 10 negated automata x 6 infVal x 3 finVal = 180 tests" << std::endl;
-    std::cout << "Total: 460 tests" << std::endl;
+    std::cout << "Total: 492 tests" << std::endl;
     std::cout << "========================================" << std::endl;
 
     // Automaton 1: baseline_det
@@ -1726,6 +1813,41 @@ int main() {
     RUN_NONEMPTY_TEST(child_pump_loop, LimSupAvg, SumPlus);
 
     // ============================================================
+    // Automaton 11: mixed_sign
+    // ============================================================
+    std::cout << "\n--- Automaton 11: mixed_sign ---" << std::endl;
+    RUN_NONEMPTY_TEST(mixed_sign, Inf, Max_f);
+    RUN_NONEMPTY_TEST(mixed_sign, Inf, Min_f);
+    RUN_NONEMPTY_TEST(mixed_sign, Inf, SumB);
+    RUN_NONEMPTY_TEST(mixed_sign, Inf, SumPlus);
+    RUN_NONEMPTY_TEST(mixed_sign, Inf, SumMinus);
+    RUN_NONEMPTY_TEST(mixed_sign, Sup, Max_f);
+    RUN_NONEMPTY_TEST(mixed_sign, Sup, Min_f);
+    RUN_NONEMPTY_TEST(mixed_sign, Sup, SumB);
+    RUN_NONEMPTY_TEST(mixed_sign, Sup, SumPlus);
+    RUN_NONEMPTY_TEST(mixed_sign, Sup, SumMinus);
+    RUN_NONEMPTY_TEST(mixed_sign, LimInf, Max_f);
+    RUN_NONEMPTY_TEST(mixed_sign, LimInf, Min_f);
+    RUN_NONEMPTY_TEST(mixed_sign, LimInf, SumB);
+    RUN_NONEMPTY_TEST(mixed_sign, LimInf, SumPlus);
+    RUN_NONEMPTY_TEST(mixed_sign, LimInf, SumMinus);
+    RUN_NONEMPTY_TEST(mixed_sign, LimSup, Max_f);
+    RUN_NONEMPTY_TEST(mixed_sign, LimSup, Min_f);
+    RUN_NONEMPTY_TEST(mixed_sign, LimSup, SumB);
+    RUN_NONEMPTY_TEST(mixed_sign, LimSup, SumPlus);
+    RUN_NONEMPTY_TEST(mixed_sign, LimSup, SumMinus);
+    RUN_NONEMPTY_TEST(mixed_sign, LimInfAvg, Max_f);
+    RUN_NONEMPTY_TEST(mixed_sign, LimInfAvg, Min_f);
+    RUN_NONEMPTY_TEST(mixed_sign, LimInfAvg, SumB);
+    // LimInfAvg + SumPlus: not valid -- omitted
+    RUN_NONEMPTY_TEST(mixed_sign, LimInfAvg, SumMinus);
+    RUN_NONEMPTY_TEST(mixed_sign, LimSupAvg, Max_f);
+    RUN_NONEMPTY_TEST(mixed_sign, LimSupAvg, Min_f);
+    RUN_NONEMPTY_TEST(mixed_sign, LimSupAvg, SumB);
+    RUN_NONEMPTY_TEST(mixed_sign, LimSupAvg, SumPlus);
+    RUN_NONEMPTY_TEST(mixed_sign, LimSupAvg, SumMinus);
+
+    // ============================================================
     // LimAvg Adversarial Tests
     // ============================================================
     std::cout << "\n--- LimAvg Adversarial: SumPlus ---" << std::endl;
@@ -1734,10 +1856,15 @@ int main() {
     RUN_TEST(test_limavg_sumplus_unary);
     RUN_TEST(test_limavg_sumplus_unbounded);
 
-    std::cout << "\n--- LimAvg Adversarial: SumMinus ---" << std::endl;
+    std::cout << "\n--- LimAvg Adversarial: SumMinus (LimSupAvg) ---" << std::endl;
     RUN_TEST(test_limavg_summinus_unary);
     RUN_TEST(test_limavg_summinus_unbounded);
     RUN_TEST(test_limavg_summinus_diamond);
+
+    std::cout << "\n--- LimAvg Adversarial: SumMinus (LimInfAvg smoke) ---" << std::endl;
+    RUN_TEST(test_limavg_inf_summinus_unary);
+    RUN_TEST(test_limavg_inf_summinus_unbounded);
+    RUN_TEST(test_limavg_inf_summinus_diamond);
 
     std::cout << "\n--- LimAvg Adversarial: Max_f/Min_f/SumB ---" << std::endl;
     RUN_TEST(test_limavg_max);

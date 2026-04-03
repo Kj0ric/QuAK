@@ -59,12 +59,15 @@ Nested files are auto-detected by the `@PARENT` marker.
 
 ### Supported Nested Combinations
 
-| Decision  | Finite Agg     | Infinite Agg             |
-| --------- | -------------- | ------------------------ |
-| non-empty | SumPlus        | All                      |
-| non-empty | SumMinus       | LimInfAvg, LimSupAvg     |
-| non-empty | Max, Min, SumB | All                      |
-| universal | Max, Min, SumB | Inf, LimInf, Sup, LimSup |
+| Decision  | Finite Agg              | Infinite Agg                              |
+| --------- | ----------------------- | ----------------------------------------- |
+| non-empty | Max, Min, SumB          | All (Inf, Sup, LimInf, LimSup, LimInfAvg, LimSupAvg) |
+| non-empty | SumPlus                 | Inf, Sup, LimInf, LimSup, LimSupAvg       |
+| non-empty | SumMinus                | All (Inf, Sup, LimInf, LimSup, LimInfAvg, LimSupAvg) |
+| universal | Max, Min, SumB, SumPlus, SumMinus | Inf, Sup, LimInf, LimSup          |
+
+> **Note:** `LimInfAvg + SumPlus` is not supported for non-empty and will produce an error.
+> **Note:** `SumPlus` and `SumMinus` follow their documented semantics on mixed-sign child weights; they are not treated as raw sums.
 
 ---
 

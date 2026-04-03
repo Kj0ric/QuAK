@@ -185,6 +185,9 @@ namespace CorrectnessTestFiles {
     const std::string POSITIVE_ONLY_NONDET_NEG = BASE_PATH + "positive_only_nondet_neg.txt";
     const std::string CHILD_PUMP_LOOP_NEG = BASE_PATH + "child_pump_loop_neg.txt";
 
+    // Mixed-sign weights (positive and negative in same child automaton)
+    const std::string MIXED_SIGN = BASE_PATH + "mixed_sign.txt";
+
     // LimAvg adversarial tests
     const std::string LIMAVG_SUMPLUS_DIAMOND = BASE_PATH + "limavg_adversarial_sumplus_diamond.txt";
     const std::string LIMAVG_SUMPLUS = BASE_PATH + "limavg_adversarial_sumplus.txt";

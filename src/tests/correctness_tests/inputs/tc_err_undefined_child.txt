@@ -1,0 +1,13 @@
+# Error test: parent uses weight 2 (child index 2) but only @CHILD 0 and @CHILD 1 are defined.
+# The parser should abort with "Weight value does not correspond to a valid child automaton index".
+
+@PARENT
+a : 1, p0 -> p0
+b : 2, p0 -> p0
+
+@CHILD 0
+
+@CHILD 1
+final: done
+a : 1, count -> count
+b : 0, count -> done

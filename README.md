@@ -106,6 +106,8 @@ Applied to the weights within a single child run to produce a return value:
 | `SumPlus` | Sum of positive weights |
 | `SumMinus` | Sum of negative weights (negated) |
 
+For nested automata, `SumPlus` and `SumMinus` use those semantics even when child automata contain a mix of positive and negative transition weights.
+
 ### Supported Combinations
 
 Not every (finVal, infVal) pair is supported for every decision problem:
