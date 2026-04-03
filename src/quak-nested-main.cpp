@@ -261,6 +261,11 @@ Options parseArgs(int argc, char *argv[]) {
         // Route to nested operation with proper validation
         if (cl.op == Operation::isNonempty) {
           cl.op = Operation::nestedNonEmpty;
+          if (valf == LimInfAvg && finval == SumPlus) {
+            return Options::createError(
+              "LimInfAvg + SumPlus is not supported for non-empty. "
+              "See docs/CLI.md for supported combinations.");
+          }
         } else if (cl.op == Operation::isUniversal) {
           cl.op = Operation::nestedUniversal;
           // isUniversal supports (Max_f | Min_f | SumB | SumPlus | SumMinus) x (Sup, Inf, LimSup, LimInf)
