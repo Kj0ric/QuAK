@@ -7319,6 +7319,12 @@ bool NestedAutomaton::isUniversal(value_function_t infVal, value_function_t finV
         QUAK_FAIL("isUniversal: unsupported aggregator combination");
     }
 
+    // Trivial cases: SumPlus is always >= 0 and SumMinus is always <= 0.
+    // Without these guards, computing effectiveBound = x (SumPlus) or -x+1 (SumMinus)
+    // can produce a negative SumB bound, which causes QUAK_FAIL in flatten_regular.
+    if (finVal == SumPlus && x <= weight_t(0)) return true;
+    if (finVal == SumMinus && x > weight_t(0)) return false;
+
     // STEP 1: FLATTEN
     // SumPlus/SumMinus are handled via SumB with appropriate bound
     value_function_t effectiveFinVal = finVal;

@@ -334,6 +334,35 @@ namespace ChildPumpLoop {
     }
 }
 
+// Automaton 11: mixed_sign
+// Deterministic unary automaton. Child path: [3, -2, 4].
+// On word a^omega: constant sequence — all infVal give the same result.
+// SumMinus is tested on the ORIGINAL file (not a negated version) because
+// the automaton already has negative child weights.
+//
+// For universality (worst = best, since deterministic):
+//   Max_f    = 4   Min_f    = -2   SumB  = 5
+//   SumPlus  = 7   SumMinus = -2
+namespace MixedSign {
+    constexpr weight_t MAX_F_VAL    = 4;
+    constexpr weight_t MIN_F_VAL    = -2;
+    constexpr weight_t SUMB_VAL     = 5;
+    constexpr weight_t SUMPLUS_VAL  = 7;
+    constexpr weight_t SUMMINUS_VAL = -2;
+
+    weight_t getExpected(value_function_t infVal, value_function_t finVal) {
+        (void)infVal;
+        switch (finVal) {
+            case Max_f:    return MAX_F_VAL;
+            case Min_f:    return MIN_F_VAL;
+            case SumB:     return SUMB_VAL;
+            case SumPlus:  return SUMPLUS_VAL;
+            case SumMinus: return SUMMINUS_VAL;
+            default: return 0;
+        }
+    }
+}
+
 // ============================================================================
 // Expected Values for Negated Automata (Part 2)
 // For universality: find WORST achievable (most negative)
@@ -526,6 +555,7 @@ weight_t getExpectedUniversal(const std::string& automaton, value_function_t inf
     if (automaton == "epsilon_boundary") return EpsilonBoundary::getExpected(infVal, finVal);
     if (automaton == "positive_only_nondet") return PositiveOnlyNondet::getExpected(infVal, finVal);
     if (automaton == "child_pump_loop") return ChildPumpLoop::getExpected(infVal, finVal);
+    if (automaton == "mixed_sign") return MixedSign::getExpected(infVal, finVal);
     return 0;
 }
 
@@ -544,6 +574,7 @@ std::string getFilePath(const std::string& automaton, value_function_t finVal = 
         if (automaton == "epsilon_boundary") return CorrectnessTestFiles::EPSILON_BOUNDARY_NEG;
         if (automaton == "positive_only_nondet") return CorrectnessTestFiles::POSITIVE_ONLY_NONDET_NEG;
         if (automaton == "child_pump_loop") return CorrectnessTestFiles::CHILD_PUMP_LOOP_NEG;
+        if (automaton == "mixed_sign") return CorrectnessTestFiles::MIXED_SIGN;
         return "";
     }
     // Regular automata for all other finVal
@@ -557,6 +588,7 @@ std::string getFilePath(const std::string& automaton, value_function_t finVal = 
     if (automaton == "epsilon_boundary") return CorrectnessTestFiles::EPSILON_BOUNDARY;
     if (automaton == "positive_only_nondet") return CorrectnessTestFiles::POSITIVE_ONLY_NONDET;
     if (automaton == "child_pump_loop") return CorrectnessTestFiles::CHILD_PUMP_LOOP;
+    if (automaton == "mixed_sign") return CorrectnessTestFiles::MIXED_SIGN;
     return "";
 }
 
@@ -984,6 +1016,30 @@ DEFINE_UNIVERSAL_TEST(child_pump_loop, LimSup, SumB)
 DEFINE_UNIVERSAL_TEST(child_pump_loop, LimSup, SumPlus)
 DEFINE_UNIVERSAL_TEST(child_pump_loop, LimSup, SumMinus)
 
+// Automaton 11: mixed_sign
+// Deterministic unary — NonEmpty = Universal, so same expected values for all infVal.
+// SumMinus uses the original file (not a negated variant) since weights are already mixed.
+DEFINE_UNIVERSAL_TEST(mixed_sign, Inf, Max_f)
+DEFINE_UNIVERSAL_TEST(mixed_sign, Inf, Min_f)
+DEFINE_UNIVERSAL_TEST(mixed_sign, Inf, SumB)
+DEFINE_UNIVERSAL_TEST(mixed_sign, Inf, SumPlus)
+DEFINE_UNIVERSAL_TEST(mixed_sign, Inf, SumMinus)
+DEFINE_UNIVERSAL_TEST(mixed_sign, Sup, Max_f)
+DEFINE_UNIVERSAL_TEST(mixed_sign, Sup, Min_f)
+DEFINE_UNIVERSAL_TEST(mixed_sign, Sup, SumB)
+DEFINE_UNIVERSAL_TEST(mixed_sign, Sup, SumPlus)
+DEFINE_UNIVERSAL_TEST(mixed_sign, Sup, SumMinus)
+DEFINE_UNIVERSAL_TEST(mixed_sign, LimInf, Max_f)
+DEFINE_UNIVERSAL_TEST(mixed_sign, LimInf, Min_f)
+DEFINE_UNIVERSAL_TEST(mixed_sign, LimInf, SumB)
+DEFINE_UNIVERSAL_TEST(mixed_sign, LimInf, SumPlus)
+DEFINE_UNIVERSAL_TEST(mixed_sign, LimInf, SumMinus)
+DEFINE_UNIVERSAL_TEST(mixed_sign, LimSup, Max_f)
+DEFINE_UNIVERSAL_TEST(mixed_sign, LimSup, Min_f)
+DEFINE_UNIVERSAL_TEST(mixed_sign, LimSup, SumB)
+DEFINE_UNIVERSAL_TEST(mixed_sign, LimSup, SumPlus)
+DEFINE_UNIVERSAL_TEST(mixed_sign, LimSup, SumMinus)
+
 // ============================================================================
 // Part 2: Negated Automata Tests (Max_f, Min_f, SumB on negative weights)
 // 10 automata x 4 infVal x 3 finVal = 120 tests
@@ -1384,6 +1440,29 @@ int main() {
     RUN_UNIVERSAL_TEST(child_pump_loop, LimSup, SumB);
     RUN_UNIVERSAL_TEST(child_pump_loop, LimSup, SumPlus);
     RUN_UNIVERSAL_TEST(child_pump_loop, LimSup, SumMinus);
+
+    // Automaton 11: mixed_sign
+    std::cout << "\n--- Automaton 11: mixed_sign ---" << std::endl;
+    RUN_UNIVERSAL_TEST(mixed_sign, Inf, Max_f);
+    RUN_UNIVERSAL_TEST(mixed_sign, Inf, Min_f);
+    RUN_UNIVERSAL_TEST(mixed_sign, Inf, SumB);
+    RUN_UNIVERSAL_TEST(mixed_sign, Inf, SumPlus);
+    RUN_UNIVERSAL_TEST(mixed_sign, Inf, SumMinus);
+    RUN_UNIVERSAL_TEST(mixed_sign, Sup, Max_f);
+    RUN_UNIVERSAL_TEST(mixed_sign, Sup, Min_f);
+    RUN_UNIVERSAL_TEST(mixed_sign, Sup, SumB);
+    RUN_UNIVERSAL_TEST(mixed_sign, Sup, SumPlus);
+    RUN_UNIVERSAL_TEST(mixed_sign, Sup, SumMinus);
+    RUN_UNIVERSAL_TEST(mixed_sign, LimInf, Max_f);
+    RUN_UNIVERSAL_TEST(mixed_sign, LimInf, Min_f);
+    RUN_UNIVERSAL_TEST(mixed_sign, LimInf, SumB);
+    RUN_UNIVERSAL_TEST(mixed_sign, LimInf, SumPlus);
+    RUN_UNIVERSAL_TEST(mixed_sign, LimInf, SumMinus);
+    RUN_UNIVERSAL_TEST(mixed_sign, LimSup, Max_f);
+    RUN_UNIVERSAL_TEST(mixed_sign, LimSup, Min_f);
+    RUN_UNIVERSAL_TEST(mixed_sign, LimSup, SumB);
+    RUN_UNIVERSAL_TEST(mixed_sign, LimSup, SumPlus);
+    RUN_UNIVERSAL_TEST(mixed_sign, LimSup, SumMinus);
 
     // ============================================================
     // Part 2: Negated Automata Tests (Max_f, Min_f, SumB)
