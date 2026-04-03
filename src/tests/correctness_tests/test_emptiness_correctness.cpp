@@ -382,6 +382,29 @@ namespace MixedSign {
     }
 }
 
+// Automaton 12: mixed_sign_alt
+// Regression test for the LimSupAvg+SumPlus projection bug (introduced in 66581d7b5).
+// Parent: deterministic, alternates child 1 and child 2 on alphabet {a}.
+// Child 1: weights [+6, -2], SumPlus = |6|+|-2| = 8, SumMinus = -8  (mixed-sign)
+// Child 2: weights [+3, +1], SumPlus = |3|+|1|  = 4, SumMinus = -4
+// Sequence: [8, 4, 8, 4, ...] (SumPlus) / [-8, -4, -8, -4, ...] (SumMinus)
+// LimSupAvg = LimInfAvg = 6 (SumPlus) / -6 (SumMinus)
+//
+// Before the fix: LimSupAvg+SumPlus returned FALSE at threshold 6 (wrong).
+//   The projection shortcut capped child-1's value at x, giving LimSupAvg([6,4,...])=5 < 6.
+// After the fix: correctly returns TRUE at threshold 6.
+namespace MixedSignAlt {
+    constexpr weight_t LIMAVG_SUMPLUS_VAL  = weight_t(6);
+    constexpr weight_t LIMAVG_SUMMINUS_VAL = weight_t(-6);
+
+    weight_t getExpected(value_function_t infVal, value_function_t finVal) {
+        (void)infVal;
+        if (finVal == SumPlus)  return LIMAVG_SUMPLUS_VAL;
+        if (finVal == SumMinus) return LIMAVG_SUMMINUS_VAL;
+        return 0;
+    }
+}
+
 // ============================================================================
 // Expected Values for Negated Automata (Part 2)
 // These test Max_f, Min_f, SumB on automata with negative child weights
@@ -600,6 +623,7 @@ weight_t getExpectedNonEmpty(const std::string& automaton, value_function_t infV
     if (automaton == "positive_only_nondet") return PositiveOnlyNondet::getExpected(infVal, finVal);
     if (automaton == "child_pump_loop") return ChildPumpLoop::getExpected(infVal, finVal);
     if (automaton == "mixed_sign") return MixedSign::getExpected(infVal, finVal);
+    if (automaton == "mixed_sign_alt") return MixedSignAlt::getExpected(infVal, finVal);
     return 0;
 }
 
@@ -610,6 +634,7 @@ std::string getFilePath(const std::string& automaton, value_function_t finVal = 
     if (finVal == SumMinus) {
         // Use negated automata for SumMinus tests
         if (automaton == "mixed_sign") return CorrectnessTestFiles::MIXED_SIGN;
+        if (automaton == "mixed_sign_alt") return CorrectnessTestFiles::MIXED_SIGN_ALT;  // already has mixed-sign weights
         if (automaton == "baseline_det") return CorrectnessTestFiles::BASELINE_DET_NEG;
         if (automaton == "baseline_fractional") return CorrectnessTestFiles::BASELINE_FRACTIONAL_NEG;
         if (automaton == "nondet_child_binary") return CorrectnessTestFiles::NONDET_CHILD_BINARY_NEG;
@@ -634,6 +659,7 @@ std::string getFilePath(const std::string& automaton, value_function_t finVal = 
     if (automaton == "positive_only_nondet") return CorrectnessTestFiles::POSITIVE_ONLY_NONDET;
     if (automaton == "child_pump_loop") return CorrectnessTestFiles::CHILD_PUMP_LOOP;
     if (automaton == "mixed_sign") return CorrectnessTestFiles::MIXED_SIGN;
+    if (automaton == "mixed_sign_alt") return CorrectnessTestFiles::MIXED_SIGN_ALT;
     return "";
 }
 
@@ -1105,6 +1131,14 @@ DEFINE_NONEMPTY_TEST(child_pump_loop, LimSupAvg, Max_f)
 DEFINE_NONEMPTY_TEST(child_pump_loop, LimSupAvg, Min_f)
 DEFINE_NONEMPTY_TEST(child_pump_loop, LimSupAvg, SumB)
 DEFINE_NONEMPTY_TEST(child_pump_loop, LimSupAvg, SumPlus)
+
+// Automaton 12: mixed_sign_alt (regression for LimSupAvg+SumPlus projection bug)
+// Only LimAvg+SumPlus/SumMinus cases are tested here — these are the paths where
+// the old SumB shortcut produced wrong results for alternating mixed-sign children.
+// LimInfAvg+SumPlus is omitted (unsupported combination).
+DEFINE_NONEMPTY_TEST(mixed_sign_alt, LimSupAvg, SumPlus)
+DEFINE_NONEMPTY_TEST(mixed_sign_alt, LimInfAvg, SumMinus)
+DEFINE_NONEMPTY_TEST(mixed_sign_alt, LimSupAvg, SumMinus)
 
 // Automaton 11: mixed_sign
 // LimInfAvg+SumMinus and LimSupAvg+SumMinus are included (not via adversarial
@@ -1846,6 +1880,11 @@ int main() {
     RUN_NONEMPTY_TEST(mixed_sign, LimSupAvg, SumB);
     RUN_NONEMPTY_TEST(mixed_sign, LimSupAvg, SumPlus);
     RUN_NONEMPTY_TEST(mixed_sign, LimSupAvg, SumMinus);
+
+    std::cout << "\n--- Mixed-sign alternating (regression: LimSupAvg+SumPlus projection bug) ---" << std::endl;
+    RUN_NONEMPTY_TEST(mixed_sign_alt, LimSupAvg, SumPlus);
+    RUN_NONEMPTY_TEST(mixed_sign_alt, LimInfAvg, SumMinus);
+    RUN_NONEMPTY_TEST(mixed_sign_alt, LimSupAvg, SumMinus);
 
     // ============================================================
     // LimAvg Adversarial Tests

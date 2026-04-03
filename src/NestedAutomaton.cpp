@@ -7170,8 +7170,10 @@ bool NestedAutomaton::isNonEmpty(value_function_t infVal, value_function_t finVa
         !(finVal == SumPlus && infVal == LimInfAvg) &&
         this->childWeightsNeedProjection(finVal)) {
         NestedAutomaton* projected = this->projectChildWeightsForAggregator(finVal);
-        weight_t projected_bound = (finVal == SumPlus) ? x : (-x + weight_t(1));
-        bool result = projected->isNonEmpty(infVal, SumB, x, projected_bound);
+        // Recurse with the same finVal (not SumB) so each infVal-specific algorithm
+        // (LimSupAvg fast/slow path, SumMinus+LimAvg pseudo-det pipeline, etc.) runs
+        // on the projected (sign-normalized) automaton with its correct bound logic.
+        bool result = projected->isNonEmpty(infVal, finVal, x, bound);
         delete projected;
         return result;
     }

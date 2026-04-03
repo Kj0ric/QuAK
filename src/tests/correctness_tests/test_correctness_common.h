@@ -187,6 +187,8 @@ namespace CorrectnessTestFiles {
 
     // Mixed-sign weights (positive and negative in same child automaton)
     const std::string MIXED_SIGN = BASE_PATH + "mixed_sign.txt";
+    // Alternating children with mixed-sign weights: regression for LimSupAvg+SumPlus projection bug
+    const std::string MIXED_SIGN_ALT = BASE_PATH + "tc_bug_limavg_sumplus.txt";
 
     // LimAvg adversarial tests
     const std::string LIMAVG_SUMPLUS_DIAMOND = BASE_PATH + "limavg_adversarial_sumplus_diamond.txt";
