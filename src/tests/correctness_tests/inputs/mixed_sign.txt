@@ -12,10 +12,10 @@
 #   Max_f  = 4       (max of path)
 #   Min_f  = -2      (min of path)
 #   SumB   = 5       (3 + (-2) + 4, within bound=10)
-#   SumPlus  = 7     (max(3,0) + max(-2,0) + max(4,0) = 3 + 0 + 4)
-#   SumMinus = -2    (min(3,0) + min(-2,0) + min(4,0) = 0 + (-2) + 0)
+#   SumPlus  = 9     (|3| + |-2| + |4| = 3 + 2 + 4)
+#   SumMinus = -9    (-|3| + -|-2| + -|4| = -3 + -2 + -4)
 #
-# Key property: SumPlus(7) != SumMinus(-2) != SumB(5) -- mixed-sign weights
+# Key property: SumPlus(9) != SumMinus(-9) != SumB(5) -- mixed-sign weights
 # distinguish all three sum aggregators, which is not true for purely positive
 # or purely negative automata.
 

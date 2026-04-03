@@ -103,8 +103,8 @@ Applied to the weights within a single child run to produce a return value:
 | `Max_f` | Maximum weight seen during the child run |
 | `Min_f` | Minimum weight seen during the child run |
 | `SumB` | Bounded sum of weights (requires a `bound` parameter) |
-| `SumPlus` | Sum of positive weights |
-| `SumMinus` | Sum of negative weights (negated) |
+| `SumPlus` | Sum of absolute values of all weights (always ≥ 0) |
+| `SumMinus` | Negated sum of absolute values of all weights (always ≤ 0) |
 
 For nested automata, `SumPlus` and `SumMinus` use those semantics even when child automata contain a mix of positive and negative transition weights.
 

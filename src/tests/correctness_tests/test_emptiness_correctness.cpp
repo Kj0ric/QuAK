@@ -361,13 +361,13 @@ namespace ChildPumpLoop {
 //
 // Expected values (all infVal):
 //   Max_f    = 4   Min_f    = -2   SumB  = 5
-//   SumPlus  = 7   SumMinus = -2
+//   SumPlus  = 9   SumMinus = -9
 namespace MixedSign {
     constexpr weight_t MAX_F_VAL    = 4;
     constexpr weight_t MIN_F_VAL    = -2;
     constexpr weight_t SUMB_VAL     = 5;
-    constexpr weight_t SUMPLUS_VAL  = 7;
-    constexpr weight_t SUMMINUS_VAL = -2;
+    constexpr weight_t SUMPLUS_VAL  = 9;
+    constexpr weight_t SUMMINUS_VAL = -9;
 
     weight_t getExpected(value_function_t infVal, value_function_t finVal) {
         (void)infVal;  // Deterministic unary: all infVal give same result

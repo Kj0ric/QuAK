@@ -166,6 +166,11 @@ NestedAutomaton* NestedAutomaton::projectChildWeightsForAggregator(value_functio
             continue;
         }
 
+        // RESET() ensures newly allocated Symbol/Weight/State objects get IDs
+        // starting from 0, so their IDs match their MapArray insertion indices.
+        // This is safe: the parent's ID space is independent of the children's,
+        // and projected->isNonEmpty() will RESET() again before any flattening,
+        // so no live objects outside this function observe the counter change.
         Symbol::RESET();
         MapArray<Symbol*>* child_alphabet = new MapArray<Symbol*>(child->getAlphabetSize());
         for (size_t sid = 0; sid < child->getAlphabetSize(); ++sid) {
@@ -309,10 +314,10 @@ weight_t applyBound(weight_t value, weight_t bound) {
 
 static weight_t projectChildWeightForAggregator(weight_t value, value_function_t finVal) {
     if (finVal == SumPlus) {
-        return (value > weight_t(0)) ? value : weight_t(0);
+        return (value < weight_t(0)) ? -value : value;  // |x|
     }
     if (finVal == SumMinus) {
-        return (value < weight_t(0)) ? value : weight_t(0);
+        return (value > weight_t(0)) ? -value : value;  // -|x|
     }
     return value;
 }
@@ -2766,15 +2771,10 @@ NestedAutomaton* NestedAutomaton::synchronizeChildren() {
     State* minitial = mstates->at(this->getInitial()->getId());
 
     // Copy finals
-    {
-        SetStd<State*> mfinals;
-        for (uint32_t sid = 0; sid < static_cast<uint32_t>(M); ++sid) {
-            State* os = this->getStates()->at(sid);
-            if (os->getFinal()) {
-                State* ns = mstates->at(sid);
-                ns->setFinal(true);
-                mfinals.insert(ns);
-            }
+    for (uint32_t sid = 0; sid < static_cast<uint32_t>(M); ++sid) {
+        State* os = this->getStates()->at(sid);
+        if (os->getFinal()) {
+            mstates->at(sid)->setFinal(true);
         }
     }
 
