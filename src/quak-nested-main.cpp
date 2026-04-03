@@ -263,10 +263,7 @@ Options parseArgs(int argc, char *argv[]) {
           cl.op = Operation::nestedNonEmpty;
         } else if (cl.op == Operation::isUniversal) {
           cl.op = Operation::nestedUniversal;
-          // isUniversal only supports (Max_f|Min_f|SumB) x (Inf|LimInf|Sup|LimSup)
-          if (finval == SumPlus || finval == SumMinus) {
-            return Options::createError("Nested universal does not support SumPlus or SumMinus.");
-          }
+          // isUniversal supports (Max_f | Min_f | SumB | SumPlus | SumMinus) x (Sup, Inf, LimSup, LimInf)
           if (valf == LimInfAvg || valf == LimSupAvg) {
             return Options::createError("Nested universal does not support LimInfAvg or LimSupAvg.");
           }
