@@ -1,0 +1,34 @@
+# Test Case 12: Sup/Max requires overlap that leaves a doomed child behind
+# A child reaches value 1 only on its second 's', then must read 't' to accept.
+# That same second 's' spawns another child which is still in c1 when 't' arrives,
+# so the newest child is forced into non-final sink rej. No run can complete all
+# outstanding children while also achieving the threshold.
+#
+# Expected:
+#   - isNonEmpty(Sup, Max_f, 1) = false
+#   - isNonEmpty(LimSup, Max_f, 1) = false
+
+@PARENT
+s : 1, p0 -> p0
+t : 0, p0 -> p0
+u : 0, p0 -> p0
+
+@CHILD 0
+
+@CHILD 1
+final: acc
+s : 0, init -> c1
+t : 0, init -> rej
+u : 0, init -> rej
+
+s : 1, c1 -> c2
+t : 0, c1 -> rej
+u : 0, c1 -> rej
+
+s : 0, c2 -> rej
+t : 0, c2 -> acc
+u : 0, c2 -> rej
+
+s : 0, rej -> rej
+t : 0, rej -> rej
+u : 0, rej -> rej

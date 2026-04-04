@@ -274,6 +274,70 @@ void test_flatten_MinMax_Sup_output_properties() {
     delete nwa;
 }
 
+void test_isNonEmpty_Sup_Max_cycle_true() {
+    NestedAutomaton* nwa = new NestedAutomaton(TestFiles::SUP_MAX_CYCLE_TRUE);
+    verifyNestedAutomatonBasics(nwa, "input");
+
+    TEST_ASSERT(nwa->isNonEmpty(Sup, Max_f, weight_t(1)),
+        "Sup/Max should reach threshold 1 on repeated s-a-t-u cycles");
+    TEST_ASSERT(!nwa->isNonEmpty(Sup, Max_f, weight_t(2)),
+        "Sup/Max should not reach threshold 2 in tc11");
+
+    delete nwa;
+}
+
+void test_isNonEmpty_LimSup_Max_cycle_true() {
+    NestedAutomaton* nwa = new NestedAutomaton(TestFiles::SUP_MAX_CYCLE_TRUE);
+    verifyNestedAutomatonBasics(nwa, "input");
+
+    TEST_ASSERT(nwa->isNonEmpty(LimSup, Max_f, weight_t(1)),
+        "LimSup/Max should see infinitely many threshold-1 child returns in tc11");
+    TEST_ASSERT(!nwa->isNonEmpty(LimSup, Max_f, weight_t(2)),
+        "LimSup/Max should not reach threshold 2 in tc11");
+
+    delete nwa;
+}
+
+static State* findStateByName(const Automaton* automaton, const std::string& name) {
+    for (unsigned int i = 0; i < automaton->getStates()->size(); ++i) {
+        State* state = automaton->getStates()->at(i);
+        if (state->getName() == name) {
+            return state;
+        }
+    }
+    return nullptr;
+}
+
+void test_flatten_MinMax_Sup_doomed_state_redirects_to_sink() {
+    NestedAutomaton* nwa = new NestedAutomaton(TestFiles::SUP_MAX_DOOMED_FALSE);
+
+    // Structural: verify that the doomed-state pruning path ran.
+    // @sink@ must exist in the flattened automaton and at least one state
+    // must redirect to it, confirming tracked-rej states are correctly pruned.
+    Automaton* flat = NestedAutomatonTester::flatten_MinMax_Sup(nwa, Max_f, weight_t(1));
+    verifyAutomatonBasics(flat, "flattened doomed-overlap case");
+
+    State* sink = findStateByName(flat, "@sink@");
+    TEST_ASSERT_NOT_NULL(sink, "Expected flattened automaton to contain @sink@ state");
+
+    bool found_redirect = false;
+    for (size_t sid = 0; sid < flat->getStates()->size() && !found_redirect; ++sid) {
+        State* state = flat->getStates()->at(sid);
+        if (state == sink) continue;
+        for (size_t a = 0; a < flat->getAlphabet()->size() && !found_redirect; ++a) {
+            SetStd<Edge*>* succs = state->getSuccessors(a);
+            if (!succs) continue;
+            for (Edge* e : *succs) {
+                if (e->getTo() == sink) { found_redirect = true; break; }
+            }
+        }
+    }
+    TEST_ASSERT(found_redirect, "At least one state should redirect to @sink@ in the doomed-overlap flattening");
+
+    delete flat;
+    delete nwa;
+}
+
 // ============================================================================
 // Main
 // ============================================================================
@@ -312,6 +376,9 @@ int main() {
     RUN_TEST(test_flatten_MinMax_Sup_nested_Sij);
     RUN_TEST(test_flatten_MinMax_Sup_nested_Sij2);
     RUN_TEST(test_flatten_MinMax_Sup_output_properties);
+    RUN_TEST(test_isNonEmpty_Sup_Max_cycle_true);
+    RUN_TEST(test_isNonEmpty_LimSup_Max_cycle_true);
+    RUN_TEST(test_flatten_MinMax_Sup_doomed_state_redirects_to_sink);
 
     printTestSummary();
 

@@ -261,12 +261,14 @@ Options parseArgs(int argc, char *argv[]) {
         // Route to nested operation with proper validation
         if (cl.op == Operation::isNonempty) {
           cl.op = Operation::nestedNonEmpty;
+          if (valf == LimInfAvg && finval == SumPlus) {
+            return Options::createError(
+              "LimInfAvg + SumPlus is not supported for non-empty. "
+              "See docs/CLI.md for supported combinations.");
+          }
         } else if (cl.op == Operation::isUniversal) {
           cl.op = Operation::nestedUniversal;
-          // isUniversal only supports (Max_f|Min_f|SumB) x (Inf|LimInf|Sup|LimSup)
-          if (finval == SumPlus || finval == SumMinus) {
-            return Options::createError("Nested universal does not support SumPlus or SumMinus.");
-          }
+          // isUniversal supports (Max_f | Min_f | SumB | SumPlus | SumMinus) x (Sup, Inf, LimSup, LimInf)
           if (valf == LimInfAvg || valf == LimSupAvg) {
             return Options::createError("Nested universal does not support LimInfAvg or LimSupAvg.");
           }
@@ -274,13 +276,6 @@ Options parseArgs(int argc, char *argv[]) {
           return Options::createError("Operation " + std::string(argv[idx]) + " not supported for nested automata.");
         }
         
-        // for non-empty: SumMinus only supports LimInfAvg/LimSupAvg
-        if (cl.op == Operation::nestedNonEmpty && finval == SumMinus) {
-          if (valf != LimInfAvg && valf != LimSupAvg) {
-            return Options::createError("SumMinus finite aggregator only supports LimInfAvg or LimSupAvg.");
-          }
-        }
-
         cl.args.push_back(valf);      // INFVAL
         cl.args.push_back(finval);    // FINVAL
         

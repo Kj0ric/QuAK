@@ -125,6 +125,132 @@ NestedAutomaton::NestedAutomaton(std::string name,
     ensureChild0Exists();
 }
 
+static weight_t projectChildWeightForAggregator(weight_t value, value_function_t finVal);
+
+bool NestedAutomaton::childWeightsNeedProjection(value_function_t finVal) const {
+    if (finVal != SumPlus && finVal != SumMinus) {
+        return false;
+    }
+
+    for (size_t i = 1; i < this->getChildrenSize(); ++i) {
+        ChildAutomaton* child = this->getChild(i);
+        if (!child || !child->getWeights()) {
+            continue;
+        }
+
+        for (size_t wi = 0; wi < child->getWeights()->size(); ++wi) {
+            Weight* w = child->getWeights()->at(wi);
+            if (!w) {
+                continue;
+            }
+
+            const weight_t v = w->getValue();
+            if ((finVal == SumPlus && v < weight_t(0)) ||
+                (finVal == SumMinus && v > weight_t(0))) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+NestedAutomaton* NestedAutomaton::projectChildWeightsForAggregator(value_function_t finVal) const {
+    Automaton projected_parent(*this);
+
+    MapArray<ChildAutomaton*>* projected_children = new MapArray<ChildAutomaton*>(this->getChildrenSize());
+
+    for (size_t i = 0; i < this->getChildrenSize(); ++i) {
+        ChildAutomaton* child = this->getChild(i);
+        if (!child) {
+            continue;
+        }
+
+        // RESET() ensures newly allocated Symbol/Weight/State objects get IDs
+        // starting from 0, so their IDs match their MapArray insertion indices.
+        // This is safe: the parent's ID space is independent of the children's,
+        // and projected->isNonEmpty() will RESET() again before any flattening,
+        // so no live objects outside this function observe the counter change.
+        Symbol::RESET();
+        MapArray<Symbol*>* child_alphabet = new MapArray<Symbol*>(child->getAlphabetSize());
+        for (size_t sid = 0; sid < child->getAlphabetSize(); ++sid) {
+            child_alphabet->insert(sid, new Symbol(child->getAlphabet()->at(sid)->getName()));
+        }
+
+        weight_t new_min = weight_t(0);
+        weight_t new_max = weight_t(0);
+        bool first_weight = true;
+
+        Weight::RESET();
+        MapArray<Weight*>* child_weights = new MapArray<Weight*>(child->getWeights()->size());
+        for (size_t wid = 0; wid < child->getWeights()->size(); ++wid) {
+            weight_t projected_value = projectChildWeightForAggregator(
+                child->getWeights()->at(wid)->getValue(),
+                finVal
+            );
+
+            if (first_weight) {
+                new_min = new_max = projected_value;
+                first_weight = false;
+            } else {
+                if (projected_value < new_min) new_min = projected_value;
+                if (projected_value > new_max) new_max = projected_value;
+            }
+
+            child_weights->insert(wid, new Weight(projected_value));
+        }
+
+        if (first_weight) {
+            new_min = new_max = weight_t(0);
+        }
+
+        State::RESET();
+        MapArray<State*>* child_states = new MapArray<State*>(child->getStates()->size());
+        for (size_t sid = 0; sid < child->getStates()->size(); ++sid) {
+            State* original_state = child->getStates()->at(sid);
+            State* projected_state = new State(original_state->getName(), child_alphabet->size(), new_min, new_max);
+            projected_state->setFinal(original_state->getFinal());
+            child_states->insert(sid, projected_state);
+        }
+
+        for (size_t sid = 0; sid < child->getStates()->size(); ++sid) {
+            State* original_state = child->getStates()->at(sid);
+            State* projected_from = child_states->at(sid);
+
+            for (size_t symbol_id = 0; symbol_id < child->getAlphabetSize(); ++symbol_id) {
+                SetStd<Edge*>* succs = original_state->getSuccessors(symbol_id);
+                if (!succs) {
+                    continue;
+                }
+
+                for (Edge* edge : *succs) {
+                    Symbol* projected_symbol = child_alphabet->at(edge->getSymbol()->getId());
+                    Weight* projected_weight = child_weights->at(edge->getWeight()->getId());
+                    State* projected_to = child_states->at(edge->getTo()->getId());
+
+                    Edge* projected_edge = new Edge(projected_symbol, projected_weight, projected_from, projected_to);
+                    projected_from->addSuccessor(projected_edge);
+                    projected_to->addPredecessor(projected_edge);
+                }
+            }
+        }
+
+        State* projected_initial = child_states->at(child->getInitial()->getId());
+        ChildAutomaton* projected_child = new ChildAutomaton(
+            child->getName(),
+            child_alphabet,
+            child_states,
+            child_weights,
+            new_min,
+            new_max,
+            projected_initial
+        );
+        projected_children->insert(i, projected_child);
+    }
+
+    return new NestedAutomaton(&projected_parent, projected_children);
+}
+
 NestedAutomaton* NestedAutomaton::removeSilentTransitions(const NestedAutomaton* A, value_function_t f) {
     Automaton* transformed_parent = Automaton::removeSilentTransitions(A, f);
 
@@ -184,6 +310,16 @@ weight_t applyBound(weight_t value, weight_t bound) {
     } else {
         return value;
     }
+}
+
+static weight_t projectChildWeightForAggregator(weight_t value, value_function_t finVal) {
+    if (finVal == SumPlus) {
+        return (value < weight_t(0)) ? -value : value;  // |x|
+    }
+    if (finVal == SumMinus) {
+        return (value > weight_t(0)) ? -value : value;  // -|x|
+    }
+    return value;
 }
 
 static inline size_t edgeWeightToChildIndex(const weight_t& w) {
@@ -2635,13 +2771,10 @@ NestedAutomaton* NestedAutomaton::synchronizeChildren() {
     State* minitial = mstates->at(this->getInitial()->getId());
 
     // Copy finals
-    SetStd<State*>* mfinals = new SetStd<State*>();
     for (uint32_t sid = 0; sid < static_cast<uint32_t>(M); ++sid) {
         State* os = this->getStates()->at(sid);
         if (os->getFinal()) {
-            State* ns = mstates->at(sid);
-            ns->setFinal(true);
-            mfinals->insert(ns);
+            mstates->at(sid)->setFinal(true);
         }
     }
 
@@ -3097,6 +3230,8 @@ Automaton* NestedAutomaton::flatten_Avg_SumMinus(uint64_t c_bound) {
 
     for (State* st : fstates_vec)   fstates->insert(st->getId(), st);
     for (Weight* wt : fweights_vec) fweights->insert(wt->getId(), wt);
+
+    delete ffinals;
 
     Automaton* flat = new Automaton(
         "Flat(" + this->getName() + ")",
@@ -6998,11 +7133,49 @@ bool NestedAutomaton::isDeterministicAndCompleteNested() const {
 }
 
 
+void NestedAutomaton::validateNested() const {
+    for (size_t i = 1; i < this->getChildrenSize(); ++i) {
+        ChildAutomaton* child = this->getChild(i);
+        if (!child) continue;
+
+        // Non-dummy children must not contain SILENT transitions
+        for (size_t sid = 0; sid < child->getStates()->size(); ++sid) {
+            State* state = child->getStates()->at(sid);
+            for (size_t a = 0; a < child->getAlphabetSize(); ++a) {
+                SetStd<Edge*>* succs = state->getSuccessors(a);
+                if (!succs) continue;
+                for (Edge* e : *succs) {
+                    if (e->getWeight()->getValue() == SILENT) {
+                        std::string msg = "Child automaton " + std::to_string(i) +
+                                          " contains SILENT transitions, which is not supported";
+                        QUAK_FAIL(msg.c_str());
+                    }
+                }
+            }
+        }
+    }
+}
+
+
 bool NestedAutomaton::isNonEmpty(value_function_t infVal, value_function_t finVal, weight_t x, weight_t bound) {
+    validateNested();
+
     // TRIVIAL CASES
     if ((finVal == SumPlus || finVal == SumMinus)) {
         if (x <= 0 && finVal == SumPlus) return true;
         if (x > 0 && finVal == SumMinus) return false;
+    }
+
+    if ((finVal == SumPlus || finVal == SumMinus) &&
+        !(finVal == SumPlus && infVal == LimInfAvg) &&
+        this->childWeightsNeedProjection(finVal)) {
+        NestedAutomaton* projected = this->projectChildWeightsForAggregator(finVal);
+        // Recurse with the same finVal (not SumB) so each infVal-specific algorithm
+        // (LimSupAvg fast/slow path, SumMinus+LimAvg pseudo-det pipeline, etc.) runs
+        // on the projected (sign-normalized) automaton with its correct bound logic.
+        bool result = projected->isNonEmpty(infVal, finVal, x, bound);
+        delete projected;
+        return result;
     }
 
     // SPECIAL CASE: SumPlus + LimSupAvg has a fast path
@@ -7140,11 +7313,19 @@ bool NestedAutomaton::isNonEmpty(value_function_t infVal, value_function_t finVa
 
 
 bool NestedAutomaton::isUniversal(value_function_t infVal, value_function_t finVal, weight_t x, weight_t bound) {
+    validateNested();
+
     // Validate supported aggregator combinations
     if (!((finVal == Max_f || finVal == Min_f || finVal == SumB || finVal == SumPlus || finVal == SumMinus) &&
           (infVal == Sup || infVal == LimSup || infVal == Inf || infVal == LimInf))) {
         QUAK_FAIL("isUniversal: unsupported aggregator combination");
     }
+
+    // Trivial cases: SumPlus is always >= 0 and SumMinus is always <= 0.
+    // Without these guards, computing effectiveBound = x (SumPlus) or -x+1 (SumMinus)
+    // can produce a negative SumB bound, which causes QUAK_FAIL in flatten_regular.
+    if (finVal == SumPlus && x <= weight_t(0)) return true;
+    if (finVal == SumMinus && x > weight_t(0)) return false;
 
     // STEP 1: FLATTEN
     // SumPlus/SumMinus are handled via SumB with appropriate bound
@@ -7160,6 +7341,13 @@ bool NestedAutomaton::isUniversal(value_function_t infVal, value_function_t finV
         // SumMinus >= x iff sum >= x. Use bound = -x + 1 (positive)
         // to ensure proper SumB reduction (matches pattern in flatten_SumPlusMinus_*)
         effectiveBound = -x + weight_t(1);
+    }
+
+    if ((finVal == SumPlus || finVal == SumMinus) && this->childWeightsNeedProjection(finVal)) {
+        NestedAutomaton* projected = this->projectChildWeightsForAggregator(finVal);
+        bool result = projected->isUniversal(infVal, SumB, x, effectiveBound);
+        delete projected;
+        return result;
     }
 
     Automaton* flat = this->flatten_regular(effectiveFinVal, effectiveBound);

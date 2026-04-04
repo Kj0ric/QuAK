@@ -1,0 +1,31 @@
+# Mixed-sign weights correctness test.
+# Child path [3, -2, 4]: positive, negative, positive weights in one invocation.
+#
+# Structure:
+#   Parent: unary alphabet {a}, always invokes child 1.
+#   Child 1: c0 --(a:3)--> c1 --(a:-2)--> c2 --(a:4)--> c3 (final)
+#
+# On word a^omega, each child invocation processes 3 letters: [3, -2, 4].
+# All infVal give the same constant result (deterministic, unary).
+#
+# Expected values (NonEmpty = Universal = constant):
+#   Max_f  = 4       (max of path)
+#   Min_f  = -2      (min of path)
+#   SumB   = 5       (3 + (-2) + 4, within bound=10)
+#   SumPlus  = 9     (|3| + |-2| + |4| = 3 + 2 + 4)
+#   SumMinus = -9    (-|3| + -|-2| + -|4| = -3 + -2 + -4)
+#
+# Key property: SumPlus(9) != SumMinus(-9) != SumB(5) -- mixed-sign weights
+# distinguish all three sum aggregators, which is not true for purely positive
+# or purely negative automata.
+
+@PARENT
+a : 1, p0 -> p0
+
+@CHILD 0
+
+@CHILD 1
+final: c3
+a :  3, c0 -> c1
+a : -2, c1 -> c2
+a :  4, c2 -> c3

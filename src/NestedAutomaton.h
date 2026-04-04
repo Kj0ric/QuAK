@@ -22,6 +22,9 @@ private:
 	bool allParentStatesFinal() const;
 	SetStd<weight_t> computeChildReturnValuesParentAware(size_t child_index, value_function_t finVal, weight_t bound);
 	SetStd<weight_t> computeChildReturnValues(ChildAutomaton* child, value_function_t finVal, weight_t bound);
+	void validateNested() const;
+	bool childWeightsNeedProjection(value_function_t finVal) const;
+	NestedAutomaton* projectChildWeightsForAggregator(value_function_t finVal) const;
 
 	// Ensures child 0 exists with a default trivial automaton if missing
 	void ensureChild0Exists();
