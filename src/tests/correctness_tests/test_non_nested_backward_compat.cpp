@@ -1,57 +1,14 @@
 #include <algorithm>
-#include <cstdlib>
-#include <ctime>
-#include <filesystem>
-#include <fstream>
 #include <iostream>
 #include <sstream>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
-#ifndef QUAK_NESTED_PATH
-#define QUAK_NESTED_PATH "./build/quak-nested"
-#endif
+#include "test_cli_helpers.h"
 
-namespace fs = std::filesystem;
+using namespace cli_test;
 
 namespace {
-
-std::string uniquePath(const std::string& prefix, const std::string& suffix) {
-    static unsigned counter = 0;
-    std::ostringstream name;
-    name << prefix << "_" << std::time(nullptr) << "_" << counter++ << suffix;
-    return (fs::temp_directory_path() / name.str()).string();
-}
-
-std::string readFile(const std::string& path) {
-    std::ifstream in(path);
-    if (!in) {
-        throw std::runtime_error("Failed to read file: " + path);
-    }
-    std::ostringstream buffer;
-    buffer << in.rdbuf();
-    return buffer.str();
-}
-
-std::string runCommand(const std::string& args) {
-    const std::string output_path = uniquePath("quak_cli_output", ".txt");
-    {
-        std::ofstream out(output_path);
-    }
-    const std::string command =
-        "\"" + std::string(QUAK_NESTED_PATH) + "\" " + args +
-        " > \"" + output_path + "\" 2>&1";
-
-    const int exit_code = std::system(command.c_str());
-    const std::string output = readFile(output_path);
-    fs::remove(output_path);
-
-    if (exit_code != 0) {
-        throw std::runtime_error("Command failed: " + command + "\n" + output);
-    }
-    return output;
-}
 
 std::string canonicalizeFileContents(const std::string& contents) {
     std::istringstream in(contents);
@@ -72,12 +29,6 @@ std::string canonicalizeFileContents(const std::string& contents) {
     return out.str();
 }
 
-void assertContains(const std::string& haystack, const std::string& needle, const std::string& context) {
-    if (haystack.find(needle) == std::string::npos) {
-        throw std::runtime_error(context + "\nExpected to find: " + needle + "\nActual output:\n" + haystack);
-    }
-}
-
 void assertFileNonEmpty(const fs::path& path, const std::string& context) {
     if (!fs::exists(path)) {
         throw std::runtime_error(context + ": file does not exist: " + path.string());
@@ -88,37 +39,37 @@ void assertFileNonEmpty(const fs::path& path, const std::string& context) {
 }
 
 void testScalarCommands() {
-    assertContains(runCommand("samples/A.txt non-empty LimInf 0"),
+    assertContains(runCommandExpectSuccess("samples/A.txt non-empty LimInf 0"),
                    "isNonEmpty(LimInf, weight=0) = 1",
                    "non-empty should remain supported for regular automata");
-    assertContains(runCommand("samples/A.txt top-value LimSup"),
+    assertContains(runCommandExpectSuccess("samples/A.txt top-value LimSup"),
                    "topValue(LimSup) = 4",
                    "top-value output regressed");
-    assertContains(runCommand("samples/A.txt bottom-value LimInf"),
+    assertContains(runCommandExpectSuccess("samples/A.txt bottom-value LimInf"),
                    "bottomValue(LimInf) = 0",
                    "bottom-value output regressed");
-    assertContains(runCommand("samples/A.txt constant LimInf"),
+    assertContains(runCommandExpectSuccess("samples/A.txt constant LimInf"),
                    "isConstant(LimInf) = 0",
                    "constant output regressed");
-    assertContains(runCommand("samples/A.txt safe LimInf"),
+    assertContains(runCommandExpectSuccess("samples/A.txt safe LimInf"),
                    "isSafe(LimInf) = 0",
                    "safe output regressed");
-    assertContains(runCommand("samples/A.txt live LimInf"),
+    assertContains(runCommandExpectSuccess("samples/A.txt live LimInf"),
                    "isLive(LimInf) = 1",
                    "live output regressed");
 }
 
 void testComparisonCommands() {
-    assertContains(runCommand("samples/A.txt isIncluded LimInf samples/B.txt"),
+    assertContains(runCommandExpectSuccess("samples/A.txt isIncluded LimInf samples/B.txt"),
                    "isIncluded(LimInf) = 0",
                    "antichain inclusion output regressed");
-    assertContains(runCommand("samples/A.txt isIncludedBool LimInf samples/B.txt"),
+    assertContains(runCommandExpectSuccess("samples/A.txt isIncludedBool LimInf samples/B.txt"),
                    "isIncluded(bool, LimInf) = 0",
                    "booleanized inclusion output regressed");
-    assertContains(runCommand("samples/A.txt isEquivalent LimInf samples/A.txt"),
+    assertContains(runCommandExpectSuccess("samples/A.txt isEquivalent LimInf samples/A.txt"),
                    "isEquivalent(LimInf) = 1",
                    "equivalence output regressed");
-    assertContains(runCommand("samples/A.txt isEquivalentBool LimInf samples/A.txt"),
+    assertContains(runCommandExpectSuccess("samples/A.txt isEquivalentBool LimInf samples/A.txt"),
                    "isEquivalent(bool, LimInf) = 1",
                    "booleanized equivalence output regressed");
 }
@@ -133,11 +84,11 @@ void testComponentCommands() {
     const fs::path decompose_safety_path = temp_dir / "safe2.txt";
     const fs::path decompose_liveness_path = temp_dir / "live2.txt";
 
-    runCommand("samples/A.txt safetyComponent LimInf \"" + safety_path.string() + "\"");
-    runCommand("samples/A.txt livenessComponent LimInf \"" + liveness_path.string() + "\"");
+    runCommandExpectSuccess("samples/A.txt safetyComponent LimInf \"" + safety_path.string() + "\"");
+    runCommandExpectSuccess("samples/A.txt livenessComponent LimInf \"" + liveness_path.string() + "\"");
 
     const std::string decompose_output =
-        runCommand("samples/A.txt decompose LimInf \"" + decompose_safety_path.string() +
+        runCommandExpectSuccess("samples/A.txt decompose LimInf \"" + decompose_safety_path.string() +
                    "\" \"" + decompose_liveness_path.string() + "\"");
 
     assertContains(decompose_output,
