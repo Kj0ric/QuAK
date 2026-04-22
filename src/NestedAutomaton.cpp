@@ -7166,9 +7166,25 @@ bool NestedAutomaton::isNonEmpty(value_function_t infVal, value_function_t finVa
         if (x > 0 && finVal == SumMinus) return false;
     }
 
+    // LimAvg paths feed into the pseudo-det + synchronization pipeline which
+    // assumes sign-normalized child weights (all >= 0 for SumPlus, all <= 0 for
+    // SumMinus). Mixed-sign children are therefore rejected by default.
+    // Non-LimAvg paths (Sup/LimSup/Inf/LimInf) handle absolute-value normalization
+    // internally in flatten_SumPlusMinus_*, so no projection is needed there.
+    bool isLimAvgPath = (infVal == LimSupAvg || infVal == LimInfAvg);
     if ((finVal == SumPlus || finVal == SumMinus) &&
         !(finVal == SumPlus && infVal == LimInfAvg) &&
+        isLimAvgPath &&
         this->childWeightsNeedProjection(finVal)) {
+#ifndef NORMALIZE_MIXED_SIGN
+        QUAK_FAIL("Mixed-sign child weights are not supported for LimAvg+SumPlus/SumMinus. "
+                  "Recompile with -DNORMALIZE_MIXED_SIGN=ON to enable automatic normalization.");
+#else
+        std::cerr << "[QuAK] Warning: mixed-sign child weights detected for "
+                  << (infVal == LimSupAvg ? "LimSupAvg" : "LimInfAvg") << "+"
+                  << (finVal == SumPlus ? "SumPlus" : "SumMinus")
+                  << ". Automatically normalizing child weights to absolute values.\n";
+#endif
         NestedAutomaton* projected = this->projectChildWeightsForAggregator(finVal);
         // Recurse with the same finVal (not SumB) so each infVal-specific algorithm
         // (LimSupAvg fast/slow path, SumMinus+LimAvg pseudo-det pipeline, etc.) runs

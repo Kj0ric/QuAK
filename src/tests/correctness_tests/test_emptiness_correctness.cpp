@@ -1133,12 +1133,9 @@ DEFINE_NONEMPTY_TEST(child_pump_loop, LimSupAvg, SumB)
 DEFINE_NONEMPTY_TEST(child_pump_loop, LimSupAvg, SumPlus)
 
 // Automaton 12: mixed_sign_alt (regression for LimSupAvg+SumPlus projection bug)
-// Only LimAvg+SumPlus/SumMinus cases are tested here — these are the paths where
-// the old SumB shortcut produced wrong results for alternating mixed-sign children.
-// LimInfAvg+SumPlus is omitted (unsupported combination).
-DEFINE_NONEMPTY_TEST(mixed_sign_alt, LimSupAvg, SumPlus)
-DEFINE_NONEMPTY_TEST(mixed_sign_alt, LimInfAvg, SumMinus)
-DEFINE_NONEMPTY_TEST(mixed_sign_alt, LimSupAvg, SumMinus)
+// LimAvg+SumPlus/SumMinus with mixed-sign children are now rejected by default
+// (QUAK_FAIL unless compiled with -DNORMALIZE_MIXED_SIGN=ON).
+// These cases are covered by test_error_handling::testMixedSignLimAvg() instead.
 
 // Automaton 11: mixed_sign
 // LimInfAvg+SumMinus and LimSupAvg+SumMinus are included (not via adversarial
@@ -1168,12 +1165,12 @@ DEFINE_NONEMPTY_TEST(mixed_sign, LimInfAvg, Max_f)
 DEFINE_NONEMPTY_TEST(mixed_sign, LimInfAvg, Min_f)
 DEFINE_NONEMPTY_TEST(mixed_sign, LimInfAvg, SumB)
 // LimInfAvg + SumPlus: not valid -- omitted
-DEFINE_NONEMPTY_TEST(mixed_sign, LimInfAvg, SumMinus)
+// LimInfAvg + SumMinus: mixed-sign child weights rejected by default -- omitted
 DEFINE_NONEMPTY_TEST(mixed_sign, LimSupAvg, Max_f)
 DEFINE_NONEMPTY_TEST(mixed_sign, LimSupAvg, Min_f)
 DEFINE_NONEMPTY_TEST(mixed_sign, LimSupAvg, SumB)
-DEFINE_NONEMPTY_TEST(mixed_sign, LimSupAvg, SumPlus)
-DEFINE_NONEMPTY_TEST(mixed_sign, LimSupAvg, SumMinus)
+// LimSupAvg + SumPlus: mixed-sign child weights rejected by default -- omitted
+// LimSupAvg + SumMinus: mixed-sign child weights rejected by default -- omitted
 
 // ============================================================================
 // Part 2: Negated Automata Tests (Max_f, Min_f, SumB on negative weights)
@@ -1541,7 +1538,7 @@ void test_limavg_sumb() {
 int main() {
     std::cout << "========================================" << std::endl;
     std::cout << "CORRECTNESS TESTS: isNonEmpty()" << std::endl;
-    std::cout << "Part 1: standard automata, mixed_sign regression, and LimAvg cases = 312 tests" << std::endl;
+    std::cout << "Part 1: standard automata, mixed_sign regression, and LimAvg cases = 306 tests" << std::endl;
     std::cout << "Part 2: 10 negated automata x 6 infVal x 3 finVal = 180 tests" << std::endl;
     std::cout << "Total: 492 tests" << std::endl;
     std::cout << "========================================" << std::endl;
@@ -1874,17 +1871,15 @@ int main() {
     RUN_NONEMPTY_TEST(mixed_sign, LimInfAvg, Min_f);
     RUN_NONEMPTY_TEST(mixed_sign, LimInfAvg, SumB);
     // LimInfAvg + SumPlus: not valid -- omitted
-    RUN_NONEMPTY_TEST(mixed_sign, LimInfAvg, SumMinus);
+    // LimInfAvg + SumMinus: mixed-sign child weights rejected by default -- omitted
     RUN_NONEMPTY_TEST(mixed_sign, LimSupAvg, Max_f);
     RUN_NONEMPTY_TEST(mixed_sign, LimSupAvg, Min_f);
     RUN_NONEMPTY_TEST(mixed_sign, LimSupAvg, SumB);
-    RUN_NONEMPTY_TEST(mixed_sign, LimSupAvg, SumPlus);
-    RUN_NONEMPTY_TEST(mixed_sign, LimSupAvg, SumMinus);
+    // LimSupAvg + SumPlus: mixed-sign child weights rejected by default -- omitted
+    // LimSupAvg + SumMinus: mixed-sign child weights rejected by default -- omitted
 
-    std::cout << "\n--- Mixed-sign alternating (regression: LimSupAvg+SumPlus projection bug) ---" << std::endl;
-    RUN_NONEMPTY_TEST(mixed_sign_alt, LimSupAvg, SumPlus);
-    RUN_NONEMPTY_TEST(mixed_sign_alt, LimInfAvg, SumMinus);
-    RUN_NONEMPTY_TEST(mixed_sign_alt, LimSupAvg, SumMinus);
+    // mixed_sign_alt LimAvg+SumPlus/SumMinus: rejected by default (mixed-sign children)
+    // Error path covered by test_error_handling::testMixedSignLimAvg()
 
     // ============================================================
     // LimAvg Adversarial Tests

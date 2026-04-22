@@ -1,0 +1,15 @@
+# Error test: mixed-sign child weights under a LimAvg parent.
+# Child 1 has both a positive weight (3) and a negative weight (-2).
+# Without -DNORMALIZE_MIXED_SIGN, the tool should reject this input for
+# LimAvg+SumPlus/SumMinus combinations where sign-normalization is required.
+
+@PARENT
+a : 1, p0 -> p0
+b : 1, p0 -> p0
+
+@CHILD 0
+
+@CHILD 1
+final: c1
+a : 3, c0 -> c1
+b : -2, c0 -> c1

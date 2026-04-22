@@ -17,10 +17,18 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
 OPTION(ENABLE_SCC_SEARCH_OPT "Enable SCC search optimization in FORKLIFT" ON)
 # OPTION(ENABLE_CONTEXT_REDUNDANCY_OPT "Enable context redundancy optimization in FORKLIFT" OFF)
 
+# When OFF (default): mixed-sign child weights for LimAvg+SumPlus/SumMinus cause an error.
+# When ON: weights are automatically normalized to absolute values and a warning is printed.
+OPTION(NORMALIZE_MIXED_SIGN "Auto-normalize mixed-sign child weights for LimAvg+SumPlus/SumMinus (emits runtime warning)" OFF)
+
 add_compile_definitions(WEIGHT_EQ_EPSILON=1e-5f)
 
 if (ENABLE_SCC_SEARCH_OPT)
     add_compile_definitions(INCLUSION_SCC_SEARCH_ACTIVE)
+endif()
+
+if (NORMALIZE_MIXED_SIGN)
+    add_compile_definitions(NORMALIZE_MIXED_SIGN)
 endif()
 # if (ENABLE_CONTEXT_REDUNDANCY_OPT)
 #     add_compile_definitions(CONTEXT_REDUNDANCY_ACTIVE)
@@ -86,6 +94,7 @@ set(CORRECTNESS_TEST_SOURCES
     src/tests/correctness_tests/test_universality_correctness.cpp
     src/tests/correctness_tests/test_non_nested_backward_compat.cpp
     src/tests/correctness_tests/test_error_handling.cpp
+    src/tests/correctness_tests/test_smoke.cpp
 )
 
 foreach(TEST_SOURCE ${CORRECTNESS_TEST_SOURCES})
@@ -93,7 +102,7 @@ foreach(TEST_SOURCE ${CORRECTNESS_TEST_SOURCES})
     add_executable(${TEST_NAME} ${TEST_SOURCE})
     target_include_directories(${TEST_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/src)
     target_link_libraries(${TEST_NAME} PUBLIC quak quak-private)
-    if(TEST_NAME STREQUAL "test_non_nested_backward_compat" OR TEST_NAME STREQUAL "test_error_handling")
+    if(TEST_NAME STREQUAL "test_non_nested_backward_compat" OR TEST_NAME STREQUAL "test_error_handling" OR TEST_NAME STREQUAL "test_smoke")
         add_dependencies(${TEST_NAME} quak-nested)
         target_compile_definitions(${TEST_NAME} PRIVATE QUAK_NESTED_PATH="$<TARGET_FILE:quak-nested>")
     endif()
@@ -120,6 +129,7 @@ add_custom_target(tests
         test_universality_correctness
         test_non_nested_backward_compat
         test_error_handling
+        test_smoke
     COMMENT "Building all test executables"
 )
 

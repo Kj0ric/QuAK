@@ -79,6 +79,26 @@ This document describes the core assumptions, requirements enforced by QuAK's im
 - **Children**: Should **not** have silent transitions (undefined behavior if present (?))
 - **Removing silent**: `Automaton::removeSilentTransitions()` handles different value functions differently
 
+### 4.5 Child Weight Sign Requirements
+
+The sign requirements on child weights depend on the chosen finite aggregator (finVal):
+
+| finVal | Required sign | Why |
+|--------|--------------|-----|
+| `SumPlus` | All weights ≥ 0 | SumPlus = Σ\|xᵢ\|; negative weights indicate mixed-sign input |
+| `SumMinus` | All weights ≤ 0 | SumMinus = −Σ\|xᵢ\|; positive weights indicate mixed-sign input |
+| All others | No constraint | Sign is irrelevant or handled internally |
+
+**Non-LimAvg paths** (`Sup`, `LimSup`, `Inf`, `LimInf`): `flatten_SumPlusMinus_Sup/Inf` handle absolute-value normalization internally — mixed-sign children are accepted and automatically normalized.
+
+**LimAvg paths** (`LimSupAvg`, `LimInfAvg`): The pseudo-determinization + synchronization pipeline in `flatten_Avg_SumMinus` assumes pre-normalized weights. Mixed-sign children are therefore **rejected by default** with a clear error message.
+
+To enable automatic normalization for LimAvg paths, recompile with:
+```
+cmake -DNORMALIZE_MIXED_SIGN=ON ...
+```
+This silently applies absolute-value normalization before entering the pipeline.
+
 ## 5. Input File Format
 
 ### 5.1 General Syntax

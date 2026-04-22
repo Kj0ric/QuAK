@@ -53,6 +53,22 @@ void testSilentInChild() {
 }
 
 // ---------------------------------------------------------------------------
+// Tests for errors caught by isNonEmpty runtime validation
+// ---------------------------------------------------------------------------
+
+void testMixedSignLimAvg() {
+    // Child 1 has both positive (3) and negative (-2) weights.
+    // LimAvg+SumMinus requires all child weights to be <= 0 before the
+    // pseudo-det pipeline. Without -DNORMALIZE_MIXED_SIGN, this must be rejected.
+    // Threshold must be <= 0: the trivial-case guard (x > 0 && SumMinus → false)
+    // would short-circuit before reaching the mixed-sign check for x > 0.
+    const std::string out = runCommandExpectFailure(
+        "src/tests/correctness_tests/inputs/tc_err_mixed_sign_limavg.txt non-empty LimSupAvg SumMinus 0");
+    assertContains(out, "Mixed-sign",
+                   "Mixed-sign child weights for LimAvg+SumMinus should produce a 'Mixed-sign' error");
+}
+
+// ---------------------------------------------------------------------------
 // Smoke tests: valid inputs that must not crash
 // ---------------------------------------------------------------------------
 
@@ -89,6 +105,7 @@ int main() {
         testUnsupportedUniversalCombo();
         testUndefinedChildIndex();
         testSilentInChild();
+        testMixedSignLimAvg();
         testEdgeCases();
         std::cout << "Error handling checks passed." << std::endl;
         return 0;
