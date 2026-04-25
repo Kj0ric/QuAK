@@ -15,7 +15,7 @@
 | RAM | TODO |
 | CPU cores | TODO |
 | Disk | TODO |
-| Time (smoke test) | < 1 minute (build ~2 min + ctest ~5 sec) |
+| Time (smoke test) | < 1 minute with Docker (~5 sec); ~5 min from source (includes build) |
 | Time (full review) | TODO |
 
 **External connectivity:** NO

@@ -59,9 +59,10 @@ done
 START=$SECONDS
 
 # ---------------------------------------------------------------------------
-# Docker / pre-built mode: no cmake or build dir available.
+# Docker / pre-built mode: ctest/cmake absent, or binaries already present.
+# Native mode: cmake available -- configure if needed, then delegate to ctest.
 # ---------------------------------------------------------------------------
-if ! command -v ctest &>/dev/null || [[ ! -f "$BUILD_DIR/CMakeCache.txt" ]]; then
+if ! command -v cmake &>/dev/null || ! command -v ctest &>/dev/null; then
 
   QUAK="$REPO_ROOT/quak-nested"
   QUAK_EXP="$REPO_ROOT/quak-experiment-single"
@@ -71,8 +72,8 @@ if ! command -v ctest &>/dev/null || [[ ! -f "$BUILD_DIR/CMakeCache.txt" ]]; the
   PASS=0
   FAIL=0
 
-  # Helper: assert exit 0 and optional string in output.
-  # Usage: run_check "label" ["expected_string"] cmd [args...]
+  # Helper: assert exit 0 and required expected string in output.
+  # Usage: run_check "label" "expected_string" cmd [args...]
   run_check() {
     local label="$1"
     shift
@@ -81,11 +82,11 @@ if ! command -v ctest &>/dev/null || [[ ! -f "$BUILD_DIR/CMakeCache.txt" ]]; the
     local output exit_code=0
     output=$("$@" 2>&1) || exit_code=$?
     if [[ $exit_code -ne 0 ]]; then
-      echo "  FAIL [$label] — exited $exit_code"
+      echo "  FAIL [$label] -- exited $exit_code"
       echo "       output: $(echo "$output" | head -3)"
       FAIL=$((FAIL + 1))
     elif [[ -n "$expected" ]] && ! echo "$output" | grep -qF "$expected"; then
-      echo "  FAIL [$label] — expected '$expected' not found in output"
+      echo "  FAIL [$label] -- expected '$expected' not found in output"
       echo "       got: $(echo "$output" | head -3)"
       FAIL=$((FAIL + 1))
     else
@@ -185,10 +186,10 @@ if ! command -v ctest &>/dev/null || [[ ! -f "$BUILD_DIR/CMakeCache.txt" ]]; the
   TOTAL=$((PASS + FAIL))
   ELAPSED=$((SECONDS - START))
   if [[ $FAIL -eq 0 ]]; then
-    echo "SMOKE PASSED — $PASS/$TOTAL checks, ${ELAPSED}s wall"
+    echo "SMOKE PASSED -- $PASS/$TOTAL checks, ${ELAPSED}s wall"
     exit 0
   else
-    echo "SMOKE FAILED — $FAIL/$TOTAL checks failed (${ELAPSED}s wall)"
+    echo "SMOKE FAILED -- $FAIL/$TOTAL checks failed (${ELAPSED}s wall)"
     exit 1
   fi
 fi
@@ -196,6 +197,11 @@ fi
 # ---------------------------------------------------------------------------
 # Native mode: cmake + build dir available. Delegate to ctest.
 # ---------------------------------------------------------------------------
+
+if [[ ! -f "$BUILD_DIR/CMakeCache.txt" ]]; then
+  echo "==> Configuring build (first run)..."
+  cmake -S "$REPO_ROOT" -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE=Release
+fi
 
 echo "==> Building test executables..."
 cmake --build "$BUILD_DIR" --target tests \
@@ -214,4 +220,4 @@ fi
 
 ELAPSED=$((SECONDS - START))
 echo ""
-echo "SMOKE PASSED — $N test suite(s), ${ELAPSED}s wall"
+echo "SMOKE PASSED -- $N test suite(s), ${ELAPSED}s wall"
