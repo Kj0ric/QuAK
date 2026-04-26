@@ -11,7 +11,7 @@ set up and verify, and to protect against packaging mistakes going unnoticed.
 **Smoke test script (`scripts/smoke-test.sh`)**
 
 Before this PR, there was no single command a reviewer could run to check that
-everything works. Now there is. Running `bash scripts/smoke-test.sh --quick`
+everything works. Now there is. Running `bash scripts/smoke-test.sh`
 does four things in order:
 
 1. Checks that the compiled binaries (`quak-nested` and `quak-experiment-single`)
@@ -25,10 +25,7 @@ does four things in order:
 4. Runs `quak-nested` on a small input once per flattening path, to confirm the 
    binary actually works on the current machine.
 
-The script works in two modes automatically:
-- Inside Docker: runs the four checks directly against the installed binaries.
-- On a native build: runs the full 16-test suite via ctest. If no build exists
-  yet, it configures and builds automatically first.
+The script runs the four checks directly against the installed binaries.
 
 A `make smoke-test` target was also added to CMakeLists.txt as a shortcut for
 developers working in the build directory.
