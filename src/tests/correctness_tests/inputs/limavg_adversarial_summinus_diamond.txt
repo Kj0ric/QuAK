@@ -17,6 +17,7 @@
 # Expected LimSupAvg with SumMinus = -3
 
 @PARENT
+final: all
 a : 1, p0 -> p0
 
 @CHILD 0

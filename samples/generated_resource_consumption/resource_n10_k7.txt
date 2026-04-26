@@ -1,5 +1,5 @@
 @PARENT
-# Resource-consumption NWA: n=10 processes, k=7 resources
+final: all
 # Single-state parent: on s_i it calls child i, otherwise SILENT.
 final: q0
 

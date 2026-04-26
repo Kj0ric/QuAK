@@ -1,0 +1,15 @@
+# Immediate witness-discharge fixture for SumPlus witness-cached Sup/LimSup.
+# Intended word: a^omega.
+#
+# Each witness spawn reaches Child 1's final state on the spawn symbol itself.
+# The witness branch should emit weight 1 and keep W1/W2 inactive.
+
+@PARENT
+final: p
+a : 1, p -> p
+
+@CHILD 0
+
+@CHILD 1
+final: f
+a : 1, s0 -> f

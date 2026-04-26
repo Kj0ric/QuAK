@@ -1,0 +1,10 @@
+@PARENT
+final: q0
+a : 1, q0 -> q0
+
+@CHILD 0
+
+@CHILD 1
+final: s t
+a : 0, s -> t
+a : 0, t -> t

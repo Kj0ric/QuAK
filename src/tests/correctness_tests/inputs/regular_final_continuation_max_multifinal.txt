@@ -1,0 +1,20 @@
+# The child must continue through two accepting states before reaching the
+# matching high return on the third accepting visit.
+#
+# Regular oracle:
+# - flatten_regular(Max_f): weight 1 must be present
+# - Sup/LimSup at threshold 1: true
+
+@PARENT
+final: q0
+a : 1, q0 -> q1
+b : 0, q1 -> q2
+c : 0, q2 -> q0
+
+@CHILD 0
+
+@CHILD 1
+final: f0 f1 f2
+a : 0, s0 -> f0
+b : 0, f0 -> f1
+c : 1, f1 -> f2

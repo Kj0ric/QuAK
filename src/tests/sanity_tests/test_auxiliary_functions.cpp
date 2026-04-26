@@ -8,6 +8,7 @@
  * - makeCompleteNested()
  * - removeSilentTransitions()
  * - getChild() / getChildrenSize()
+ * - parser handling for final: all
  */
 
 #include "test_common.h"
@@ -331,6 +332,33 @@ void test_getChild_after_synchronize() {
     delete nwa;
 }
 
+void test_parser_final_all_marks_all_parent_states_final() {
+    NestedAutomaton* nwa = new NestedAutomaton(TestFiles::NESTED_SIJ);
+    verifyNestedAutomatonBasics(nwa, "input");
+
+    unsigned int parent_final_count = 0;
+    for (unsigned int state_id = 0; state_id < nwa->getStates()->size(); ++state_id) {
+        if (nwa->getStates()->at(state_id)->getFinal()) {
+            ++parent_final_count;
+        }
+    }
+    TEST_ASSERT_EQ(parent_final_count, nwa->getStates()->size(),
+                   "final: all should mark every parent state final");
+
+    ChildAutomaton* child = nwa->getChild(1);
+    TEST_ASSERT_NOT_NULL(child, "child 1 should exist");
+    unsigned int child_final_count = 0;
+    for (unsigned int state_id = 0; state_id < child->getStates()->size(); ++state_id) {
+        if (child->getStates()->at(state_id)->getFinal()) {
+            ++child_final_count;
+        }
+    }
+    TEST_ASSERT_EQ(child_final_count, 1u,
+                   "explicit child final lists should still mark only the listed states");
+
+    delete nwa;
+}
+
 // ============================================================================
 // print() Tests
 // ============================================================================
@@ -404,6 +432,7 @@ int main() {
     RUN_TEST(test_getChild_getChildrenSize_basic);
     RUN_TEST(test_getChild_valid_indices);
     RUN_TEST(test_getChild_after_synchronize);
+    RUN_TEST(test_parser_final_all_marks_all_parent_states_final);
 
     // print tests
     std::cout << "\n--- print() Tests ---" << std::endl;

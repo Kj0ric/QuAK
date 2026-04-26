@@ -36,11 +36,23 @@ public:
         return nwa->flatten_SumPlusMinus_Sup(finite_aggregator, threshold);
     }
 
+    static Automaton* flatten_SumPlusMinus_Sup_witness_cached(NestedAutomaton* nwa,
+                                                              value_function_t finite_aggregator,
+                                                              weight_t threshold) {
+        return nwa->flatten_SumPlusMinus_Sup_witness_cached(finite_aggregator, threshold);
+    }
+
     // Wrapper for private flatten_SumPlusMinus_Inf
     static Automaton* flatten_SumPlusMinus_Inf(NestedAutomaton* nwa,
                                                 value_function_t finite_aggregator,
                                                 weight_t threshold) {
         return nwa->flatten_SumPlusMinus_Inf(finite_aggregator, threshold);
+    }
+
+    static Automaton* flatten_SumPlusMinus_Inf_cached(NestedAutomaton* nwa,
+                                                      value_function_t finite_aggregator,
+                                                      weight_t threshold) {
+        return nwa->flatten_SumPlusMinus_Inf_cached(finite_aggregator, threshold);
     }
 
     // Wrapper for private flatten_MinMax_Sup
@@ -50,11 +62,29 @@ public:
         return nwa->flatten_MinMax_Sup(finite_aggregator, threshold);
     }
 
+    static Automaton* flatten_MinMax_Sup_cached(NestedAutomaton* nwa,
+                                                value_function_t finite_aggregator,
+                                                weight_t threshold) {
+        return nwa->flatten_MinMax_Sup_cached(finite_aggregator, threshold);
+    }
+
+    static Automaton* flatten_MinMax_Sup_witness_cached(NestedAutomaton* nwa,
+                                                        value_function_t finite_aggregator,
+                                                        weight_t threshold) {
+        return nwa->flatten_MinMax_Sup_witness_cached(finite_aggregator, threshold);
+    }
+
     // Wrapper for private flatten_MinMax_Inf
     static Automaton* flatten_MinMax_Inf(NestedAutomaton* nwa,
                                           value_function_t finite_aggregator,
                                           weight_t threshold) {
         return nwa->flatten_MinMax_Inf(finite_aggregator, threshold);
+    }
+
+    static Automaton* flatten_MinMax_Inf_cached(NestedAutomaton* nwa,
+                                                value_function_t finite_aggregator,
+                                                weight_t threshold) {
+        return nwa->flatten_MinMax_Inf_cached(finite_aggregator, threshold);
     }
 
     // Wrapper for private flatten_regular
@@ -64,23 +94,21 @@ public:
         return nwa->flatten_regular(finVal, bound);
     }
 
-    // Wrapper for flatten_MinMax_Inf_v1 (archived: original buggy version)
-    static Automaton* flatten_MinMax_Inf_v1(NestedAutomaton* nwa,
-                                             value_function_t finite_aggregator,
-                                             weight_t threshold) {
-        return nwa->flatten_MinMax_Inf_v1(finite_aggregator, threshold);
-    }
-
-    // Wrapper for flatten_MinMax_Inf_v2 (archived: fixed but complex version)
-    static Automaton* flatten_MinMax_Inf_v2(NestedAutomaton* nwa,
-                                             value_function_t finite_aggregator,
-                                             weight_t threshold) {
-        return nwa->flatten_MinMax_Inf_v2(finite_aggregator, threshold);
-    }
-
     // Access to children
     static MapArray<ChildAutomaton*>* getChildren(NestedAutomaton* nwa) {
         return nwa->children_;
+    }
+
+    static void setMinMaxInfExperimentStatsEnabled(bool enabled) {
+        NestedAutomaton::setMinMaxInfExperimentStatsEnabled(enabled);
+    }
+
+    static void resetMinMaxInfExperimentStats() {
+        NestedAutomaton::resetMinMaxInfExperimentStats();
+    }
+
+    static MinMaxInfExperimentStats getMinMaxInfExperimentStats() {
+        return NestedAutomaton::getMinMaxInfExperimentStats();
     }
 };
 
@@ -215,6 +243,17 @@ inline bool hasOnly01Weights(const Automaton* A) {
     return true;
 }
 
+// Public monotone flatteners may still contain SILENT edges before silence removal.
+inline bool hasOnly01OrSilentWeights(const Automaton* A) {
+    for (unsigned int i = 0; i < A->getWeights()->size(); ++i) {
+        weight_t w = A->getWeights()->at(i)->getValue();
+        if (w != weight_t(0) && w != weight_t(1) && w != SILENT) {
+            return false;
+        }
+    }
+    return true;
+}
+
 // Sample file paths
 namespace TestFiles {
     // Non-nested automata
@@ -236,6 +275,7 @@ namespace TestFiles {
     const std::string NONDET_SUMB = "samples/nested/nondet_sumB.txt";
     const std::string SUP_MAX_CYCLE_TRUE = "src/tests/sanity_tests/inputs/tc11_sup_max_cycle_true.txt";
     const std::string SUP_MAX_DOOMED_FALSE = "src/tests/sanity_tests/inputs/tc12_sup_max_doomed_false.txt";
+    const std::string MAX_MERGE_BUG_COMPLETE = "src/tests/correctness_tests/inputs/max_merge_bug_complete.txt";
 }
 
 #endif // TEST_COMMON_H_

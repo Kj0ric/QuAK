@@ -39,16 +39,18 @@ This document describes the core assumptions, requirements enforced by QuAK's im
 ## 3. Acceptance Conditions
 
 ### 3.1 Non-Nested Automata (from file input)
-- **Explicit final states**: Declared with blank separated `final: s0 s1` (optional)
-- **Default behavior**: If no `final:` declaration, all states are final (F = Q)
-- **Acceptance**: Accept infinite runs visiting at least one accepting run infinitely
+- **Explicit final states**: Declared with blank separated `final: s0 s1` or `final: all`
+- **Requirement**: File input must contain a nonempty `final:` declaration
+- **Original all-final behavior**: Use `final: all` to express F = Q
+- **Acceptance**: Accept infinite words that have a run visiting a final state infinitely often
 
 ### 3.2 Parent Automata
-- All states are implicitly final
+- Parent sections must contain a nonempty `final:` declaration
+- Use `final: all` when all parent states should be final
 
 ### 3.3 Child Automata (Nested)
 - At least one explicit final state required
--  Must use `final: state1 state2 ...` keyword in input file
+- Must use `final: state1 state2 ...` or `final: all` in input file
 - **Acceptance**: Finite word accepted if it reaches a final state
 - **Enforcement**: Parser validation ensures at least one final state per non-dummy child
 
@@ -67,37 +69,17 @@ This document describes the core assumptions, requirements enforced by QuAK's im
 - **Alphabet**: Empty (no symbols)
 - **States**: One state named `"dummy"`
 - **Transitions**: None
-- **Final states**: None (not required for dummy)
+- **Final states**: Parser-generated; the dummy child is exempt from the non-dummy final-state requirement
 - **Purpose**: Placeholder for parent transitions that don't invoke any child
 
 ### 4.3 Alphabet Synchronization
 - **Requirement**: Parent and all non-dummy children must share the same alphabet
-- Not enforced (?)
+- Child parsers inherit the parent alphabet
 
 ### 4.4 Silent Transitions
-- **Parent**: May have silent transitions (keyword `SILENT` = max 32-bit float)
-- **Children**: Should **not** have silent transitions (undefined behavior if present (?))
+- **Parent**: May have no-child transitions using child index `0`, and may also use the `SILENT` keyword (max 32-bit float) for generated silent steps
+- **Children**: Should **not** have silent transitions
 - **Removing silent**: `Automaton::removeSilentTransitions()` handles different value functions differently
-
-### 4.5 Child Weight Sign Requirements
-
-The sign requirements on child weights depend on the chosen finite aggregator (finVal):
-
-| finVal | Required sign | Why |
-|--------|--------------|-----|
-| `SumPlus` | All weights ≥ 0 | SumPlus = Σ\|xᵢ\|; negative weights indicate mixed-sign input |
-| `SumMinus` | All weights ≤ 0 | SumMinus = −Σ\|xᵢ\|; positive weights indicate mixed-sign input |
-| All others | No constraint | Sign is irrelevant or handled internally |
-
-**Non-LimAvg paths** (`Sup`, `LimSup`, `Inf`, `LimInf`): `flatten_SumPlusMinus_Sup/Inf` handle absolute-value normalization internally — mixed-sign children are accepted and automatically normalized.
-
-**LimAvg paths** (`LimSupAvg`, `LimInfAvg`): The pseudo-determinization + synchronization pipeline in `flatten_Avg_SumMinus` assumes pre-normalized weights. Mixed-sign children are therefore **rejected by default** with a clear error message.
-
-To enable automatic normalization for LimAvg paths, recompile with:
-```
-cmake -DNORMALIZE_MIXED_SIGN=ON ...
-```
-This silently applies absolute-value normalization before entering the pipeline.
 
 ## 5. Input File Format
 
@@ -114,12 +96,13 @@ This silently applies absolute-value normalization before entering the pipeline.
 ### 5.3 Nested Automaton Files
 - **Structure**: 
   - `@PARENT` section: master automaton transitions with child indices as weights
-  - `@CHILD 0`: dummy child (no transitions, no final states)
+  - `@CHILD 0`: dummy child placeholder (no transitions and no `final:` line in the file)
   - `@CHILD n` (n ≥ 1): actual children with explicit final state declarations
-- **Final state syntax**: `final: state1 state2 state3 ...`
+- **Final state syntax**: `final: state1 state2 state3 ...` or `final: all`
 - **Detection**: Presence of `@PARENT` keyword
 
 ### 5.4 Silent Transitions
-- **Keyword**: `SILENT` as weight value
+- **No child**: Parent weight `0` invokes the dummy child and emits no child return value
+- **Keyword**: `SILENT` as weight value for generated silent parent steps
 - **Internal representation**: `std::numeric_limits<float>::max()`
 - **Allowed in**: Parent automaton only

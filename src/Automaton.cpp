@@ -184,23 +184,13 @@ void Automaton::build(std::string newname, Parser* parser, MapStd<std::string, S
 	}
 
 	// Create State objects from parser's state names
-	bool finalStatesGiven = false;
 	for (const std::string &statename : parser->states) {
 		State* state = new State(statename, this->alphabet->size(), this->min_domain, this->max_domain);
 		this->states->insert(state->getId(), state);
 		state_register.insert(state->getName(), state);
 
-		// Set final flag based on parser's final_states
-		if (parser->final_states.contains(statename)) {
+		if (parser->final_states_all || parser->final_states.contains(statename)) {
 			state->setFinal(true);
-			finalStatesGiven = true;
-		}
-	}
-	
-	// If no final states were given, make all states final
-	if (!finalStatesGiven) {
-		for (unsigned int state_id = 0; state_id < this->states->size(); ++state_id) {
-			this->states->at(state_id)->setFinal(true);
 		}
 	}
 
@@ -462,12 +452,30 @@ Parser* parse_trim_complete(const Automaton* A, value_function_t f) {
 	return parser;
 }
 
+static bool has_any_final_state(const Automaton* A) {
+    for (unsigned int state_id = 0; state_id < A->getStates()->size(); ++state_id) {
+        if (A->getStates()->at(state_id)->getFinal()) {
+            return true;
+        }
+    }
+    return false;
+}
+
 
 Automaton::Automaton(const Automaton* A, value_function_t f) {
 	MapStd<std::string, Symbol*> sync_register;
 	Parser* parser = parse_trim_complete(A, f);
 	build(A->name, parser, sync_register);
 	delete parser;
+
+	if (!has_any_final_state(A)) {
+		for (unsigned int state_id = 0; state_id < this->states->size(); ++state_id) {
+			this->states->at(state_id)->setFinal(false);
+		}
+		for (unsigned int scc_id = 0; scc_id < this->nb_SCCs; ++scc_id) {
+			this->final_SCCs[scc_id] = false;
+		}
+	}
 }
 
 
@@ -476,6 +484,15 @@ Automaton* Automaton::copy_trim_complete(const Automaton* A, value_function_t f)
 	Parser* parser = parse_trim_complete(A, f);
 	Automaton* that = new Automaton(A->name, parser, sync_register);
 	delete parser;
+
+	if (!has_any_final_state(A)) {
+		for (unsigned int state_id = 0; state_id < that->states->size(); ++state_id) {
+			that->states->at(state_id)->setFinal(false);
+		}
+		for (unsigned int scc_id = 0; scc_id < that->nb_SCCs; ++scc_id) {
+			that->final_SCCs[scc_id] = false;
+		}
+	}
 
   assert(that->isComplete() && "The automaton is not complete.");
 	return that;
@@ -810,6 +827,51 @@ Automaton* Automaton::constantAutomaton (const Automaton* A, weight_t x) {
 	return new Automaton(newname, newalphabet, newstates, newweights, x, x, newinitial);
 }
 
+namespace {
+
+Automaton* acceptedLanguageConstantAutomaton(const Automaton* A, weight_t x) {
+	State::RESET();
+	Symbol::RESET();
+	Weight::RESET();
+
+	std::string newname = "AcceptedLanguageConstant(" + A->getName() + ", " + std::to_string(x) + ")";
+
+	MapArray<Symbol*>* newalphabet = new MapArray<Symbol*>(A->getAlphabet()->size());
+	for (unsigned int symbol_id = 0; symbol_id < A->getAlphabet()->size(); ++symbol_id) {
+		newalphabet->insert(symbol_id, new Symbol(A->getAlphabet()->at(symbol_id)));
+	}
+
+	MapArray<State*>* newstates = new MapArray<State*>(A->getStates()->size());
+	for (unsigned int state_id = 0; state_id < A->getStates()->size(); ++state_id) {
+		State* old_state = A->getStates()->at(state_id);
+		State* new_state = new State(old_state->getName(), newalphabet->size(), x, x);
+		new_state->setFinal(old_state->getFinal());
+		newstates->insert(state_id, new_state);
+	}
+	State* newinitial = newstates->at(A->getInitial()->getId());
+
+	Weight* weight = new Weight(x);
+	MapArray<Weight*>* newweights = new MapArray<Weight*>(1);
+	newweights->insert(0, weight);
+
+	for (unsigned int state_id = 0; state_id < A->getStates()->size(); ++state_id) {
+		State* old_from = A->getStates()->at(state_id);
+		for (Symbol* symbol : *(old_from->getAlphabet())) {
+			for (Edge* edge : *(old_from->getSuccessors(symbol->getId()))) {
+				State* from = newstates->at(edge->getFrom()->getId());
+				State* to = newstates->at(edge->getTo()->getId());
+				Edge* newedge = new Edge(newalphabet->at(symbol->getId()), weight, from, to);
+				from->addSuccessor(newedge);
+				to->addPredecessor(newedge);
+			}
+		}
+	}
+
+	return new Automaton(newname, newalphabet, newstates, newweights, x, x, newinitial);
+}
+
+} // namespace
+
 Automaton* Automaton::booleanize(const Automaton* A, weight_t x) {
 	State::RESET();
 	Symbol::RESET();
@@ -854,7 +916,24 @@ Automaton* Automaton::booleanize(const Automaton* A, weight_t x) {
 // Copy A, replace all weights with value SILENT by a new Weight object with replacement value
 // replacement is the silent transition weight value
 
-Automaton* Automaton::removeSilentTransitionsHelperStandard_prefixIndependent(const Automaton* A, weight_t replacement) {
+namespace {
+static inline weight_t empty_language_bottom_value() {
+    return weight_t(std::numeric_limits<weight_t::T>::lowest());
+}
+
+static inline weight_t sup_silent_replacement(const Automaton* A) {
+    return A->getMinDomain() - weight_t(1);
+}
+
+static inline weight_t inf_silent_replacement(const Automaton* A) {
+    return A->getMaxDomain() + weight_t(1);
+}
+}
+
+Automaton* Automaton::removeSilentTransitionsHelperStandard_prefixIndependent(const Automaton* A,
+                                                                              weight_t replacement,
+                                                                              weight_t forced_min_domain,
+                                                                              weight_t forced_max_domain) {
     State::RESET();
     Symbol::RESET();
     Weight::RESET();
@@ -886,11 +965,9 @@ Automaton* Automaton::removeSilentTransitionsHelperStandard_prefixIndependent(co
     Weight* replacementWeight = new Weight(replacement);
     newweights->insert(oldW, replacementWeight);
 
-    // Domain should ignore SILENT; preserve A's domain and extend with 'replacement' if needed.
-    weight_t newmin_domain = A->min_domain;
-    weight_t newmax_domain = A->max_domain;
-    if (replacement < newmin_domain) newmin_domain = replacement;
-    if (replacement > newmax_domain) newmax_domain = replacement;
+    // The transformed domain must include the extremal sentinel even if no edge happens to use it.
+    weight_t newmin_domain = forced_min_domain;
+    weight_t newmax_domain = forced_max_domain;
 
     // Accepting SCC predicate
     const unsigned int nbSCC = A->nb_SCCs;
@@ -948,7 +1025,10 @@ Automaton* Automaton::removeSilentTransitionsHelperStandard_prefixIndependent(co
     return new Automaton(newname, newalphabet, newstates, newweights, newmin_domain, newmax_domain, newinitial);
 }
 
-Automaton* Automaton::removeSilentTransitionsHelperStandard(const Automaton* A, weight_t replacement) {
+Automaton* Automaton::removeSilentTransitionsHelperStandard(const Automaton* A,
+                                                            weight_t replacement,
+                                                            weight_t forced_min_domain,
+                                                            weight_t forced_max_domain) {
 	State::RESET();
 	Symbol::RESET();
 	Weight::RESET();
@@ -968,24 +1048,17 @@ Automaton* Automaton::removeSilentTransitionsHelperStandard(const Automaton* A, 
 	State* newinitial = newstates->at(A->initial->getId());
 
 	MapArray<Weight*>* newweights = new MapArray<Weight*>(A->weights->size());
-	weight_t newmin_domain = A->max_domain;
-	weight_t newmax_domain = A->min_domain;
+	weight_t newmin_domain = forced_min_domain;
+	weight_t newmax_domain = forced_max_domain;
 	for (unsigned int weight_id = 0; weight_id < A->weights->size(); ++weight_id) {
 		
 		if (A->weights->at(weight_id)->getValue() == SILENT) {
-    		// Replace the weights with float value SILENT with new Weights objects that represent silent
-    		Weight* rep = new Weight(replacement);
+	    		// Replace the weights with float value SILENT with new Weights objects that represent silent
+	    		Weight* rep = new Weight(replacement);
     		newweights->insert(weight_id, rep);
 		}
 		else{
-    		newweights->insert(weight_id, new Weight(A->weights->at(weight_id)->getValue())); // If not silent, keep the weight value
-		}
-		// Update new min and max domains
-		if (newmin_domain > newweights->at(weight_id)->getValue()) {
-			newmin_domain = newweights->at(weight_id)->getValue();
-		}
-		if (newmax_domain < newweights->at(weight_id)->getValue()) {
-			newmax_domain = newweights->at(weight_id)->getValue();
+	    		newweights->insert(weight_id, new Weight(A->weights->at(weight_id)->getValue())); // If not silent, keep the weight value
 		}
 	}
 
@@ -1335,34 +1408,26 @@ Automaton* Automaton::removeSilentTransitionsHelperLimitAverage(const Automaton*
 
 Automaton* Automaton::removeSilentTransitions(const Automaton* A, value_function_t f, bool withShortcuts) {
 	if (f == Inf || f == LimInf) {
-		// idea: Replace all SILENT values with MAXIMAL weight value appears in the run
-		// "return removeSilentTransitionsHelperStandard(A, A->getMaxDomain());" doesn't work.
-		// because SILENT is defined as the max float value. getMaxDomain() would give us that value instead of the max non-SILENT value.
-
-		// Manually find the maximum value other than SILENT value
-		weight_t max_so_far = std::numeric_limits<float>::lowest();
-		const weight_t minus_inf = std::numeric_limits<float>::lowest();
-
-		for (Weight* w : *A->getWeights()) {
-			const weight_t v = w->getValue();
-			if (v != SILENT) {
-				if (v > max_so_far) {
-					max_so_far = v;
-				}
-			}
+		const weight_t replacement = inf_silent_replacement(A);
+		const weight_t forced_min_domain = A->getMinDomain();
+		const weight_t forced_max_domain = replacement;
+		if (f == LimInf && withShortcuts) {
+			return removeSilentTransitionsHelperStandard_prefixIndependent(
+			    A, replacement, forced_min_domain, forced_max_domain);
 		}
-
-		if (max_so_far == minus_inf) {
-			QUAK_FAIL("Automaton has fewer than two distinct weights");
-		}
-
-		if (f == LimInf && withShortcuts) return removeSilentTransitionsHelperStandard_prefixIndependent(A, max_so_far);
-		else return removeSilentTransitionsHelperStandard(A, max_so_far);
+		return removeSilentTransitionsHelperStandard(
+		    A, replacement, forced_min_domain, forced_max_domain);
 	}
 	else if (f == Sup || f == LimSup) {
-		// idea: Replace all SILENT values with MINIMAL weight value appears in the run
-		if (f == LimSup && withShortcuts) return removeSilentTransitionsHelperStandard_prefixIndependent(A, A->getMinDomain());
-		else return removeSilentTransitionsHelperStandard(A, A->getMinDomain());
+		const weight_t replacement = sup_silent_replacement(A);
+		const weight_t forced_min_domain = replacement;
+		const weight_t forced_max_domain = A->getMaxDomain();
+		if (f == LimSup && withShortcuts) {
+			return removeSilentTransitionsHelperStandard_prefixIndependent(
+			    A, replacement, forced_min_domain, forced_max_domain);
+		}
+		return removeSilentTransitionsHelperStandard(
+		    A, replacement, forced_min_domain, forced_max_domain);
 	}
 	else if (f == LimInfAvg || f == LimSupAvg) {
 		if (withShortcuts) return removeSilentTransitionsHelperLimitAverage_prefixIndependent(A);
@@ -2009,6 +2074,13 @@ bool Automaton::isNonEmpty (value_function_t f, weight_t x, UltimatelyPeriodicWo
 
 bool Automaton::isUniversal (value_function_t f, weight_t x, UltimatelyPeriodicWord** witness)  {
 	Automaton* C = Automaton::constantAutomaton(this, x);
+	bool flag = C->isIncludedIn(this, f, false, witness);
+	delete C;
+	return flag;
+}
+
+bool Automaton::isUniversal_withFinal (value_function_t f, weight_t x, UltimatelyPeriodicWord** witness) {
+	Automaton* C = acceptedLanguageConstantAutomaton(this, x);
 	bool flag = C->isIncludedIn(this, f, false, witness);
 	delete C;
 	return flag;
@@ -3795,10 +3867,10 @@ weight_t Automaton::top_Inf_with_final () const {
 
 
 weight_t Automaton::top_LimSup_with_final() const {
-	std::vector<weight_t> values(this->states->size(), this->min_domain);
+	std::vector<weight_t> values(this->states->size(), empty_language_bottom_value());
 	std::vector<bool> spot(this->states->size(), false);
 
-	weight_t top = this->min_domain;
+	weight_t top = empty_language_bottom_value();
 	for (unsigned int scc_id = 0; scc_id < this->nb_SCCs; ++scc_id) {
 		if (final_SCCs[scc_id]) {
 			top_reachably_scc_new(this->SCCs[scc_id]->origin, true, spot, values);
@@ -4192,8 +4264,8 @@ bool Automaton::emptiness_LimAvg_with_final(weight_t threshold) const {
 		if (mu_scc == weight_t(std::numeric_limits<float>::lowest())) continue;
 
         if (mu_scc >= threshold) {
-            // Witness found: there is a run with limavg ≥ threshold
-            // that stays in this accepting SCC.
+            // Witness found: this accepting SCC supports a word with value
+            // at least the threshold.
             return true;   // non-empty at threshold
         }
     }

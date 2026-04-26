@@ -1,0 +1,17 @@
+# For Min_f, the child can stop early with return 1 or continue through the
+# first final state and later terminate with return 0.
+#
+# Regular flattening:
+# - flatten_regular(Min_f): weights 0 and 1 must both be present
+
+@PARENT
+final: q0
+a : 1, q0 -> q1
+b : 0, q1 -> q0
+
+@CHILD 0
+
+@CHILD 1
+final: f0 f1
+a : 1, s0 -> f0
+b : 0, f0 -> f1

@@ -78,41 +78,26 @@ enum class Operation {
   nestedUniversal
 };
 
+static bool isNonNestedActionSupported(Operation op) {
+  return op == Operation::isNonempty || op == Operation::isUniversal;
+}
+
 static void printUsage(const char *bin) {
   std::cerr << "Usage: " << bin
-            << " [-cputime] [-v] [-d] [-debug] [-print-witness] automaton-file" << " [ACTION ACTION ...]\n";
-  std::cerr << "\nFor regular automata, ACTIONs are (VALF = <Inf | Sup | LimInf | LimSup | LimSupAvg | LimInfAvg>):\n";
-  std::cerr << "  stats\n";
-  std::cerr << "  dump\n";
-  std::cerr << "  empty VALF <weight>\n";
-  std::cerr << "  non-empty VALF <weight>\n";
-  std::cerr << "  universal VALF <weight>\n";
-  std::cerr << "  constant VALF\n";
-  std::cerr << "  safe VALF\n";
-  std::cerr << "  live VALF\n";
-  std::cerr << "  top-value VALF\n";
-  std::cerr << "  bottom-value VALF\n";
-  std::cerr << "  isIncluded VALF automaton2-file\n";
-  std::cerr << "  isIncludedBool VALF automaton2-file\n";
-  std::cerr << "  isEquivalent VALF automaton2-file\n";
-  std::cerr << "  isEquivalentBool VALF automaton2-file\n";
-  std::cerr << "  livenessComponent VALF output-file\n";
-  std::cerr << "  safetyComponent VALF output-file\n";
-  std::cerr << "  decompose VALF safety-output-file liveness-output-file\n";
-  std::cerr << "  eval <Inf | Sup | Avg> word-file\n";
-  std::cerr << "  monitor <Inf | Sup | Avg> word-file\n";
-  std::cerr << "  witness-file file-name\n";
+            << " [-cputime] [-v] [-d] [-debug]"
+            << " automaton-file [ACTION ACTION ...]\n";
+  std::cerr << "\nFor non-nested automata, ACTIONs are (VALF = <Inf | Sup | LimInf | LimSup | LimSupAvg | LimInfAvg>):\n";
+  std::cerr << "  non-empty VALF <weight>   (uses Buchi acceptance)\n";
+  std::cerr << "  universal VALF <weight>   (uses Buchi acceptance)\n";
   std::cerr << "\nFor nested automata (files with @PARENT), ACTIONs are:\n";
   std::cerr << "  FINVAL = <Max_f | Min_f | SumB | SumPlus | SumMinus>\n";
   std::cerr << "  non-empty VALF FINVAL <threshold> [bound]\n";
-  std::cerr << "  universal VALF FINVAL <threshold> [bound]  (only Max_f/Min_f/SumB with Inf/Sup/LimInf/LimSup)\n";
-  std::cerr << "\nThe action 'witness-file' instructs the previous action to store the witness into the given name.\n";
+  std::cerr << "  universal VALF FINVAL <threshold> [bound]  (Inf/Sup/LimInf/LimSup only)\n";
 }
 
 struct OperationClosure {
   Operation op{Operation::INVALID};
   std::vector<std::variant<std::string, weight_t, value_function_t>> args;
-  std::string witness_file{};
 };
 
 
@@ -123,9 +108,7 @@ struct Options {
   bool cputime{false};
   bool verbose{false};
   bool dump{false};
-  bool print_witness{false};
   bool isNested{false};
-  std::string witness_file{};
 
   static Options createError(const std::string& err) {
     Options O;
@@ -162,12 +145,12 @@ Options parseArgs(int argc, char *argv[]) {
       O.verbose = true;
     else if (streq(argv[idx], "-d"))
       O.dump = true;
-    else if (streq(argv[idx], "-print-witness"))
-      O.print_witness = true;
     else if (streq(argv[idx], "-debug"))
       g_debug_mode = true;
     else if (argv[idx][0] != '-')
       break;
+    else
+      return Options::createError("Unknown option: " + std::string(argv[idx]));
 
     ++idx;
   }
@@ -183,22 +166,6 @@ Options parseArgs(int argc, char *argv[]) {
 
   while (idx < argc) {
     OperationClosure cl;
-
-    if (streq(argv[idx], "witness-file")) {
-      if (O.actions.empty()) {
-        return Options::createError("witness-file has no associated action.");
-      }
-
-      ++idx;
-      if (idx >= argc) {
-        return Options::createError("witness-file expects an argument (a file name).");
-      }
-      
-      O.actions.back().witness_file = argv[idx];
-      
-      ++idx;
-      continue;
-    }
 
     if (streq(argv[idx], "stats")) {
       cl.op = Operation::stats;
@@ -240,6 +207,10 @@ Options parseArgs(int argc, char *argv[]) {
       cl.op = Operation::eval;
     }
 
+    if (!O.isNested && cl.op != Operation::INVALID && !isNonNestedActionSupported(cl.op)) {
+      return Options::createError(
+          "Non-nested automata CLI supports only nonemptiness and universality checks.");
+    }
 
     if (cl.op == Operation::stats || cl.op == Operation::dump) {
          O.actions.push_back(cl);
@@ -249,7 +220,7 @@ Options parseArgs(int argc, char *argv[]) {
         cl.op == Operation::isUniversal) {
       
       // For nested automata: INFVAL FINVAL threshold [bound]
-      // For regular automata: VALF threshold
+      // For non-nested automata: VALF threshold
       if (O.isNested) {
         if (idx + 3 >= argc) {
           return Options::createError("Nested automata require: " + std::string(argv[idx]) + " INFVAL FINVAL <threshold> [bound]");
@@ -257,25 +228,25 @@ Options parseArgs(int argc, char *argv[]) {
         // Parse aggregators first for validation
         value_function_t valf = getValueFunction(argv[idx + 1]);
         value_function_t finval = getFiniteAggregator(argv[idx + 2]);
+        if (valf == Avg || finval == Avg) {
+          return Options::createError("Nested automata do not support Avg as an action aggregator.");
+        }
 
         // Route to nested operation with proper validation
         if (cl.op == Operation::isNonempty) {
           cl.op = Operation::nestedNonEmpty;
-          if (valf == LimInfAvg && finval == SumPlus) {
-            return Options::createError(
-              "LimInfAvg + SumPlus is not supported for non-empty. "
-              "See docs/CLI.md for supported combinations.");
+          if (finval == SumPlus && valf == LimInfAvg) {
+            return Options::createError("Nested non-empty does not support SumPlus with LimInfAvg.");
           }
         } else if (cl.op == Operation::isUniversal) {
           cl.op = Operation::nestedUniversal;
-          // isUniversal supports (Max_f | Min_f | SumB | SumPlus | SumMinus) x (Sup, Inf, LimSup, LimInf)
           if (valf == LimInfAvg || valf == LimSupAvg) {
             return Options::createError("Nested universal does not support LimInfAvg or LimSupAvg.");
           }
         } else {
           return Options::createError("Operation " + std::string(argv[idx]) + " not supported for nested automata.");
         }
-        
+
         cl.args.push_back(valf);      // INFVAL
         cl.args.push_back(finval);    // FINVAL
         
@@ -307,7 +278,7 @@ Options parseArgs(int argc, char *argv[]) {
 
         O.actions.push_back(cl);
       } else {
-        // Regular automaton parsing
+        // Non-nested automaton parsing
         if (idx + 2 >= argc) {
           return Options::createError("Invalid arguments for " + std::string(argv[idx]));
         }
@@ -390,28 +361,6 @@ Options parseArgs(int argc, char *argv[]) {
 #define TIMER_PRINT(msg) if (opts.cputime) { std::cout << msg << TIMER_GET << " ms\n"; }
 #define PRINT_DIV { std::cout << "----------\n"; }
 
-void processWitness(UltimatelyPeriodicWord *witness, OperationClosure& act, Options &opts, bool append=false) {
-  if (!witness)
-    return;
-
-  if (opts.print_witness) {
-    std::cout << "Witness: " << witness->toString() << "\n";
-  }
-  
-  if (!act.witness_file.empty()) {
-    if (opts.verbose)
-      std::cerr << "Witness written to : " << act.witness_file << "\n";
-      std::ofstream fl;
-      if (append)
-        fl.open(act.witness_file, std::ios_base::app);
-      else
-        fl.open(act.witness_file);
-
-      fl << witness->toString() << "\n";
-      fl.close();
-  }
-}
-
 void writeAutomaton(Automaton *A, const std::string& path) {
 	std::ofstream fl(path);
 	A->write(fl);
@@ -478,7 +427,6 @@ int main(int argc, char **argv) {
 
 
     for (auto& act : opts.actions) {
-      UltimatelyPeriodicWord *witness = nullptr;
       switch (act.op) {
       case Operation::stats:
         {
@@ -503,17 +451,10 @@ int main(int argc, char **argv) {
                   << ", weight=" << weight << ") = ";
         {
         bool r;
-        if (opts.print_witness || !act.witness_file.empty()) {
-          TIMER_START
-          r = !A->isNonEmpty(value_fun, weight, &witness);
-          TIMER_END
-        } else {
-          TIMER_START
-          r = !A->isNonEmpty(value_fun, weight);
-          TIMER_END
-        }
+        TIMER_START
+        r = !A->isNonEmpty_withFinal(value_fun, weight);
+        TIMER_END
         std::cout << r << "\n";
-        processWitness(witness, act, opts);
         TIMER_PRINT("Cputime: ")
         PRINT_DIV
         }
@@ -527,17 +468,10 @@ int main(int argc, char **argv) {
                   << ", weight=" << weight << ") = ";
         {
         bool r;
-        if (opts.print_witness || !act.witness_file.empty()) {
-          TIMER_START
-          r = A->isNonEmpty(value_fun, weight, &witness);
-          TIMER_END
-        } else {
-          TIMER_START
-          r = A->isNonEmpty(value_fun, weight);
-          TIMER_END
-        }
+        TIMER_START
+        r = A->isNonEmpty_withFinal(value_fun, weight);
+        TIMER_END
         std::cout << r << "\n";
-        processWitness(witness, act, opts);
         TIMER_PRINT("Cputime: ")
         PRINT_DIV
         }
@@ -551,17 +485,10 @@ int main(int argc, char **argv) {
                   << ", weight=" << weight << ") = ";
         {
         bool r;
-        if (opts.print_witness || !act.witness_file.empty()) {
-          TIMER_START
-          r = A->isUniversal(value_fun, weight, &witness);
-          TIMER_END
-        } else {
-          TIMER_START
-          r = A->isUniversal(value_fun, weight);
-          TIMER_END
-        }
+        TIMER_START
+        r = A->isUniversal_withFinal(value_fun, weight);
+        TIMER_END
         std::cout << r << "\n";
-        processWitness(witness, act, opts);
         TIMER_PRINT("Cputime: ")
         PRINT_DIV
         }
@@ -575,17 +502,10 @@ int main(int argc, char **argv) {
                   << ") = ";
         {
         bool r;
-        if (opts.print_witness || !act.witness_file.empty()) {
-          TIMER_START
-          r = A->isConstant(value_fun, &witness);
-          TIMER_END
-        } else {
-          TIMER_START
-          r = A->isConstant(value_fun);
-          TIMER_END
-        }
+        TIMER_START
+        r = A->isConstant(value_fun);
+        TIMER_END
         std::cout << r << "\n";
-        processWitness(witness, act, opts);
         TIMER_PRINT("Cputime: ")
         PRINT_DIV
         }
@@ -598,17 +518,10 @@ int main(int argc, char **argv) {
                   << ") = ";
         {
         bool r;
-        if (opts.print_witness || !act.witness_file.empty()) {
-          TIMER_START
-          r = A->isSafe(value_fun, &witness);
-          TIMER_END
-        } else {
-          TIMER_START
-          r = A->isSafe(value_fun);
-          TIMER_END
-        }
+        TIMER_START
+        r = A->isSafe(value_fun);
+        TIMER_END
         std::cout << r << "\n";
-        processWitness(witness, act, opts);
         TIMER_PRINT("Cputime: ")
         PRINT_DIV
         }
@@ -622,17 +535,10 @@ int main(int argc, char **argv) {
                   << ") = ";
         {
         bool r;
-        if (opts.print_witness || !act.witness_file.empty()) {
-          TIMER_START
-          r = A->isLive(value_fun, &witness);
-          TIMER_END
-        } else {
-          TIMER_START
-          r = A->isLive(value_fun);
-          TIMER_END
-        }
+        TIMER_START
+        r = A->isLive(value_fun);
+        TIMER_END
         std::cout << r << "\n";
-        processWitness(witness, act, opts);
         TIMER_PRINT("Cputime: ")
         PRINT_DIV
         }
@@ -645,17 +551,10 @@ int main(int argc, char **argv) {
                   << ") = ";
         {
           weight_t r;
-          if (opts.print_witness || !act.witness_file.empty()) {
-            TIMER_START
-            r = A->getTopValue(value_fun, &witness);
-            TIMER_END
-          } else {
-            TIMER_START
-            r = A->getTopValue(value_fun);
-            TIMER_END
-          }
+          TIMER_START
+          r = A->getTopValue(value_fun);
+          TIMER_END
           std::cout << r << "\n";
-          processWitness(witness, act, opts);
           TIMER_PRINT("Cputime: ")
           PRINT_DIV
         }
@@ -668,17 +567,10 @@ int main(int argc, char **argv) {
                   << ") = ";
         {
           weight_t r;
-          if (opts.print_witness || !act.witness_file.empty()) {
-            TIMER_START
-            r = A->getBottomValue(value_fun, &witness);
-            TIMER_END
-          } else {
-            TIMER_START
-            r = A->getBottomValue(value_fun);
-            TIMER_END
-          }
+          TIMER_START
+          r = A->getBottomValue(value_fun);
+          TIMER_END
           std::cout << r << "\n";
-          processWitness(witness, act, opts);
           TIMER_PRINT("Cputime: ")
           PRINT_DIV
         }
@@ -706,20 +598,11 @@ int main(int argc, char **argv) {
                   << ") = ";
         
         
-        if (opts.print_witness || !act.witness_file.empty()) {
-          TIMER_START
-          r =  A->isIncludedIn(B.get(), value_fun,
-                                    act.op == Operation::isIncludedBool,
-                                    &witness);
-          TIMER_END
-        } else {
-          TIMER_START
-          r =  A->isIncludedIn(B.get(), value_fun,
-                                    act.op == Operation::isIncludedBool);
-          TIMER_END
-        }
+        TIMER_START
+        r =  A->isIncludedIn(B.get(), value_fun,
+                                  act.op == Operation::isIncludedBool);
+        TIMER_END
         std::cout << r << "\n";
-        processWitness(witness, act, opts);
         TIMER_PRINT("Cputime: ")
         PRINT_DIV
         }
@@ -745,20 +628,11 @@ int main(int argc, char **argv) {
         std::cout << valueFunctionToStr(value_fun)
                   << ") = ";
 
-        if (opts.print_witness || !act.witness_file.empty()) {
-          TIMER_START
-          r =  A->isEquivalentTo(B.get(), value_fun,
-                                    act.op == Operation::isEquivalentBool,
-                                    &witness);
-          TIMER_END
-        } else {
-          TIMER_START
-          r =  A->isEquivalentTo(B.get(), value_fun,
-                                    act.op == Operation::isEquivalentBool);
-          TIMER_END
-        }
+        TIMER_START
+        r =  A->isEquivalentTo(B.get(), value_fun,
+                                  act.op == Operation::isEquivalentBool);
+        TIMER_END
         std::cout << r << "\n";
-        processWitness(witness, act, opts);
         TIMER_PRINT("Cputime: ")
         PRINT_DIV
         }

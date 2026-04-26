@@ -1,0 +1,18 @@
+# Negative control for final-state continuation: the child can continue through
+# the first final state, but every accepting return stays at 0.
+#
+# Regular oracle:
+# - flatten_regular(Max_f): weight 1 must be absent
+# - Sup/LimSup at threshold 1: false
+
+@PARENT
+final: q0
+a : 1, q0 -> q1
+b : 0, q1 -> q0
+
+@CHILD 0
+
+@CHILD 1
+final: f0 f1
+a : 0, s0 -> f0
+b : 0, f0 -> f1

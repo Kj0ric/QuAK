@@ -12,8 +12,8 @@ A nested quantitative automaton consists of:
   - **Infinite aggregator (infVal)**: aggregates the sequence of child return values over the infinite parent run.
 
 Given a nested automaton and a threshold, QuAK can answer:
-1. **Non-emptiness**: Does there exist an infinite word whose value is >= the threshold?
-2. **Universality**: Do all infinite words have value >= the threshold?
+1. **Non-emptiness**: Does there exist an accepted infinite word whose value is >= the threshold?
+2. **Universality**: Do all accepted infinite words have value >= the threshold?
 
 ---
 
@@ -30,43 +30,47 @@ No external dependencies.
 ### Quick Start
 
 ```bash
-cmake . -DCMAKE_BUILD_TYPE=Release
-make -j4
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j
 ```
 
 This produces:
-- `quak-nested` -- the main CLI executable
+- `build/quak-nested` -- the main CLI executable
+
+In-source builds are intentionally disabled. Keep generated CMake files and
+compiled executables under `build/` or another out-of-tree build directory.
 
 ### Build Targets
 
 | Command | What it builds |
 |---------|----------------|
-| `make` | Library + `quak-nested` CLI |
-| `make tests` | All test executables |
-| `make examples` | Example programs |
-| `make experiments` | Experiment runners |
-| `ctest` | Run all tests (must `make tests` first) |
+| `cmake --build build` | Library + `quak-nested` CLI |
+| `cmake --build build --target tests` | All registered test executables |
+| `cmake --build build --target examples` | Example programs |
+| `cmake --build build --target experiments` | Experiment and probe runners |
+| `ctest --test-dir build --output-on-failure` | Run all registered tests |
 
 After building, run from the project root:
 
 ```bash
 # Main CLI
-./quak-nested [OPTIONS] automaton-file [ACTION ...]
+./build/quak-nested [OPTIONS] automaton-file [ACTION ...]
 
 # Tests
-make tests        # build test executables
-ctest             # run all tests
-./test_sanity_all # or run individual test executables directly
+cmake --build build --target tests
+ctest --test-dir build -N
+ctest --test-dir build --output-on-failure
+./build/test_universality_correctness # or run any registered test executable directly
 
 # Examples
-make examples
-./example1_basic
-./example2_value_functions
-./example3_response_time
+cmake --build build --target examples
+./build/example1_basic
+./build/example2_value_functions
+./build/example3_response_time
 
 # Experiments
-make experiments
-./quak-experiment-single [args]   # single automaton experiment runner
+cmake --build build --target experiments
+./build/quak-experiment-single [args]   # single automaton experiment runner
 ```
 
 ### Build Options
@@ -103,10 +107,8 @@ Applied to the weights within a single child run to produce a return value:
 | `Max_f` | Maximum weight seen during the child run |
 | `Min_f` | Minimum weight seen during the child run |
 | `SumB` | Bounded sum of weights (requires a `bound` parameter) |
-| `SumPlus` | Sum of absolute values of all weights (always ≥ 0) |
-| `SumMinus` | Negated sum of absolute values of all weights (always ≤ 0) |
-
-For nested automata, `SumPlus` and `SumMinus` use those semantics even when child automata contain a mix of positive and negative transition weights.
+| `SumPlus` | Sum of positive weights |
+| `SumMinus` | Sum of negative weights (negated) |
 
 ### Supported Combinations
 
@@ -143,6 +145,7 @@ A nested automaton file contains a `@PARENT` section followed by `@CHILD` sectio
 
 ```
 @PARENT
+final: all
 a : 1, p0 -> p0
 b : 0, p0 -> p1
 a : 1, p1 -> p0
@@ -158,21 +161,25 @@ b : 0, count -> done
 
 **Sections:**
 - `@PARENT` -- The parent automaton. Weights on parent transitions encode which child automaton is invoked (0 = no child / dummy).
-- `@CHILD 0` -- Dummy child (always present, always empty). A placeholder for parent transitions that do not invoke any child.
+- `@CHILD 0` -- Dummy child placeholder. It has no transitions and does not need a `final:` line in the file.
 - `@CHILD n` (n >= 1) -- Actual child automata.
 
 **Rules:**
 
 1. **Initial state**: The source state of the first transition in each section.
-2. **Child final states**: Every non-dummy child must declare at least one final state with `final: state1 state2 ...`. A child run is accepted when it reaches a final state.
-3. **Parent final states**: All parent states are implicitly final unless explicit final states are declared with `final:` in the `@PARENT` section.
+2. **Final states**: Non-nested automata, the parent section, and every non-dummy child must declare final states with `final: state1 state2 ...` or `final: all`.
+3. **Parent final states**: Use `final: all` in the `@PARENT` section when every parent state should be accepting.
 4. **Child index 0**: Reserved for the dummy child. Must always be present (can be empty).
 5. **Completeness**: All automata (parent and children) should be complete -- for every state and symbol, at least one outgoing transition must exist.
 6. **Alphabet**: Parent and all non-dummy children share the same alphabet.
 
 ### Silent Transitions
 
-The parent automaton may contain silent transitions by using `SILENT` as the weight value. Silent transitions represent steps where no child is invoked and no value is emitted. Internally, `SILENT` is stored as `std::numeric_limits<float>::max()`. Children should **not** contain silent transitions.
+The parent automaton uses weight `0` for the dummy child, meaning no child value
+is emitted. It may also contain generated silent transitions by using `SILENT`
+as the weight value; internally, `SILENT` is stored as
+`std::numeric_limits<float>::max()`. Children should **not** contain silent
+transitions.
 
 ---
 
@@ -181,7 +188,7 @@ The parent automaton may contain silent transitions by using `SILENT` as the wei
 ### Usage
 
 ```bash
-./quak-nested [OPTIONS] automaton-file [ACTION ...]
+./build/quak-nested [OPTIONS] automaton-file [ACTION ...]
 ```
 
 Nested automata files are auto-detected by the presence of the `@PARENT` marker.
@@ -207,26 +214,42 @@ universal VALF FINVAL <threshold> [bound]
 
 The `bound` parameter is **required** for `SumB` and optional otherwise.
 
+### Actions for Non-Nested Automata
+
+```
+VALF = <Inf | Sup | LimInf | LimSup | LimInfAvg | LimSupAvg>
+
+non-empty VALF <weight>
+universal VALF <weight>
+```
+
+For non-nested automata, the CLI intentionally exposes only Buchi
+non-emptiness and universality checks over declared final states. Use
+`final: all` to recover the original all-states-accepting QuAK behavior for
+those checks. For nested automata,
+`universal` quantifies over accepted words of the flattened automaton; rejected
+flattened words are ignored.
+
 ### Examples
 
 ```bash
 # Non-emptiness with LimSup + Max_f, threshold 5
-./quak-nested nested.txt non-empty LimSup Max_f 5
+./build/quak-nested nested.txt non-empty LimSup Max_f 5
 
 # Universality with Inf + Min_f, threshold 0
-./quak-nested nested.txt universal Inf Min_f 0
+./build/quak-nested nested.txt universal Inf Min_f 0
 
 # Non-emptiness with SumB (bound required)
-./quak-nested nested.txt non-empty LimInf SumB 3 10
+./build/quak-nested nested.txt non-empty LimInf SumB 3 10
 
 # Non-emptiness with LimSupAvg + SumPlus, threshold 2
-./quak-nested nested.txt non-empty LimSupAvg SumPlus 2
+./build/quak-nested nested.txt non-empty LimSupAvg SumPlus 2
 
 # With timing
-./quak-nested -cputime nested.txt universal LimSup Max_f 1
+./build/quak-nested -cputime nested.txt universal LimSup Max_f 1
 
 # Print the automaton structure first, then decide
-./quak-nested -d nested.txt non-empty Sup Max_f 3
+./build/quak-nested -d nested.txt non-empty Sup Max_f 3
 ```
 
 ### Output Format
@@ -255,13 +278,13 @@ Result: `1` = true, `0` = false.
 // Load a nested automaton from file
 NestedAutomaton* NA = new NestedAutomaton("nested.txt");
 
-// Non-emptiness: exists a word with value >= threshold?
+// Non-emptiness: exists an accepted word with value >= threshold?
 bool exists = NA->isNonEmpty(LimSup, Max_f, 5.0);
 
 // With SumB (bound required)
 bool existsSumB = NA->isNonEmpty(LimInf, SumB, 3.0, 10);
 
-// Universality: all words have value >= threshold?
+// Universality: all accepted words have value >= threshold?
 bool universal = NA->isUniversal(Inf, Min_f, 0.0);
 
 // Inspect structure
@@ -307,7 +330,11 @@ public:
 
 ### Flattening
 
-The flattening methods produce a non-nested `Automaton*` that can be used with all standard `Automaton` operations (emptiness, universality, inclusion, etc.). The caller is responsible for deleting the returned automaton.
+The flattening methods produce a non-nested `Automaton*` that can be used with
+standard `Automaton` operations. If the flattened automaton's final states
+define the accepted domain, use final-aware operations such as
+`isNonEmpty_withFinal` and `isUniversal_withFinal` for semantic queries over
+accepted words. The caller is responsible for deleting the returned automaton.
 
 ```cpp
 NestedAutomaton* NA = new NestedAutomaton("nested.txt");
@@ -315,8 +342,8 @@ NestedAutomaton* NA = new NestedAutomaton("nested.txt");
 // Flatten with Max_f aggregator
 Automaton* flat = NA->flatten_regular(Max_f);
 
-// Use standard operations on the flattened automaton
-bool result = flat->isNonEmpty(LimSup, 5.0);
+// Query accepted flattened words
+bool result = flat->isNonEmpty_withFinal(LimSup, 5.0);
 
 delete flat;
 delete NA;
@@ -332,18 +359,22 @@ The decision procedures work by **flattening** the nested automaton into an equi
 
 The flattening approach depends on the aggregator combination:
 
-| finVal | infVal | Flattening method |
-|--------|--------|-------------------|
-| SumPlus/SumMinus | Sup, LimSup, Inf, LimInf | Monotonic 0/1 encoding |
-| SumPlus | LimSupAvg | Fast path (Sup-based), then SumB fallback |
+| finVal | infVal | Non-emptiness strategy |
+|--------|--------|------------------------|
+| SumPlus/SumMinus | Inf, Sup, LimInf, LimSup | Specialized flattening for extremal parents and monotone children |
+| SumPlus | LimSupAvg | Sup-based fast path, then SumB fallback |
 | SumMinus | LimInfAvg, LimSupAvg | Pseudo-determinization + synchronization |
-| Max_f/Min_f | Sup, LimSup, Inf, LimInf | Monotonic min/max construction |
+| Max_f/Min_f | Inf, Sup, LimInf, LimSup | Specialized flattening for extremal parents and monotone children |
 | Max_f/Min_f | LimInfAvg, LimSupAvg | Regular flattening |
-| SumB | All | Regular flattening with bound |
+| SumB | All supported infVal modes | Regular flattening with bound |
 
-After flattening, silent transitions are removed (when necessary), and the standard `isNonEmpty` or `isUniversal` of the base `Automaton` class is invoked on the resulting non-nested automaton.
+After flattening, silent transitions are removed when necessary. Non-emptiness
+uses final-aware emptiness on the resulting non-nested automaton.
 
-For **universality**, the implementation converts SumPlus and SumMinus to SumB internally and always uses the regular flattening path.
+For **universality**, the implementation converts SumPlus and SumMinus to SumB
+internally, uses the regular flattening path, and then calls
+`Automaton::isUniversal_withFinal`. This checks the threshold only over words
+accepted by the flattened automaton. Rejected flattened words are ignored.
 
 ---
 
@@ -369,11 +400,12 @@ Non-determinism is resolved by the **Supremum** function: among all possible run
 
 ### Nested-Specific
 
-- **Child index 0** is always the dummy child (no alphabet, one dummy state, no transitions, no final states). It serves as a placeholder for parent transitions that don't invoke a child.
+- **Child index 0** is always the dummy child placeholder. It has no alphabet and no transitions in the input file, and it is exempt from non-dummy child final-state requirements.
+- **Final state declarations** are mandatory for non-nested automata, the parent, and non-dummy children. Use `final: all` for the original all-states-final behavior.
 - **Child final states** are mandatory for non-dummy children. The parser aborts if a `@CHILD n` (n >= 1) section has no `final:` declaration.
-- **Parent final states**: If no `final:` declaration is given, all parent states are implicitly final. Explicit final states can be specified with `final: state1 state2 ...` in the `@PARENT` section.
+- **Parent final states** are mandatory. Use `final: state1 state2 ...` for an explicit subset or `final: all` for all parent states.
 - **Alphabet synchronization**: parent and all non-dummy children must use the same alphabet.
-- **Silent transitions** (`SILENT` keyword, stored as max float) are allowed only in the parent. Using them in children leads to undefined behavior.
+- **Silent/no-child parent steps**: Parent weight `0` invokes the dummy child and emits no child value. The `SILENT` keyword (stored as max float) is also allowed only in the parent for generated silent steps. Children should not use `SILENT`.
 
 ### Weight Precision
 
@@ -383,9 +415,9 @@ Non-determinism is resolved by the **Supremum** function: among all possible run
 
 ### Acceptance
 
-- **Parent**: A parent run is accepting if it visits a final state infinitely often **and** invokes a non-silent child infinitely often. By default all parent states are final (unless explicit final states are declared), so acceptance reduces to the non-silent child condition.
+- **Parent**: A parent run is accepting if it visits a final state infinitely often **and** invokes a non-silent child infinitely often. Use `final: all` when acceptance should reduce to the non-silent child condition.
 - **Children**: Accept finite words. A child run terminates and produces a value when it reaches a final state.
-- **Flattened automata**: Use Büchi acceptance. The flattening encodes both conditions (parent final states and infinitely many non-silent invocations) into the accepting-state set of the flattened automaton.
+- **Flattened automata**: Use Buchi acceptance. The flattening encodes both conditions (parent final states and infinitely many non-silent invocations) into the accepting-state set of the flattened automaton.
 
 ---
 
@@ -394,10 +426,10 @@ Non-determinism is resolved by the **Supremum** function: among all possible run
 Three example programs are provided in `examples/nested/`:
 
 ```bash
-make examples
-./example1_basic             # Comparing finVals (Max_f, Min_f, SumPlus, SumB)
-./example2_value_functions   # Varying finVal + non-emptiness vs universality
-./example3_response_time     # Comparing infVals (Sup, LimSup, LimSupAvg, LimInf, Inf)
+cmake --build build --target examples
+./build/example1_basic             # Comparing finVals (Max_f, Min_f, SumPlus, SumB)
+./build/example2_value_functions   # Varying finVal + non-emptiness vs universality
+./build/example3_response_time     # Comparing infVals (Sup, LimSup, LimSupAvg, LimInf, Inf)
 ```
 
 See `examples/nested/README.md` for details.
@@ -411,13 +443,13 @@ See `examples/nested/README.md` for details.
 Build the experiment runner:
 
 ```bash
-make experiments -j4
+cmake --build build --target experiments -j
 ```
 
 Usage:
 
 ```bash
-./quak-experiment-single <file> <problem> <InfVal> <FinVal> <threshold> \
+./build/quak-experiment-single <file> <problem> <InfVal> <FinVal> <threshold> \
     [--rep R] [--timeout-s T] [--warmup 0|1]
 ```
 
@@ -443,7 +475,7 @@ MEAN_S=<double> RESULT=<0|1> STATUS=<OK|TIMEOUT|ERR|INCONSISTENT>
 Example:
 
 ```bash
-./quak-experiment-single samples/generated_response_time_1/response_n2_k2.txt \
+./build/quak-experiment-single samples/generated_response_time_1/response_n2_k2.txt \
     emptiness Sup SumPlus 2 --rep 1 --timeout-s 30 --warmup 1
 ```
 
@@ -452,7 +484,7 @@ Example:
 Runs all configured experiments in batch, with resume support (skips already-completed `(n, k)` pairs).
 
 ```bash
-python3 experiment.py --exe ./quak-experiment-single \
+python3 experiment.py --exe ./build/quak-experiment-single \
     [--rep R] [--timeout T] [--warmup W] [--memory-limit 30G] [--outdir results]
 ```
 
@@ -491,32 +523,51 @@ QuAK/
 │   ├── Monitor.cpp/h           # Runtime monitoring
 │   ├── utils.cpp/h             # Value function string conversion
 │   ├── FORKLIFT/               # Language inclusion algorithm
+│   ├── archived/               # Historical sources and preserved fragments
 │   ├── quak-nested-main.cpp    # Main CLI
 │   ├── quak-experiment-single.cpp  # Experiment runner
 │   └── tests/
 │       ├── sanity_tests/       # Flattening, synchronization, etc.
-│       └── correctness_tests/  # Emptiness/universality correctness
+│       ├── correctness_tests/  # Registered semantic regressions
+│       ├── probes/             # Optional backend comparison tools
+│       └── benchmarks/         # Optional benchmark harnesses
+├── analysis/                   # Research notes, plans, reports, and tools
 ├── examples/
 │   └── nested/                 # Example programs + sample automata
 ├── samples/                    # Sample automata files
+├── results/                    # Generated experiment output
 ├── experiment.py               # Python experiment orchestrator
+├── experiment_response_max.py  # Max-based experiment orchestrator
+├── csv_to_latex_figures.py     # Benchmark CSV to LaTeX tables
 ├── CMakeLists.txt
 └── README.md
 ```
+
+Registered tests live only under `src/tests/sanity_tests/` and
+`src/tests/correctness_tests/`. Optional probes may still build through the
+`experiments` target, but they are not CTest tests. Historical implementation
+snapshots and source fragments under `src/archived/` are intentionally not
+built.
 
 ---
 
 ## Differences from the Original QuAK (Non-Nested)
 
-This version of QuAK extends the original with nested automata support. For non-nested automata, the CLI still supports all original operations:
+This version of QuAK extends the original with nested automata support. The
+non-nested library APIs are still present, but the CLI surface is intentionally
+narrower than original QuAK. For non-nested automata, the supported CLI actions
+are only:
 
 ```
-stats, dump, empty, non-empty, universal, constant, safe, live,
-top-value, bottom-value, isIncluded, isIncludedBool, isEquivalent,
-isEquivalentBool, livenessComponent, safetyComponent, decompose,
-eval, monitor, witness-file
+non-empty VALF <weight>
+universal VALF <weight>
 ```
 
-These work exactly as in the original QuAK (see the original QuAK documentation for details). The one addition for non-nested automata is:
+Both actions use Buchi acceptance over declared final states. The main
+input-format change is:
 
-**Final state declarations**: Non-nested automata can now optionally specify final states using the `final: state1 state2 ...` syntax in their input files. If no `final:` line is present, all states are final (matching the original QuAK behavior, where F = Q).
+**Final state declarations**: Non-nested automata now specify final states
+using the `final: state1 state2 ...` or `final: all` syntax in their input
+files. The CLI `non-empty` and `universal` actions use those final states as
+the Buchi accepting set. Use `final: all` to match the original QuAK behavior
+where F = Q.

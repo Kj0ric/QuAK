@@ -1,4 +1,5 @@
 @PARENT
+final: all
 a : 1, q0 -> q0
 
 @CHILD 0

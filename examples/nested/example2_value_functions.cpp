@@ -32,7 +32,7 @@ int main() {
     // =========================================================================
     // Comparison 1: Varying finVal (threshold=4, infVal=Sup)
     // =========================================================================
-    // Sup only needs ONE child run to hit the threshold.
+    // Sup only needs one accepted word to hit the threshold.
     // Question: which finVal can reach 4?
     std::cout << "--- Comparison 1: Varying finVal (Sup, threshold=4) ---" << std::endl;
     std::cout << std::endl;

@@ -1,0 +1,52 @@
+=== Sum Inf/LimInf Cached Correctness ===
+Oracle backend: current
+baseline_det_sumplus_eq [SumPlus, threshold=5]
+  Inf current -> result=1, states=2, transitions=2
+    cached     -> result=1, states=2, transitions=2
+  LimInf current -> result=1, states=2, transitions=2
+    cached     -> result=1, states=2, transitions=2
+baseline_det_sumplus_gt [SumPlus, threshold=6]
+  Inf current -> result=1, states=2, transitions=2
+    cached     -> result=1, states=2, transitions=2
+  LimInf current -> result=1, states=2, transitions=2
+    cached     -> result=1, states=2, transitions=2
+baseline_fractional_sumplus [SumPlus, threshold=2.5]
+  Inf current -> result=1, states=3, transitions=3
+    cached     -> result=1, states=3, transitions=3
+  LimInf current -> result=1, states=3, transitions=3
+    cached     -> result=1, states=3, transitions=3
+baseline_fractional_summinus [SumMinus, threshold=-2.5]
+  Inf current -> result=0, states=3, transitions=3
+    cached     -> result=0, states=3, transitions=3
+  LimInf current -> result=0, states=3, transitions=3
+    cached     -> result=0, states=3, transitions=3
+deep_nondet_sumplus_eq [SumPlus, threshold=8]
+  Inf current -> result=1, states=9, transitions=20
+    cached     -> result=1, states=9, transitions=20
+  LimInf current -> result=1, states=9, transitions=20
+    cached     -> result=1, states=9, transitions=20
+deep_nondet_sumplus_gt [SumPlus, threshold=9]
+  Inf current -> result=1, states=9, transitions=20
+    cached     -> result=1, states=9, transitions=20
+  LimInf current -> result=1, states=9, transitions=20
+    cached     -> result=1, states=9, transitions=20
+positive_only_sumplus [SumPlus, threshold=4]
+  Inf current -> result=1, states=3, transitions=6
+    cached     -> result=1, states=3, transitions=6
+  LimInf current -> result=1, states=3, transitions=6
+    cached     -> result=1, states=3, transitions=6
+child_pump_loop_summinus [SumMinus, threshold=-1]
+  Inf current -> result=0, states=5, transitions=10
+    cached     -> result=0, states=5, transitions=10
+  LimInf current -> result=0, states=5, transitions=10
+    cached     -> result=0, states=5, transitions=10
+epsilon_boundary_sumplus [SumPlus, threshold=0.5]
+  Inf current -> result=1, states=2, transitions=4
+    cached     -> result=1, states=2, transitions=4
+  LimInf current -> result=1, states=2, transitions=4
+    cached     -> result=1, states=2, transitions=4
+epsilon_boundary_summinus [SumMinus, threshold=-0.5]
+  Inf current -> result=0, states=2, transitions=4
+    cached     -> result=0, states=2, transitions=4
+  LimInf current -> result=0, states=2, transitions=4
+    cached     -> result=0, states=2, transitions=4

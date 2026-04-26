@@ -1,0 +1,6 @@
+cached,Inf avg_ms=0.275354 count=15
+cached,LimInf avg_ms=0.430534 count=15
+current,Inf avg_ms=0.298749 count=15
+current,LimInf avg_ms=0.504317 count=15
+threshold_obl,Inf avg_ms=0.258448 count=15
+threshold_obl,LimInf avg_ms=0.460743 count=15

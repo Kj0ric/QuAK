@@ -471,7 +471,9 @@ int main(int argc, char** argv) {
 
     // Optional warmup (not counted), still forked for the same semantics
     if (warmup) {
-        auto [st, _t, _r] = run_one_rep_forked(nwa, prob, infVal, finSpec.finVal, thr, bnd, timeout_s);
+        auto [st, _t, _r] = run_one_rep_forked(
+            nwa, prob, infVal, finSpec.finVal, thr, bnd, timeout_s
+        );
         if (st != Status::OK) {
             // Warmup already failing is meaningful: report and exit.
             std::cout << "MEAN_S=0 RESULT=0 STATUS=" << status_str(st) << "\n";
@@ -487,7 +489,9 @@ int main(int argc, char** argv) {
     Status final_status = Status::OK;
 
     for (int i = 0; i < rep; ++i) {
-        auto [st, t, r01] = run_one_rep_forked(nwa, prob, infVal, finSpec.finVal, thr, bnd, timeout_s);
+        auto [st, t, r01] = run_one_rep_forked(
+            nwa, prob, infVal, finSpec.finVal, thr, bnd, timeout_s
+        );
         if (st != Status::OK) {
             final_status = st;
             break;

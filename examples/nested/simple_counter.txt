@@ -3,6 +3,7 @@
 # 'b' has weight 0 in parent (silent transition that triggers child termination)
 
 @PARENT
+final: all
 a : 1, p0 -> p0
 b : 0, p0 -> p0
 

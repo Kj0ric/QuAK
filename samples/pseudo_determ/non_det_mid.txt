@@ -3,7 +3,7 @@
 # Total: 24 macro-letters. This is a good test.
 
 @PARENT
-# Parent is simple and deterministic to isolate child non-determinism.
+final: all
 a : 1, p0 -> p0
 b : 2, p0 -> p0
 

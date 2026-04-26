@@ -1,0 +1,16 @@
+# Threshold-extremal Min_f regression:
+# - the child can stop on `a` with value 1
+# - or continue through that accepting state and reach value 0 on `b`
+# - threshold 1 must therefore keep both guesses available on `a`
+
+@PARENT
+final: q0
+a : 1, q0 -> q1
+b : 0, q1 -> q0
+
+@CHILD 0
+
+@CHILD 1
+final: f0 f1
+a : 1, s0 -> f0
+b : 0, f0 -> f1

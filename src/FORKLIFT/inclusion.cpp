@@ -25,18 +25,28 @@ bool relevance_test (TargetOf* W, ContextOf* V, const Automaton* B) {
 //////////////////////////////////////////// FRESH membership
 
 SetStd<std::pair<State*,std::pair<unsigned int, int>>> S;
-SetStd<std::pair<State*,unsigned int>> P;
+SetStd<std::pair<State*,std::pair<unsigned int, bool>>> C;
 
 
-bool membership_query_dfs3 (State* from, unsigned int i, Word* period) {
-	S.insert(std::pair<State*,std::pair<unsigned int, int>>(from, std::pair<unsigned int, int>(i, 3)));
+bool membership_query_final_cycle (
+	State* root,
+	unsigned int root_i,
+	State* from,
+	unsigned int i,
+	Word* period,
+	weight_t threshold,
+	bool seen_threshold
+) {
+	std::pair<State*,std::pair<unsigned int, bool>> key(from, std::pair<unsigned int, bool>(i, seen_threshold));
+	if (C.contains(key)) return false;
+	C.insert(key);
 
 	for (Edge* edge : *(from->getSuccessors(period->at(i)->getId()))) {
 		unsigned int ii = ((i+1 == period->getLength()) ? 0 : i+1);
-		if (P.contains(std::pair<State*, unsigned int>(edge->getTo(), ii))) return true;
-		if (S.contains(std::pair<State*,std::pair<unsigned int, int>>(edge->getTo(), std::pair<unsigned int, int>(ii, 3))) == false) {
-			if (membership_query_dfs3(edge->getTo(), ii, period) == true) return true;
-		}
+		bool next_seen_threshold = seen_threshold || edge->getWeight()->getValue() >= threshold;
+
+		if (next_seen_threshold && edge->getTo() == root && ii == root_i) return true;
+		if (membership_query_final_cycle(root, root_i, edge->getTo(), ii, period, threshold, next_seen_threshold) == true) return true;
 	}
 
 	return false;
@@ -45,35 +55,13 @@ bool membership_query_dfs3 (State* from, unsigned int i, Word* period) {
 
 
 bool membership_query_dfs2 (State* from, unsigned int i, Word* period, weight_t threshold) {
-	S.insert(std::pair<State*,std::pair<unsigned int, int>>(from, std::pair<unsigned int, int>(i, 2)));
-	P.insert(std::pair<State*, unsigned int>(from, i));
-
-	for (Edge* edge : *(from->getSuccessors(period->at(i)->getId()))) {
-		unsigned int ii = ((i+1 == period->getLength()) ? 0 : i+1);
-		if (S.contains(std::pair<State*,std::pair<unsigned int, int>>(edge->getTo(), std::pair<unsigned int, int>(ii, 2))) == false) {
-			if (membership_query_dfs2(edge->getTo(), ii, period, threshold) == true) return true;
-		}
-	}
-
-	for (Edge* edge : *(from->getSuccessors(period->at(i)->getId()))) {
-		if (edge->getWeight()->getValue() >= threshold) {
-			unsigned int ii = ((i+1 == period->getLength()) ? 0 : i+1);
-			if (P.contains(std::pair<State*, unsigned int>(edge->getTo(), ii))) return true;
-			if (S.contains(std::pair<State*,std::pair<unsigned int, int>>(edge->getTo(), std::pair<unsigned int, int>(ii, 3))) == false) {
-				if (membership_query_dfs3(edge->getTo(), ii, period) == true) return true;
-			}
-		}
-	}
-
-	P.erase(std::pair<State*, unsigned int>(from, i));
-
-	return false;
+	C.clear();
+	return membership_query_final_cycle(from, i, from, i, period, threshold, false);
 }
 
 
 bool membership_query_dfs1 (State* from, unsigned int i, Word* period, weight_t threshold) {
 	S.insert(std::pair<State*,std::pair<unsigned int, int>>(from, std::pair<unsigned int, int>(i, 1)));
-	P.insert(std::pair<State*, unsigned int>(from, i));
 
 	for (Edge* edge : *(from->getSuccessors(period->at(i)->getId()))) {
 		unsigned int ii = ((i+1 == period->getLength()) ? 0 : i+1);
@@ -86,7 +74,6 @@ bool membership_query_dfs1 (State* from, unsigned int i, Word* period, weight_t 
 		if (membership_query_dfs2(from, i, period, threshold) == true) return true;
 	}
 
-	P.erase(std::pair<State*, unsigned int>(from, i));
 	return false;
 }
 
@@ -95,7 +82,6 @@ bool membership_query_dfs1 (State* from, unsigned int i, Word* period, weight_t 
 bool fast_membership (TargetOf* U, Word* period, weight_t threshold) {
 	S.clear();
 	for (State* start : *U) {
-		P.clear();
 		if (membership_query_dfs1(start, 0, period, threshold) == true) return true;
 	}
 	return false;

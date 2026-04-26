@@ -1,0 +1,18 @@
+# Counterexample candidate for the archived split-witness Sup/LimSup backend.
+# Parent final visits happen on b-steps; child terminations happen only on a-steps.
+
+@PARENT
+final: p0
+a : 1, p0 -> p1
+b : 1, p0 -> p0
+a : 1, p1 -> p1
+b : 1, p1 -> p0
+
+@CHILD 0
+
+@CHILD 1
+final: f
+a : 1, s0 -> s0
+b : 0, s0 -> s1
+a : 1, s1 -> f
+b : 0, s1 -> s0

@@ -128,8 +128,13 @@ private:
 	bool isLimAvgConstant(UltimatelyPeriodicWord** witness = nullptr) const;
 
 	// Silent transitions
-	static Automaton* removeSilentTransitionsHelperStandard(const Automaton* A, weight_t replacement);
-	static Automaton* removeSilentTransitionsHelperStandard_prefixIndependent(const Automaton* A, weight_t replacement);
+	static Automaton* removeSilentTransitionsHelperStandard(const Automaton* A, weight_t replacement,
+	                                                        weight_t forced_min_domain,
+	                                                        weight_t forced_max_domain);
+	static Automaton* removeSilentTransitionsHelperStandard_prefixIndependent(const Automaton* A,
+	                                                                         weight_t replacement,
+	                                                                         weight_t forced_min_domain,
+	                                                                         weight_t forced_max_domain);
 	static Automaton* removeSilentTransitionsHelperLimitAverage(const Automaton* A);
 	static Automaton* removeSilentTransitionsHelperLimitAverage_prefixIndependent(const Automaton* A);
 
@@ -199,6 +204,8 @@ public:
 	bool isNonEmpty (value_function_t f, weight_t x, UltimatelyPeriodicWord** witness = nullptr);
 	// Checks if A(w) >= x for all w
 	bool isUniversal (value_function_t f, weight_t x, UltimatelyPeriodicWord** witness = nullptr);
+	// Checks if A(w) >= x for all accepted words w
+	bool isUniversal_withFinal (value_function_t f, weight_t x, UltimatelyPeriodicWord** witness = nullptr);
 	// Checks if A(w) <= B(w) for all w
 	bool isIncludedIn (const Automaton* B, value_function_t f, bool booleanized = false, UltimatelyPeriodicWord** witness = nullptr) const;
 	bool isEquivalentTo (const Automaton* B, value_function_t f, bool booleanized = false, UltimatelyPeriodicWord** witness = nullptr) const;
@@ -225,5 +232,3 @@ public:
 };
 
 #endif /* AUTOMATON_H_ */
-
-

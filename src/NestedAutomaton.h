@@ -9,6 +9,38 @@
 // Forward declaration for test access
 class NestedAutomatonTester;
 
+struct MinMaxInfExperimentStats {
+	uint64_t state_map_lookup_calls = 0;
+	uint64_t state_map_insert_calls = 0;
+
+	uint64_t spawn_calls = 0;
+	uint64_t unique_spawn_keys = 0;
+
+	uint64_t step_bag_calls = 0;
+	uint64_t unique_bag_step_keys = 0;
+	uint64_t step_bag_cache_hits = 0;
+
+	uint64_t step_obl_calls = 0;
+	uint64_t step_obl_cache_hits = 0;
+
+	uint64_t bag_add_calls = 0;
+	uint64_t bag_add_cache_hits = 0;
+
+	uint64_t bag_copy_ops = 0;
+	uint64_t bag_copy_entries = 0;
+
+	uint64_t frontier_observations = 0;
+	uint64_t frontier_config_total = 0;
+	uint64_t frontier_capacity_total = 0;
+
+	uint64_t unique_obligation_count = 0;
+	uint64_t unique_bag_count = 0;
+
+	double time_step_bag_ms = 0.0;
+	double time_state_map_ms = 0.0;
+	double time_bag_copy_ms = 0.0;
+};
+
 class NestedAutomaton : public Automaton {
 	// Allow test class to access private members
 	friend class NestedAutomatonTester;
@@ -22,9 +54,14 @@ private:
 	bool allParentStatesFinal() const;
 	SetStd<weight_t> computeChildReturnValuesParentAware(size_t child_index, value_function_t finVal, weight_t bound);
 	SetStd<weight_t> computeChildReturnValues(ChildAutomaton* child, value_function_t finVal, weight_t bound);
-	void validateNested() const;
 	bool childWeightsNeedProjection(value_function_t finVal) const;
 	NestedAutomaton* projectChildWeightsForAggregator(value_function_t finVal) const;
+	NestedAutomaton* splitContinuableChildFinals() const;
+	void validateNested() const;
+
+	static void setMinMaxInfExperimentStatsEnabled(bool enabled);
+	static void resetMinMaxInfExperimentStats();
+	static MinMaxInfExperimentStats getMinMaxInfExperimentStats();
 
 	// Ensures child 0 exists with a default trivial automaton if missing
 	void ensureChild0Exists();
@@ -50,11 +87,14 @@ public:
 	Automaton* flatten_Avg_SumMinus(uint64_t c_bound);
 	Automaton* flatten_regular(value_function_t finVal, weight_t bound = -1);
 	Automaton* flatten_SumPlusMinus_Sup(value_function_t finite_aggregator, weight_t threshold);
-	Automaton* flatten_SumPlusMinus_Inf(value_function_t finite_aggregator, weight_t threshold);
-	Automaton* flatten_MinMax_Sup(value_function_t finite_aggregator, weight_t threshold);
-	Automaton* flatten_MinMax_Inf(value_function_t finite_aggregator, weight_t threshold);
-	Automaton* flatten_MinMax_Inf_v1(value_function_t finite_aggregator, weight_t threshold);  // archived: original buggy
-	Automaton* flatten_MinMax_Inf_v2(value_function_t finite_aggregator, weight_t threshold);  // archived: fixed but complex
+		Automaton* flatten_SumPlusMinus_Sup_witness_cached(value_function_t finite_aggregator, weight_t threshold);
+		Automaton* flatten_SumPlusMinus_Inf(value_function_t finite_aggregator, weight_t threshold);
+		Automaton* flatten_SumPlusMinus_Inf_cached(value_function_t finite_aggregator, weight_t threshold);
+		Automaton* flatten_MinMax_Sup(value_function_t finite_aggregator, weight_t threshold);
+		Automaton* flatten_MinMax_Sup_cached(value_function_t finite_aggregator, weight_t threshold);
+		Automaton* flatten_MinMax_Sup_witness_cached(value_function_t finite_aggregator, weight_t threshold);
+		Automaton* flatten_MinMax_Inf(value_function_t finite_aggregator, weight_t threshold);
+		Automaton* flatten_MinMax_Inf_cached(value_function_t finite_aggregator, weight_t threshold);
 
 
 	NestedAutomaton* makeCompleteNested(std::vector<bool>* complete_flags = nullptr,

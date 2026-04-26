@@ -1,0 +1,30 @@
+# W1 reset fixture for SumPlus witness-cached Sup/LimSup.
+# Intended word: (c a b)^omega.
+#
+# c spawns Child 1 as W1 while source p0 is final, so the destination has
+# phase ACC_WAIT_P2EMPTY, empty B2/W2, and active W1.
+# a is silent and discharges that W1 during reset before it can become W2.
+# b sees parent-final p2 with no active obligations and closes the accepting
+# epoch. A missing front_nonempty_src reset latch can falsely reject.
+
+@PARENT
+final: p0 p2
+c : 1, p0 -> p1
+a : 0, p1 -> p2
+b : 0, p2 -> p0
+
+@CHILD 0
+
+@CHILD 1
+final: f
+c : 0, s0 -> s1
+a : 0, s0 -> rej
+b : 0, s0 -> rej
+
+a : 1, s1 -> f
+b : 0, s1 -> s1
+c : 0, s1 -> s1
+
+a : 0, rej -> rej
+b : 0, rej -> rej
+c : 0, rej -> rej

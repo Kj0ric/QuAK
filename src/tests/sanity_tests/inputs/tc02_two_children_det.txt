@@ -31,6 +31,7 @@
 #   - isNonEmpty(LimInf, Min_f, 0) = true
 
 @PARENT
+final: all
 a : 1, q0 -> q1
 a : 1, q1 -> q1
 

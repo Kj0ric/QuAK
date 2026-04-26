@@ -1,4 +1,5 @@
 @PARENT
+final: all
 i : SILENT, q0 -> q0
 g : SILENT, q0 -> q0
 r : 1, q0 -> q0

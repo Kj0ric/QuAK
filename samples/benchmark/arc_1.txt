@@ -1,5 +1,5 @@
 @PARENT
-# Single state parent - only start symbols call child automata
+final: all
 s1 : 1, q0 -> q0     # Call child 1
 s2 : 2, q0 -> q0     # Call child 2  
 s3 : 3, q0 -> q0     # Call child 3

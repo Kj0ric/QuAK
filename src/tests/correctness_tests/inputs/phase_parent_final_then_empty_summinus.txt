@@ -1,0 +1,44 @@
+# Phase-lag acceptance counterexample for SumMinus.
+#
+# Intended semantics at threshold -3:
+# - The unique non-sink infinite word is (ab)^omega.
+# - Every real child invocation starts on an a-step and follows
+#     s0 --a/-1--> s1 --b/-1--> s2 --a/-1--> f
+#   so every returned value is -3.
+# - The parent visits final state p2 on every b-step.
+# - Therefore the original nested automaton should satisfy:
+#     Inf    x SumMinus = true
+#     LimInf x SumMinus = true
+#
+# This is the signed counterpart of
+# `phase_parent_final_then_empty.txt`.
+
+@PARENT
+final: p2
+a : 1, p0 -> p1
+b : 0, p0 -> sink
+
+b : 0, p1 -> p2
+a : 0, p1 -> sink
+
+a : 1, p2 -> p1
+b : 0, p2 -> sink
+
+a : 0, sink -> sink
+b : 0, sink -> sink
+
+@CHILD 0
+
+@CHILD 1
+final: f
+a : -1, s0 -> s1
+b : 0, s0 -> t
+
+b : -1, s1 -> s2
+a : 0, s1 -> t
+
+a : -1, s2 -> f
+b : 0, s2 -> t
+
+a : 0, t -> t
+b : 0, t -> t

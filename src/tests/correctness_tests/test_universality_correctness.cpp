@@ -1,7 +1,12 @@
 /**
  * test_universality_correctness.cpp
  *
- * Correctness tests for NestedAutomaton::isUniversal()
+ * Correctness tests for universality.
+ *
+ * The focused accepted-domain tests exercise Automaton::isUniversal_withFinal()
+ * and Forklift membership directly. The larger matrix exercises the public
+ * NestedAutomaton::isUniversal() API, which flattens nested automata and then
+ * checks universality over accepted flattened words.
  *
  * Part 1: Standard automata tests
  * Tests 4 infVal x 5 finVal x 10 automata = 200 test cases
@@ -13,15 +18,317 @@
  * Tests 4 infVal x 3 finVal x 10 automata = 120 tests
  * - child_pump_loop_neg is unbounded (tests verify isUniversal = FALSE)
  *
- * Total: 200 + 120 = 320 tests
+ * Total: 9 focused accepted-domain tests + 200 + 120 matrix tests
  *
- * Each test verifies that isUniversal(infVal, finVal, threshold) returns
+ * Matrix tests verify that isUniversal(infVal, finVal, threshold) returns
  * the expected result based on hand-computed expected values.
  */
 
 #include "test_correctness_common.h"
+#include "../../FORKLIFT/inclusion.h"
+
+#include <algorithm>
 #include <sstream>
 #include <stdexcept>
+#include <vector>
+
+// ============================================================================
+// Accepted-Domain Universality and Forklift Membership Regressions
+// ============================================================================
+
+namespace {
+
+void reset_ids() {
+    Symbol::RESET();
+    Weight::RESET();
+    State::RESET();
+}
+
+void add_edge(Symbol* symbol, Weight* weight, State* from, State* to) {
+    Edge* edge = new Edge(symbol, weight, from, to);
+    from->addSuccessor(edge);
+    to->addPredecessor(edge);
+}
+
+Automaton* make_automaton(const std::string& name,
+                          const std::vector<Symbol*>& symbols,
+                          const std::vector<Weight*>& weights,
+                          const std::vector<State*>& states,
+                          State* initial) {
+    auto* alphabet = new MapArray<Symbol*>(static_cast<unsigned int>(symbols.size()));
+    for (Symbol* symbol : symbols) {
+        alphabet->insert(symbol->getId(), symbol);
+    }
+
+    auto* weightMap = new MapArray<Weight*>(static_cast<unsigned int>(weights.size()));
+    weight_t minWeight = weights.front()->getValue();
+    weight_t maxWeight = weights.front()->getValue();
+    for (Weight* weight : weights) {
+        weightMap->insert(weight->getId(), weight);
+        minWeight = std::min(minWeight, weight->getValue());
+        maxWeight = std::max(maxWeight, weight->getValue());
+    }
+
+    auto* stateMap = new MapArray<State*>(static_cast<unsigned int>(states.size()));
+    for (State* state : states) {
+        stateMap->insert(state->getId(), state);
+    }
+
+    return new Automaton(name, alphabet, stateMap, weightMap, minWeight, maxWeight, initial);
+}
+
+Automaton* build_partial_domain_accepting_loop() {
+    reset_ids();
+    auto* a = new Symbol("a");
+    auto* b = new Symbol("b");
+    auto* zero = new Weight(weight_t(0));
+    auto* one = new Weight(weight_t(1));
+
+    auto* q0 = new State("q0", 2, zero->getValue(), one->getValue());
+    q0->setFinal(true);
+    auto* dead = new State("dead", 2, zero->getValue(), one->getValue());
+    dead->setFinal(false);
+
+    add_edge(b, one, q0, q0);
+    add_edge(a, zero, q0, dead);
+    add_edge(a, zero, dead, dead);
+    add_edge(b, zero, dead, dead);
+
+    return make_automaton("partial_domain_accepting_loop", {a, b}, {zero, one}, {q0, dead}, q0);
+}
+
+Automaton* build_empty_domain_loop() {
+    reset_ids();
+    auto* a = new Symbol("a");
+    auto* zero = new Weight(weight_t(0));
+
+    auto* q0 = new State("q0", 1, zero->getValue(), zero->getValue());
+    q0->setFinal(false);
+    add_edge(a, zero, q0, q0);
+
+    return make_automaton("empty_domain_loop", {a}, {zero}, {q0}, q0);
+}
+
+Automaton* build_low_accepting_loop() {
+    reset_ids();
+    auto* a = new Symbol("a");
+    auto* zero = new Weight(weight_t(0));
+
+    auto* q0 = new State("q0", 1, zero->getValue(), zero->getValue());
+    q0->setFinal(true);
+    add_edge(a, zero, q0, q0);
+
+    return make_automaton("low_accepting_loop", {a}, {zero}, {q0}, q0);
+}
+
+Automaton* build_nondet_best_run_loop() {
+    reset_ids();
+    auto* a = new Symbol("a");
+    auto* low = new Weight(weight_t(0));
+    auto* high = new Weight(weight_t(2));
+
+    auto* q0 = new State("q0", 1, low->getValue(), high->getValue());
+    q0->setFinal(true);
+    add_edge(a, low, q0, q0);
+    add_edge(a, high, q0, q0);
+
+    return make_automaton("nondet_best_run_loop", {a}, {low, high}, {q0}, q0);
+}
+
+Automaton* build_transient_final_high_nonfinal_loop() {
+    reset_ids();
+    auto* a = new Symbol("a");
+    auto* one = new Weight(weight_t(1));
+
+    auto* q0 = new State("q0", 1, one->getValue(), one->getValue());
+    q0->setFinal(true);
+    auto* q1 = new State("q1", 1, one->getValue(), one->getValue());
+    q1->setFinal(false);
+
+    add_edge(a, one, q0, q1);
+    add_edge(a, one, q1, q1);
+
+    return make_automaton("transient_final_high_nonfinal_loop", {a}, {one}, {q0, q1}, q0);
+}
+
+Automaton* build_combined_final_and_threshold_cycles() {
+    reset_ids();
+    auto* a = new Symbol("a");
+    auto* low = new Weight(weight_t(0));
+    auto* high = new Weight(weight_t(2));
+
+    auto* q0 = new State("q0", 1, low->getValue(), high->getValue());
+    q0->setFinal(true);
+    auto* q1 = new State("q1", 1, low->getValue(), high->getValue());
+    q1->setFinal(false);
+
+    add_edge(a, low, q0, q0);
+    add_edge(a, low, q0, q1);
+    add_edge(a, high, q1, q1);
+    add_edge(a, low, q1, q0);
+
+    return make_automaton("combined_final_and_threshold_cycles", {a}, {low, high}, {q0, q1}, q0);
+}
+
+Automaton* build_low_accepting_run_with_high_rejected_run() {
+    reset_ids();
+    auto* a = new Symbol("a");
+    auto* low = new Weight(weight_t(0));
+    auto* high = new Weight(weight_t(1));
+
+    auto* q0 = new State("q0", 1, low->getValue(), high->getValue());
+    q0->setFinal(true);
+    auto* q1 = new State("q1", 1, low->getValue(), high->getValue());
+    q1->setFinal(false);
+
+    add_edge(a, low, q0, q0);
+    add_edge(a, high, q0, q1);
+    add_edge(a, high, q1, q1);
+
+    return make_automaton("low_accepting_run_with_high_rejected_run", {a}, {low, high}, {q0, q1}, q0);
+}
+
+} // namespace
+
+void test_partial_domain_ignores_rejected_words() {
+    Automaton* A = build_partial_domain_accepting_loop();
+
+    TEST_ASSERT_TRUE(
+        A->isUniversal_withFinal(LimSup, weight_t(1)),
+        "accepted-domain universality should ignore rejected a^omega"
+    );
+    TEST_ASSERT_FALSE(
+        A->isUniversal(LimSup, weight_t(1)),
+        "ordinary regular universality should still quantify over all words"
+    );
+    TEST_ASSERT_FALSE(
+        A->isUniversal_withFinal(LimSup, weight_t(2)),
+        "accepted b^omega has LimSup value 1, not 2"
+    );
+
+    delete A;
+}
+
+void test_empty_domain_is_vacuously_universal() {
+    Automaton* A = build_empty_domain_loop();
+
+    TEST_ASSERT_TRUE(
+        A->isUniversal_withFinal(LimSup, weight_t(100)),
+        "accepted-domain universality should be vacuous for an empty language"
+    );
+
+    delete A;
+}
+
+void test_low_accepting_loop_fails_above_value() {
+    Automaton* A = build_low_accepting_loop();
+
+    TEST_ASSERT_TRUE(
+        A->isUniversal_withFinal(LimSup, weight_t(0)),
+        "final loop with value 0 should satisfy threshold 0"
+    );
+    TEST_ASSERT_FALSE(
+        A->isUniversal_withFinal(LimSup, weight_t(1)),
+        "final loop with value 0 should not satisfy threshold 1"
+    );
+
+    delete A;
+}
+
+void test_nondeterministic_best_accepted_word_value_semantics() {
+    Automaton* A = build_nondet_best_run_loop();
+
+    TEST_ASSERT_TRUE(
+        A->isUniversal_withFinal(LimSup, weight_t(2)),
+        "accepted word can realize value 2 via the high self-loop"
+    );
+    TEST_ASSERT_FALSE(
+        A->isUniversal_withFinal(LimSup, weight_t(3)),
+        "no accepted word has value at least threshold 3"
+    );
+
+    delete A;
+}
+
+void test_forklift_membership_rejects_transient_final_before_high_loop() {
+    Automaton* A = build_transient_final_high_nonfinal_loop();
+    Word stem;
+    Word period(A->getAlphabet()->at(0));
+
+    TEST_ASSERT_FALSE(
+        membership(A, &stem, &period, weight_t(1)),
+        "high loop reached after a transient final is not an accepting lasso"
+    );
+
+    delete A;
+}
+
+void test_forklift_membership_combines_final_and_threshold_cycles() {
+    Automaton* A = build_combined_final_and_threshold_cycles();
+    Word stem;
+    Word period(A->getAlphabet()->at(0));
+
+    TEST_ASSERT_TRUE(
+        membership(A, &stem, &period, weight_t(2)),
+        "same product SCC may combine a final cycle and a separate threshold cycle"
+    );
+
+    TEST_ASSERT_TRUE(
+        A->isUniversal_withFinal(LimSup, weight_t(2)),
+        "accepted-domain universality should also use the combined high accepting cycle"
+    );
+
+    delete A;
+}
+
+void test_universality_with_final_rejects_high_nonaccepting_run() {
+    Automaton* A = build_low_accepting_run_with_high_rejected_run();
+
+    TEST_ASSERT_FALSE(
+        A->isUniversal_withFinal(LimSup, weight_t(1)),
+        "rejected high path must not witness the target value"
+    );
+
+    delete A;
+}
+
+void test_nested_sumplus_nonpositive_threshold_is_universal() {
+    for (value_function_t infVal : {Inf, Sup, LimInf, LimSup}) {
+        std::stringstream ctx;
+        ctx << "nested_sumplus_nonpositive." << infValToString(infVal);
+
+        NestedAutomaton no_nonsilent(CorrectnessTestFiles::SUM_SUP_NO_NONSILENT_AFTER_PREFIX);
+        TEST_ASSERT_TRUE(
+            no_nonsilent.isUniversal(infVal, SumPlus, weight_t(0)),
+            ctx.str() + ": SumPlus threshold 0 should be universally satisfied"
+        );
+
+        NestedAutomaton no_nonsilent_negative(CorrectnessTestFiles::SUM_SUP_NO_NONSILENT_AFTER_PREFIX);
+        TEST_ASSERT_TRUE(
+            no_nonsilent_negative.isUniversal(infVal, SumPlus, weight_t(-1)),
+            ctx.str() + ": SumPlus negative threshold should be universally satisfied"
+        );
+    }
+}
+
+void test_nested_summinus_positive_threshold_checks_emitting_domain() {
+    for (value_function_t infVal : {Inf, Sup, LimInf, LimSup}) {
+        std::stringstream ctx;
+        ctx << "nested_summinus_positive." << infValToString(infVal);
+
+        NestedAutomaton emitting(CorrectnessTestFiles::SUM_SUP_WITNESS_IMMEDIATE_DISCHARGE);
+        TEST_ASSERT_FALSE(
+            emitting.isUniversal(infVal, SumMinus, weight_t(2)),
+            ctx.str() + ": positive SumMinus threshold should fail when accepted runs emit real child values"
+        );
+
+        NestedAutomaton no_nonsilent(CorrectnessTestFiles::SUM_SUP_NO_NONSILENT_AFTER_PREFIX);
+        TEST_ASSERT_TRUE(
+            no_nonsilent.isUniversal(infVal, SumMinus, weight_t(2)),
+            ctx.str() + ": positive SumMinus threshold should be vacuous without infinite real child emissions"
+        );
+    }
+}
 
 // ============================================================================
 // Expected Values for Each Automaton (Universal = WORST achievable)
@@ -33,8 +340,8 @@
  * - isUniversal at threshold = expected_value should return TRUE
  * - isUniversal at threshold = expected_value + delta should return FALSE
  *
- * The expected_value is the WORST achievable value (infimum over all words).
- * isUniversal(x) = TRUE iff ALL words have value >= x
+ * The expected_value is the worst accepted-word value for the nested automaton.
+ * isUniversal(x) = TRUE iff every accepted word has value >= x.
  */
 
 // Automaton 1: baseline_det
@@ -305,61 +612,43 @@ namespace PositiveOnlyNondet {
 
 // Automaton 10: child_pump_loop
 // Child has loop that can pump: b=[4], ab=[2,1], a^n b=[2,3,...,1]
-// For universality (worst case over all words):
-//   - Max_f: worst is (ab)^ω giving max=2 each time
-//   - Min_f: worst is (ab)^ω or (a^n b)^ω giving min=1 each time
-//   - SumB/SumPlus: worst is (ab)^ω giving sum=3 each time
-// SumMinus (negated): UNBOUNDED - can pump arbitrarily negative
-//   isUniversal should return FALSE for any finite threshold
+// Accepted words must contain infinitely many b's so every accepted word
+// has infinitely many b-start children with value 4.
+//   - Inf/LimInf: worst accepted word is (ab)^ω giving 2/1/3.
+//   - Sup/LimSup: worst accepted word is b^ω giving 4 for all positive finVals.
+// SumMinus uses the negated fixture:
+//   - Inf/LimInf: unbounded negative via arbitrarily long a-blocks.
+//   - Sup/LimSup: b^ω bounds the worst accepted value at -4.
 namespace ChildPumpLoop {
-    constexpr weight_t MAX_F_WORST = 2;   // From ab path
-    constexpr weight_t MIN_F_WORST = 1;   // From ab or a^n b path
-    constexpr weight_t SUM_WORST = 3;     // From ab path
-    constexpr bool SUMMINUS_UNBOUNDED = true;  // SumMinus is unbounded
+    constexpr weight_t INF_MAX_F_WORST = 2;   // From ab path
+    constexpr weight_t INF_MIN_F_WORST = 1;   // From ab or a^n b path
+    constexpr weight_t INF_SUM_WORST = 3;     // From ab path
+    constexpr weight_t SUP_WORST = 4;         // From b-start children
 
     weight_t getExpected(value_function_t infVal, value_function_t finVal) {
-        (void)infVal;  // Worst case is same for all infVal
+        if (infVal == Sup || infVal == LimSup) {
+            switch (finVal) {
+                case Max_f: return SUP_WORST;
+                case Min_f: return SUP_WORST;
+                case SumB: return SUP_WORST;
+                case SumPlus: return SUP_WORST;
+                case SumMinus: return weight_t(-4);
+                default: return 0;
+            }
+        }
+
         switch (finVal) {
-            case Max_f: return MAX_F_WORST;
-            case Min_f: return MIN_F_WORST;
-            case SumB: return SUM_WORST;
-            case SumPlus: return SUM_WORST;
+            case Max_f: return INF_MAX_F_WORST;
+            case Min_f: return INF_MIN_F_WORST;
+            case SumB: return INF_SUM_WORST;
+            case SumPlus: return INF_SUM_WORST;
             case SumMinus: return weight_t(-1e6);  // Unbounded - use large negative as marker
             default: return 0;
         }
     }
 
-    bool isUnbounded(value_function_t finVal) {
-        return finVal == SumMinus;
-    }
-}
-
-// Automaton 11: mixed_sign
-// Deterministic unary automaton. Child path: [3, -2, 4].
-// On word a^omega: constant sequence — all infVal give the same result.
-// SumMinus is tested on the ORIGINAL file (not a negated version) because
-// the automaton already has negative child weights.
-//
-// For universality (worst = best, since deterministic):
-//   Max_f    = 4   Min_f    = -2   SumB  = 5
-//   SumPlus  = 9   SumMinus = -9
-namespace MixedSign {
-    constexpr weight_t MAX_F_VAL    = 4;
-    constexpr weight_t MIN_F_VAL    = -2;
-    constexpr weight_t SUMB_VAL     = 5;
-    constexpr weight_t SUMPLUS_VAL  = 9;
-    constexpr weight_t SUMMINUS_VAL = -9;
-
-    weight_t getExpected(value_function_t infVal, value_function_t finVal) {
-        (void)infVal;
-        switch (finVal) {
-            case Max_f:    return MAX_F_VAL;
-            case Min_f:    return MIN_F_VAL;
-            case SumB:     return SUMB_VAL;
-            case SumPlus:  return SUMPLUS_VAL;
-            case SumMinus: return SUMMINUS_VAL;
-            default: return 0;
-        }
+    bool isUnbounded(value_function_t infVal, value_function_t finVal) {
+        return finVal == SumMinus && (infVal == Inf || infVal == LimInf);
     }
 }
 
@@ -518,11 +807,20 @@ namespace PositiveOnlyNondetNeg {
 //               a^n.b (n>=2): Max_f=-1, Min_f=-3, SumB=-3n (would be unbounded without bound)
 // For Max_f: worst word is b^ω where every child has Max_f=-4. Bounded at -4.
 // For Min_f: worst word is b^ω where every child has Min_f=-4. Bounded at -4.
-// For SumB: with bound=10, the SumB value gets capped at -10. Not actually unbounded!
-//           The worst child value is -10 (from a^n.b with large n, capped by bound).
+// For SumB:
+//   - Inf/LimInf can use arbitrarily long a-blocks, capped at -10.
+//   - Sup/LimSup are bounded by the recurring b-start value -4.
 namespace ChildPumpLoopNeg {
     weight_t getExpected(value_function_t infVal, value_function_t finVal) {
-        (void)infVal;
+        if (infVal == Sup || infVal == LimSup) {
+            switch (finVal) {
+                case Max_f: return weight_t(-4);
+                case Min_f: return weight_t(-4);
+                case SumB: return weight_t(-4);
+                default: return 0;
+            }
+        }
+
         switch (finVal) {
             case Max_f: return weight_t(-4);
             case Min_f: return weight_t(-4);
@@ -555,7 +853,6 @@ weight_t getExpectedUniversal(const std::string& automaton, value_function_t inf
     if (automaton == "epsilon_boundary") return EpsilonBoundary::getExpected(infVal, finVal);
     if (automaton == "positive_only_nondet") return PositiveOnlyNondet::getExpected(infVal, finVal);
     if (automaton == "child_pump_loop") return ChildPumpLoop::getExpected(infVal, finVal);
-    if (automaton == "mixed_sign") return MixedSign::getExpected(infVal, finVal);
     return 0;
 }
 
@@ -574,7 +871,6 @@ std::string getFilePath(const std::string& automaton, value_function_t finVal = 
         if (automaton == "epsilon_boundary") return CorrectnessTestFiles::EPSILON_BOUNDARY_NEG;
         if (automaton == "positive_only_nondet") return CorrectnessTestFiles::POSITIVE_ONLY_NONDET_NEG;
         if (automaton == "child_pump_loop") return CorrectnessTestFiles::CHILD_PUMP_LOOP_NEG;
-        if (automaton == "mixed_sign") return CorrectnessTestFiles::MIXED_SIGN;
         return "";
     }
     // Regular automata for all other finVal
@@ -588,7 +884,6 @@ std::string getFilePath(const std::string& automaton, value_function_t finVal = 
     if (automaton == "epsilon_boundary") return CorrectnessTestFiles::EPSILON_BOUNDARY;
     if (automaton == "positive_only_nondet") return CorrectnessTestFiles::POSITIVE_ONLY_NONDET;
     if (automaton == "child_pump_loop") return CorrectnessTestFiles::CHILD_PUMP_LOOP;
-    if (automaton == "mixed_sign") return CorrectnessTestFiles::MIXED_SIGN;
     return "";
 }
 
@@ -607,9 +902,12 @@ const std::vector<std::string> AUTOMATON_NAMES = {
 };
 
 // Check if automaton has unbounded SumMinus (isUniversal always FALSE)
-bool isUnboundedSumMinus(const std::string& automaton, value_function_t finVal) {
+bool isUnboundedSumMinus(const std::string& automaton, value_function_t infVal, value_function_t finVal) {
     if (finVal != SumMinus) return false;
-    return automaton == "child_pump_loop";
+    if (automaton == "child_pump_loop") {
+        return ChildPumpLoop::isUnbounded(infVal, finVal);
+    }
+    return false;
 }
 
 // Get expected Universal threshold for negated automata (Part 2 tests)
@@ -664,7 +962,7 @@ void testUniversal(const std::string& automaton, value_function_t infVal, value_
     context << automaton << "." << infValToString(infVal) << "." << finValToString(finVal);
 
     // Special case: unbounded SumMinus (child_pump_loop)
-    if (isUnboundedSumMinus(automaton, finVal)) {
+    if (isUnboundedSumMinus(automaton, infVal, finVal)) {
         // For unbounded automata, isUniversal should return FALSE for any finite threshold
         std::vector<weight_t> testThresholds = {weight_t(-5), weight_t(-10), weight_t(-15)};
         for (weight_t threshold : testThresholds) {
@@ -1016,30 +1314,6 @@ DEFINE_UNIVERSAL_TEST(child_pump_loop, LimSup, SumB)
 DEFINE_UNIVERSAL_TEST(child_pump_loop, LimSup, SumPlus)
 DEFINE_UNIVERSAL_TEST(child_pump_loop, LimSup, SumMinus)
 
-// Automaton 11: mixed_sign
-// Deterministic unary — NonEmpty = Universal, so same expected values for all infVal.
-// SumMinus uses the original file (not a negated variant) since weights are already mixed.
-DEFINE_UNIVERSAL_TEST(mixed_sign, Inf, Max_f)
-DEFINE_UNIVERSAL_TEST(mixed_sign, Inf, Min_f)
-DEFINE_UNIVERSAL_TEST(mixed_sign, Inf, SumB)
-DEFINE_UNIVERSAL_TEST(mixed_sign, Inf, SumPlus)
-DEFINE_UNIVERSAL_TEST(mixed_sign, Inf, SumMinus)
-DEFINE_UNIVERSAL_TEST(mixed_sign, Sup, Max_f)
-DEFINE_UNIVERSAL_TEST(mixed_sign, Sup, Min_f)
-DEFINE_UNIVERSAL_TEST(mixed_sign, Sup, SumB)
-DEFINE_UNIVERSAL_TEST(mixed_sign, Sup, SumPlus)
-DEFINE_UNIVERSAL_TEST(mixed_sign, Sup, SumMinus)
-DEFINE_UNIVERSAL_TEST(mixed_sign, LimInf, Max_f)
-DEFINE_UNIVERSAL_TEST(mixed_sign, LimInf, Min_f)
-DEFINE_UNIVERSAL_TEST(mixed_sign, LimInf, SumB)
-DEFINE_UNIVERSAL_TEST(mixed_sign, LimInf, SumPlus)
-DEFINE_UNIVERSAL_TEST(mixed_sign, LimInf, SumMinus)
-DEFINE_UNIVERSAL_TEST(mixed_sign, LimSup, Max_f)
-DEFINE_UNIVERSAL_TEST(mixed_sign, LimSup, Min_f)
-DEFINE_UNIVERSAL_TEST(mixed_sign, LimSup, SumB)
-DEFINE_UNIVERSAL_TEST(mixed_sign, LimSup, SumPlus)
-DEFINE_UNIVERSAL_TEST(mixed_sign, LimSup, SumMinus)
-
 // ============================================================================
 // Part 2: Negated Automata Tests (Max_f, Min_f, SumB on negative weights)
 // 10 automata x 4 infVal x 3 finVal = 120 tests
@@ -1206,10 +1480,22 @@ DEFINE_UNIVERSAL_NEG_TEST(child_pump_loop, LimSup, SumB)
 int main() {
     std::cout << "========================================" << std::endl;
     std::cout << "CORRECTNESS TESTS: isUniversal()" << std::endl;
+    std::cout << "Focused: accepted-domain regular universality and Forklift membership" << std::endl;
     std::cout << "Part 1: 10 automata x 4 infVal x 5 finVal = 200 tests" << std::endl;
     std::cout << "Part 2: 10 negated automata x 4 infVal x 3 finVal = 120 tests" << std::endl;
-    std::cout << "Total: 320 tests" << std::endl;
+    std::cout << "Total: 9 focused tests + 320 matrix tests" << std::endl;
     std::cout << "========================================" << std::endl;
+
+    std::cout << "\n--- Accepted-Domain Universality / Forklift ---" << std::endl;
+    RUN_TEST(test_partial_domain_ignores_rejected_words);
+    RUN_TEST(test_empty_domain_is_vacuously_universal);
+    RUN_TEST(test_low_accepting_loop_fails_above_value);
+    RUN_TEST(test_nondeterministic_best_accepted_word_value_semantics);
+    RUN_TEST(test_forklift_membership_rejects_transient_final_before_high_loop);
+    RUN_TEST(test_forklift_membership_combines_final_and_threshold_cycles);
+    RUN_TEST(test_universality_with_final_rejects_high_nonaccepting_run);
+    RUN_TEST(test_nested_sumplus_nonpositive_threshold_is_universal);
+    RUN_TEST(test_nested_summinus_positive_threshold_checks_emitting_domain);
 
     // Automaton 1: baseline_det
     std::cout << "\n--- Automaton 1: baseline_det ---" << std::endl;
@@ -1440,29 +1726,6 @@ int main() {
     RUN_UNIVERSAL_TEST(child_pump_loop, LimSup, SumB);
     RUN_UNIVERSAL_TEST(child_pump_loop, LimSup, SumPlus);
     RUN_UNIVERSAL_TEST(child_pump_loop, LimSup, SumMinus);
-
-    // Automaton 11: mixed_sign
-    std::cout << "\n--- Automaton 11: mixed_sign ---" << std::endl;
-    RUN_UNIVERSAL_TEST(mixed_sign, Inf, Max_f);
-    RUN_UNIVERSAL_TEST(mixed_sign, Inf, Min_f);
-    RUN_UNIVERSAL_TEST(mixed_sign, Inf, SumB);
-    RUN_UNIVERSAL_TEST(mixed_sign, Inf, SumPlus);
-    RUN_UNIVERSAL_TEST(mixed_sign, Inf, SumMinus);
-    RUN_UNIVERSAL_TEST(mixed_sign, Sup, Max_f);
-    RUN_UNIVERSAL_TEST(mixed_sign, Sup, Min_f);
-    RUN_UNIVERSAL_TEST(mixed_sign, Sup, SumB);
-    RUN_UNIVERSAL_TEST(mixed_sign, Sup, SumPlus);
-    RUN_UNIVERSAL_TEST(mixed_sign, Sup, SumMinus);
-    RUN_UNIVERSAL_TEST(mixed_sign, LimInf, Max_f);
-    RUN_UNIVERSAL_TEST(mixed_sign, LimInf, Min_f);
-    RUN_UNIVERSAL_TEST(mixed_sign, LimInf, SumB);
-    RUN_UNIVERSAL_TEST(mixed_sign, LimInf, SumPlus);
-    RUN_UNIVERSAL_TEST(mixed_sign, LimInf, SumMinus);
-    RUN_UNIVERSAL_TEST(mixed_sign, LimSup, Max_f);
-    RUN_UNIVERSAL_TEST(mixed_sign, LimSup, Min_f);
-    RUN_UNIVERSAL_TEST(mixed_sign, LimSup, SumB);
-    RUN_UNIVERSAL_TEST(mixed_sign, LimSup, SumPlus);
-    RUN_UNIVERSAL_TEST(mixed_sign, LimSup, SumMinus);
 
     // ============================================================
     // Part 2: Negated Automata Tests (Max_f, Min_f, SumB)

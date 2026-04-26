@@ -1,0 +1,9 @@
+Replace the active wrapper body:
+
+Automaton* NestedAutomaton::flatten_MinMax_Sup(value_function_t finite_aggregator,
+                                               weight_t threshold) {
+    if (finite_aggregator != Max_f && finite_aggregator != Min_f) {
+        QUAK_FAIL("flatten_MinMax_Sup requires Max_f or Min_f");
+    }
+    return flatten_MinMax_Sup_cached_mmthr_impl(this, finite_aggregator, threshold);
+}

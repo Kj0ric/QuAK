@@ -1,0 +1,16 @@
+# Threshold-extremal SumPlus regression:
+# - the child reaches a wrong final with sum 2 on `a`
+# - it can continue through that final and reach sum 5 on `ab`
+# - threshold 5 must therefore keep both guesses available on `a`
+
+@PARENT
+final: q0
+a : 1, q0 -> q1
+b : 0, q1 -> q0
+
+@CHILD 0
+
+@CHILD 1
+final: f0 f1
+a : 2, s0 -> f0
+b : 3, f0 -> f1

@@ -1,0 +1,49 @@
+# Phase-lag acceptance counterexample candidate.
+#
+# Intended semantics at threshold 1:
+# - The unique non-sink infinite word is (ab)^omega.
+# - Every real child invocation starts on an a-step and follows
+#     s0 --a/1--> s1 --b/1--> s2 --a/1--> f
+#   so every returned value is 1 for both Max_f and Min_f.
+# - The parent visits final state p2 on every b-step.
+# - Therefore the original nested automaton should satisfy:
+#     Sup    x Max_f = true
+#     LimSup x Max_f = true
+#     Inf    x Max_f = true
+#     LimInf x Max_f = true
+#   and the same four queries should also be true for Min_f.
+#
+# The question this fixture is meant to test is whether a backend incorrectly
+# requires "parent final" and "tracked obligations empty" to coincide on the
+# same transition, instead of remembering a prior parent-final visit until the
+# tracked epoch empties.
+
+@PARENT
+final: p2
+a : 1, p0 -> p1
+b : 0, p0 -> sink
+
+b : 0, p1 -> p2
+a : 0, p1 -> sink
+
+a : 1, p2 -> p1
+b : 0, p2 -> sink
+
+a : 0, sink -> sink
+b : 0, sink -> sink
+
+@CHILD 0
+
+@CHILD 1
+final: f
+a : 1, s0 -> s1
+b : 0, s0 -> t
+
+b : 1, s1 -> s2
+a : 0, s1 -> t
+
+a : 1, s2 -> f
+b : 0, s2 -> t
+
+a : 0, t -> t
+b : 0, t -> t

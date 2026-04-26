@@ -1,0 +1,6 @@
+=== Sum Cached Stability Stress ===
+iterations=20, profile=core, cases=12, inf_modes=2
+completed iteration    1 / 20  checks=24
+completed iteration   10 / 20  checks=240
+completed iteration   20 / 20  checks=480
+PASS total_checks=480

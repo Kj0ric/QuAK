@@ -1,0 +1,21 @@
+@PARENT
+final: all
+a : 1, q -> q
+b : 1, q -> q
+c : 1, q -> q
+
+@CHILD 0
+
+@CHILD 1
+final: f
+a : 0, s0 -> s0
+b : 0, s0 -> s1
+c : 1, s0 -> s0
+
+a : 0, s1 -> s2
+b : 0, s1 -> f
+c : 0, s1 -> s2
+
+a : 0, s2 -> s2
+b : 0, s2 -> s2
+c : 0, s2 -> s2

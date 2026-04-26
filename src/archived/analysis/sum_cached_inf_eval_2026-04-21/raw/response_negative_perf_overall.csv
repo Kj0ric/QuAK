@@ -1,0 +1,5 @@
+backend,inf,avg_mean_elapsed_ms,cases
+cached,Inf,1.34324,15
+cached,LimInf,3.01648,15
+current,Inf,1.4153,15
+current,LimInf,2.60614,15

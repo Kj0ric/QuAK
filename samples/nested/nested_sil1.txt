@@ -1,7 +1,8 @@
 @PARENT
+final: all
 a : SILENT, q0 -> q0
 b : 1, q0 -> q1
-a : SIL, q1 -> q1
+a : SILENT, q1 -> q1
 b : 2, q1 -> q1
 
 @CHILD 0

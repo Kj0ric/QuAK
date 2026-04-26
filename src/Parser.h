@@ -14,6 +14,8 @@ public:
 	bool domain_defined = false;
 	weight_t min_domain = 0;	// Min weight of the transitions of A
 	weight_t max_domain = 0;	// Max weight of the transitions of A
+	bool final_states_specified = false;
+	bool final_states_all = false;
 	
 	std::vector<Parser*> child_parsers;	// Not MapArray because we need dynamic growth as parsing goes on
 
@@ -54,9 +56,9 @@ bool detectNestedAutomaton(std::ifstream& file);
 void readFile(std::string filename, Parser* parser);
 void readNonNestedFile(std::ifstream& file, Parser* parser);
 void readNestedFile(std::ifstream& file, Parser* parser);
-std::string readLine(std::string line, Parser* parser);
-std::string readEdge(std::string line, Parser* parser);
-void readDomain(std::string line, Parser* parser);
 void readFinalStates(std::ifstream& file, Parser* parser, int line_counter);
+std::string readLine(std::string line, Parser* parser, bool allow_silent_weight = false);
+std::string readEdge(std::string line, Parser* parser, bool allow_silent_weight = false);
+void readDomain(std::string line, Parser* parser);
 
 #endif /* PARSER_H_ */

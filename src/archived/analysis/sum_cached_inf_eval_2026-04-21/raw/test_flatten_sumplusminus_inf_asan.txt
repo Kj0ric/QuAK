@@ -1,0 +1,75 @@
+========================================
+TEST: flatten_SumPlusMinus_Inf()
+========================================
+
+--- SumPlus Tests ---
+Running: test_flatten_SumPlusMinus_Inf_SumPlus_basic...   flatten_SumPlusMinus_Inf(SumPlus, 5): 2 states, 2 transitions, weights [0, 1]
+PASSED (2.02458 ms)
+Running: test_flatten_SumPlusMinus_Inf_SumPlus_threshold_0...   flatten_SumPlusMinus_Inf(SumPlus, 0): 2 states, 2 transitions, weights [0, 1]
+PASSED (0.92247 ms)
+Running: test_flatten_SumPlusMinus_Inf_SumPlus_threshold_1...   flatten_SumPlusMinus_Inf(SumPlus, 1): 2 states, 2 transitions, weights [0, 1]
+PASSED (0.753319 ms)
+Running: test_flatten_SumPlusMinus_Inf_SumPlus_threshold_10...   flatten_SumPlusMinus_Inf(SumPlus, 10): 2 states, 2 transitions, weights [0, 1]
+PASSED (0.714405 ms)
+Running: test_flatten_SumPlusMinus_Inf_SumPlus_varying_thresholds... 
+    threshold=0: 2 states, 2 transitions
+    threshold=1: 2 states, 2 transitions
+    threshold=2: 2 states, 2 transitions
+    threshold=3: 2 states, 2 transitions
+    threshold=4: 2 states, 2 transitions
+    threshold=5: 2 states, 2 transitions
+PASSED (1.33672 ms)
+Running: test_flatten_SumPlusMinus_Inf_SumPlus_test_empt_2...   flatten_SumPlusMinus_Inf on test_empt_2: 8 states, 17 transitions, weights [0, 1]
+PASSED (1.59467 ms)
+Running: test_flatten_SumPlusMinus_Inf_SumPlus_test_empt_3...   flatten_SumPlusMinus_Inf on test_empt_3: 3 states, 3 transitions, weights [0, 1]
+PASSED (0.728597 ms)
+
+--- SumMinus Tests ---
+Running: test_flatten_SumPlusMinus_Inf_SumMinus_basic...   flatten_SumPlusMinus_Inf(SumMinus, 5): 2 states, 2 transitions, weights [0, 1]
+PASSED (0.50164 ms)
+Running: test_flatten_SumPlusMinus_Inf_SumMinus_threshold_0...   flatten_SumPlusMinus_Inf(SumMinus, 0): 2 states, 2 transitions, weights [0, 1]
+PASSED (0.507612 ms)
+Running: test_flatten_SumPlusMinus_Inf_SumMinus_threshold_5...   flatten_SumPlusMinus_Inf(SumMinus, 5): 2 states, 2 transitions, weights [0, 1]
+PASSED (0.522003 ms)
+Running: test_flatten_SumPlusMinus_Inf_SumMinus_varying_thresholds... 
+    threshold=0: 2 states, 2 transitions
+    threshold=1: 2 states, 2 transitions
+    threshold=2: 2 states, 2 transitions
+    threshold=3: 2 states, 2 transitions
+    threshold=4: 2 states, 2 transitions
+    threshold=5: 2 states, 2 transitions
+PASSED (0.97999 ms)
+
+--- Comparison Tests ---
+Running: test_flatten_SumPlusMinus_Inf_SumPlus_vs_SumMinus... 
+  SumPlus: 2 states, 2 transitions, weights [0, 1]
+  SumMinus: 2 states, 2 transitions, weights [0, 1]
+PASSED (0.639377 ms)
+Running: test_flatten_SumPlusMinus_Inf_vs_Sup... 
+  SumPlus + Inf: 2 states, 2 transitions, weights [0, 1]
+  SumPlus + Sup: 2 states, 2 transitions, weights [0, 1]
+PASSED (0.671342 ms)
+Running: test_flatten_SumPlusMinus_Inf_consistency... PASSED (0.660246 ms)
+Running: test_flatten_SumPlusMinus_Inf_cached_matches_current... PASSED (17.3062 ms)
+
+--- Edge Cases ---
+Running: test_flatten_SumPlusMinus_Inf_nested_Sij... 
+    Input: 2 parent states, 2 children
+  flatten_SumPlusMinus_Inf on nested_Sij: 3 states, 6 transitions, weights [0, 1]
+PASSED (0.645708 ms)
+Running: test_flatten_SumPlusMinus_Inf_nested_Sij2...   flatten_SumPlusMinus_Inf on nested_Sij2: 33 states, 66 transitions, weights [0, 1]
+PASSED (2.96127 ms)
+Running: test_flatten_SumPlusMinus_Inf_output_properties... 
+    Initial state: bxt_0
+    Weight range: [0, 1]
+    Is complete: 1
+    Has only 0/1/SILENT weights: 1
+PASSED (0.510614 ms)
+
+========================================
+TEST SUMMARY
+========================================
+Passed: 18/18
+Failed: 0/18
+Total time: 33.9807 ms
+========================================

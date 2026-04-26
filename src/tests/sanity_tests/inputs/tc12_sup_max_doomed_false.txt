@@ -9,6 +9,7 @@
 #   - isNonEmpty(LimSup, Max_f, 1) = false
 
 @PARENT
+final: all
 s : 1, p0 -> p0
 t : 0, p0 -> p0
 u : 0, p0 -> p0

@@ -8,6 +8,22 @@
 
 #include "test_common.h"
 
+static bool eval_binary_threshold_backend(Automaton* flat, value_function_t infVal) {
+    Automaton* non_silent = Automaton::removeSilentTransitions(flat, infVal, false);
+    bool result = non_silent->isNonEmpty_withFinal(infVal, weight_t(1));
+    delete non_silent;
+    delete flat;
+    return result;
+}
+
+static bool eval_regular_threshold_backend(Automaton* flat, value_function_t infVal, weight_t threshold) {
+    Automaton* non_silent = Automaton::removeSilentTransitions(flat, infVal, false);
+    bool result = non_silent->isNonEmpty_withFinal(infVal, threshold);
+    delete non_silent;
+    delete flat;
+    return result;
+}
+
 // ============================================================================
 // Max with Inf Tests
 // ============================================================================
@@ -289,9 +305,9 @@ void test_flatten_MinMax_Inf_output_properties() {
               << flat->getMaxDomain() << "]" << std::endl;
     std::cout << "    Is complete: " << flat->isComplete() << std::endl;
 
-    // Output should have 0/1 weights (Buchi-style)
-    bool is_01 = hasOnly01Weights(flat);
-    std::cout << "    Has only 0/1 weights: " << is_01 << std::endl;
+    // Raw flattened output may still contain SILENT edges before silence removal.
+    bool is_01_or_silent = hasOnly01OrSilentWeights(flat);
+    std::cout << "    Has only 0/1/SILENT weights: " << is_01_or_silent << std::endl;
 
     delete flat;
     delete nwa;

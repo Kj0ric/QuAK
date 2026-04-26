@@ -1,0 +1,13 @@
+backend,inf,file,threshold,reps,mean_ms,min_ms,max_ms,median_ms
+current,Inf,samples/generated_response_time_negative/response_n1_k3.txt,-3,20,0.633190,0.249876,0.797785,0.686684
+cached,Inf,samples/generated_response_time_negative/response_n1_k3.txt,-3,20,0.691682,0.530164,0.810499,0.718893
+current,Inf,samples/generated_response_time_negative/response_n1_k4.txt,-4,20,0.839285,0.666292,0.994062,0.864896
+cached,Inf,samples/generated_response_time_negative/response_n1_k4.txt,-4,20,0.824807,0.638398,0.943849,0.833250
+current,Inf,samples/generated_response_time_negative/response_n2_k2.txt,-2,20,0.711800,0.570999,0.823992,0.751126
+cached,Inf,samples/generated_response_time_negative/response_n2_k2.txt,-2,20,0.604442,0.285317,0.791445,0.635334
+current,LimInf,samples/generated_response_time_negative/response_n1_k2.txt,-2,20,0.989846,0.784771,1.182064,1.045857
+cached,LimInf,samples/generated_response_time_negative/response_n1_k2.txt,-2,20,0.941442,0.760220,1.273893,0.859876
+current,LimInf,samples/generated_response_time_negative/response_n1_k4.txt,-4,20,1.630963,1.249641,1.945745,1.702641
+cached,LimInf,samples/generated_response_time_negative/response_n1_k4.txt,-4,20,1.498939,0.957554,1.893216,1.522457
+current,LimInf,samples/generated_response_time_negative/response_n2_k2.txt,-2,20,1.312733,1.091581,1.563422,1.384762
+cached,LimInf,samples/generated_response_time_negative/response_n2_k2.txt,-2,20,1.347062,0.757720,1.586199,1.472805

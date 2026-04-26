@@ -1,0 +1,42 @@
+# Archived split-witness false positive for LimSup x Max_f at threshold 1.
+#
+# Current live backend:
+#   isNonEmpty(Sup, Max_f, 1)    = 1
+#   isNonEmpty(LimSup, Max_f, 1) = 0
+#
+# Archived old-v2 split-witness backend:
+#   split_witness.sup.max.thr1    = 1
+#   split_witness.limsup.max.thr1 = 1
+#
+# The critical overlap is after reading the prefix "bc":
+# - the old background copy from the initial b-step should move s1 -> s2
+# - the fresh copy spawned on c stays in s0
+# - the split-witness traversal processes only one active state of Child 1,
+#   so it keeps the fresh s0 copy and drops the old s2 blocker
+#
+# After that loss, the flattened automaton admits the accepting lasso
+#   b (ccbb)^omega
+# with infinitely many 1-edges, while the true nested semantics still has the
+# original nonterminating s2 obligation alive forever.
+
+@PARENT
+final: all
+a : 1, q -> q
+b : 1, q -> q
+c : 1, q -> q
+
+@CHILD 0
+
+@CHILD 1
+final: f
+a : 0, s0 -> s0
+b : 0, s0 -> s1
+c : 1, s0 -> s0
+
+a : 0, s1 -> s2
+b : 0, s1 -> f
+c : 0, s1 -> s2
+
+a : 0, s2 -> s2
+b : 0, s2 -> s2
+c : 0, s2 -> s2

@@ -1,0 +1,29 @@
+# Mixed-sign SumMinus absolute-cost fixture for witness-cached Sup/LimSup.
+#
+# Intended word: (ab)^omega.
+# Each Child 1 invocation follows:
+#   s0 --a/+1--> s1 --b/-2--> f
+# The current SumMinus threshold machinery accumulates absolute edge cost, so
+# the return cost is 3.
+#
+# Expected:
+# - threshold -3 accepts
+# - threshold -2 rejects
+
+@PARENT
+final: q0
+a : 1, q0 -> q1
+b : 0, q1 -> q0
+
+@CHILD 0
+
+@CHILD 1
+final: f
+a : 1, s0 -> s1
+b : 0, s0 -> rej
+
+b : -2, s1 -> f
+a : 0, s1 -> rej
+
+a : 0, rej -> rej
+b : 0, rej -> rej

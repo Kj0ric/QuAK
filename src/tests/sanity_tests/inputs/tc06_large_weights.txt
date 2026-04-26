@@ -24,6 +24,7 @@
 # Note: SumB semantics cap the sum at the bound
 
 @PARENT
+final: all
 a : 100, q0 -> q0
 
 @CHILD 0

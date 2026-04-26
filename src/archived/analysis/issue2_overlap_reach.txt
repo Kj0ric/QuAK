@@ -1,0 +1,30 @@
+# Complete deterministic one-child gadget for Issue 2.
+# Goal: after reading "ba", two invocations of Child 1 should coexist in
+# different local states:
+# - the older invocation is in s2
+# - the fresh invocation is in s0
+#
+# If the split-witness background traversal is lossy, it will process s0 first
+# and skip s2 on the next parent step.
+
+@PARENT
+final: all
+a : 1, q -> q
+b : 1, q -> q
+c : 1, q -> q
+
+@CHILD 0
+
+@CHILD 1
+final: f
+a : 0, s0 -> s0
+b : 0, s0 -> s1
+c : 0, s0 -> s0
+
+a : 0, s1 -> s2
+b : 0, s1 -> s1
+c : 0, s1 -> s1
+
+a : 0, s2 -> s2
+b : 0, s2 -> s2
+c : 0, s2 -> f

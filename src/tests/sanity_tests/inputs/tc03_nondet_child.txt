@@ -29,6 +29,7 @@
 #   - isNonEmpty(LimSup, Max_f, 6) = false (no path achieves > 5)
 
 @PARENT
+final: all
 a : 1, q0 -> q0
 
 @CHILD 0

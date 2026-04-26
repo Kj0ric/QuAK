@@ -1,0 +1,25 @@
+backend,file,inf,fin,threshold,status,elapsed_ms
+current,/home/ege/Desktop/QuAK-playground (28.01.26 15∶12)/samples/generated_response_time_negative_large/response_n6_k6.txt,Inf,SumMinus,-6.000000,OK,9.694077
+cached,/home/ege/Desktop/QuAK-playground (28.01.26 15∶12)/samples/generated_response_time_negative_large/response_n6_k6.txt,Inf,SumMinus,-6.000000,OK,17.888585
+current,/home/ege/Desktop/QuAK-playground (28.01.26 15∶12)/samples/generated_response_time_negative_large/response_n6_k6.txt,LimInf,SumMinus,-6.000000,OK,32.169907
+cached,/home/ege/Desktop/QuAK-playground (28.01.26 15∶12)/samples/generated_response_time_negative_large/response_n6_k6.txt,LimInf,SumMinus,-6.000000,OK,20.076925
+current,/home/ege/Desktop/QuAK-playground (28.01.26 15∶12)/samples/generated_response_time_negative_large/response_n8_k8.txt,Inf,SumMinus,-8.000000,OK,173.259782
+cached,/home/ege/Desktop/QuAK-playground (28.01.26 15∶12)/samples/generated_response_time_negative_large/response_n8_k8.txt,Inf,SumMinus,-8.000000,OK,118.823549
+current,/home/ege/Desktop/QuAK-playground (28.01.26 15∶12)/samples/generated_response_time_negative_large/response_n8_k8.txt,LimInf,SumMinus,-8.000000,OK,409.658574
+cached,/home/ege/Desktop/QuAK-playground (28.01.26 15∶12)/samples/generated_response_time_negative_large/response_n8_k8.txt,LimInf,SumMinus,-8.000000,OK,297.485549
+current,/home/ege/Desktop/QuAK-playground (28.01.26 15∶12)/samples/generated_response_time_negative_large/response_n10_k10.txt,Inf,SumMinus,-10.000000,OK,4169.268878
+cached,/home/ege/Desktop/QuAK-playground (28.01.26 15∶12)/samples/generated_response_time_negative_large/response_n10_k10.txt,Inf,SumMinus,-10.000000,OK,1975.597604
+current,/home/ege/Desktop/QuAK-playground (28.01.26 15∶12)/samples/generated_response_time_negative_large/response_n10_k10.txt,LimInf,SumMinus,-10.000000,OK,6807.434391
+cached,/home/ege/Desktop/QuAK-playground (28.01.26 15∶12)/samples/generated_response_time_negative_large/response_n10_k10.txt,LimInf,SumMinus,-10.000000,OK,3720.485542
+current,/home/ege/Desktop/QuAK-playground (28.01.26 15∶12)/samples/generated_response_time_negative_large/response_n12_k12.txt,Inf,SumMinus,-12,TIMEOUT,
+cached,/home/ege/Desktop/QuAK-playground (28.01.26 15∶12)/samples/generated_response_time_negative_large/response_n12_k12.txt,Inf,SumMinus,-12.000000,OK,21142.805275
+current,/home/ege/Desktop/QuAK-playground (28.01.26 15∶12)/samples/generated_response_time_negative_large/response_n12_k12.txt,LimInf,SumMinus,-12,TIMEOUT,
+cached,/home/ege/Desktop/QuAK-playground (28.01.26 15∶12)/samples/generated_response_time_negative_large/response_n12_k12.txt,LimInf,SumMinus,-12.000000,OK,37962.160976
+current,/home/ege/Desktop/QuAK-playground (28.01.26 15∶12)/samples/generated_response_time_negative_large/response_n14_k14.txt,Inf,SumMinus,-14,TIMEOUT,
+cached,/home/ege/Desktop/QuAK-playground (28.01.26 15∶12)/samples/generated_response_time_negative_large/response_n14_k14.txt,Inf,SumMinus,-14,TIMEOUT,
+current,/home/ege/Desktop/QuAK-playground (28.01.26 15∶12)/samples/generated_response_time_negative_large/response_n14_k14.txt,LimInf,SumMinus,-14,TIMEOUT,
+cached,/home/ege/Desktop/QuAK-playground (28.01.26 15∶12)/samples/generated_response_time_negative_large/response_n14_k14.txt,LimInf,SumMinus,-14,TIMEOUT,
+current,/home/ege/Desktop/QuAK-playground (28.01.26 15∶12)/samples/generated_response_time_negative_large/response_n16_k16.txt,Inf,SumMinus,-16,TIMEOUT,
+cached,/home/ege/Desktop/QuAK-playground (28.01.26 15∶12)/samples/generated_response_time_negative_large/response_n16_k16.txt,Inf,SumMinus,-16,TIMEOUT,
+current,/home/ege/Desktop/QuAK-playground (28.01.26 15∶12)/samples/generated_response_time_negative_large/response_n16_k16.txt,LimInf,SumMinus,-16,TIMEOUT,
+cached,/home/ege/Desktop/QuAK-playground (28.01.26 15∶12)/samples/generated_response_time_negative_large/response_n16_k16.txt,LimInf,SumMinus,-16,TIMEOUT,

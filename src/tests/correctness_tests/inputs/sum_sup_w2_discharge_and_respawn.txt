@@ -1,0 +1,35 @@
+# W2 discharge plus same-symbol respawn fixture for SumPlus witness-cached
+# Sup/LimSup.
+# Intended word: c d (a d)^omega.
+#
+# Prefix c d creates active W2 at child state s2. On a, that W2 discharges
+# while the parent simultaneously calls Child 1 again. The fresh call starts at
+# s0 and moves to s1, so the witness-cached flattener must allow a new W1 on
+# the same symbol.
+
+@PARENT
+final: p2
+c : 1, p0 -> p1
+d : 0, p1 -> p2
+a : 1, p2 -> p2
+d : 0, p2 -> p2
+
+@CHILD 0
+
+@CHILD 1
+final: f
+c : 0, s0 -> s1
+a : 0, s0 -> s1
+d : 0, s0 -> rej
+
+d : 0, s1 -> s2
+a : 0, s1 -> rej
+c : 0, s1 -> rej
+
+a : 1, s2 -> f
+d : 0, s2 -> s2
+c : 0, s2 -> rej
+
+a : 0, rej -> rej
+c : 0, rej -> rej
+d : 0, rej -> rej

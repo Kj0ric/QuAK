@@ -6,6 +6,7 @@ CTestTestfile.cmake
 Makefile
 Testing/
 /build/
+/build-*/
 /cmake-build-*/
 
 # Compiled objects and libraries
@@ -19,9 +20,13 @@ Testing/
 *.exe
 /quak-nested
 /quak-experiment-single
-
-# Test executables
+/example1_basic
+/example2_value_functions
+/example3_response_time
 /test_*
+/*_compare*
+/*_probe*
+/*_stress
 
 # IDE and editor files
 .vscode/
@@ -44,8 +49,18 @@ venv/
 
 # Experiment results (regenerable)
 /results/*.csv
+/results/**/*.csv
+
+# Standalone analysis binaries (keep sources/notes, not compiled outputs)
+/analysis/*_compare
+/analysis/*_probe
+/analysis/*_search
+/analysis/*_stress
+/analysis/current_old_v2_compare
+/analysis/split_phase_probe
 
 # Legacy / Eclipse
 /Debug/
-CLAUDE.md
+
 AGENTS.md
+CLAUDE.md

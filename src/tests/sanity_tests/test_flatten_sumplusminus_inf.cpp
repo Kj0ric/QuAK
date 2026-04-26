@@ -265,9 +265,9 @@ void test_flatten_SumPlusMinus_Inf_output_properties() {
               << flat->getMaxDomain() << "]" << std::endl;
     std::cout << "    Is complete: " << flat->isComplete() << std::endl;
 
-    // Output should have 0/1 weights (Buchi-style)
-    bool is_01 = hasOnly01Weights(flat);
-    std::cout << "    Has only 0/1 weights: " << is_01 << std::endl;
+    // Raw flattened output may still contain SILENT edges before silence removal.
+    bool is_01_or_silent = hasOnly01OrSilentWeights(flat);
+    std::cout << "    Has only 0/1/SILENT weights: " << is_01_or_silent << std::endl;
 
     delete flat;
     delete nwa;

@@ -5,6 +5,7 @@
 #   - isNonEmpty(LimSup, Max_f, 1) = true via (s a t u)^omega
 
 @PARENT
+final: all
 s : 1, p0 -> p0
 a : 0, p0 -> p0
 t : 0, p0 -> p0

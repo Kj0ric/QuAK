@@ -24,6 +24,7 @@
 #   - isUniversal(LimInf, Min_f, 0) = true (all words achieve >= 0)
 
 @PARENT
+final: all
 a : 0, q0 -> q0
 
 @CHILD 0

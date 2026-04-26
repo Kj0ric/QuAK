@@ -1,0 +1,13 @@
+# Child starts in a final state but must still consume the current parent
+# letter. Every call returns 1 on the same symbol that spawned it.
+
+@PARENT
+final: q0
+a : 1, q0 -> q0
+
+@CHILD 0
+
+@CHILD 1
+final: s t
+a : 1, s -> t
+a : 1, t -> t

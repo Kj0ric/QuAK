@@ -1,0 +1,99 @@
+=== Correctness ===
+overlap_max_bug [Max_f, threshold=1] expected=(0,0)
+  current        -> (0,0)
+  cached         -> (0,0)
+  masked         -> (0,0)
+  threshold_obl  -> (0,0)
+  v2             -> (1,1)  MISMATCH
+test_empt_2_impossible [Max_f, threshold=3] expected=(0,0)
+  current        -> (0,0)
+  cached         -> (0,0)
+  masked         -> (0,0)
+  threshold_obl  -> (0,0)
+  v2             -> (0,0)
+baseline_det_max_eq [Max_f, threshold=5] expected=(1,1)
+  current        -> (1,1)
+  cached         -> (1,1)
+  masked         -> (1,1)
+  threshold_obl  -> (1,1)
+  v2             -> (1,1)
+baseline_det_max_gt [Max_f, threshold=6] expected=(0,0)
+  current        -> (0,0)
+  cached         -> (0,0)
+  masked         -> (0,0)
+  threshold_obl  -> (0,0)
+  v2             -> (0,0)
+baseline_det_min_eq [Min_f, threshold=3] expected=(1,1)
+  current        -> (1,1)
+  cached         -> (1,1)
+  masked         -> (1,1)
+  threshold_obl  -> (1,1)
+  v2             -> (1,1)
+baseline_det_min_gt [Min_f, threshold=4] expected=(0,0)
+  current        -> (0,0)
+  cached         -> (0,0)
+  masked         -> (0,0)
+  threshold_obl  -> (0,0)
+  v2             -> (0,0)
+scc_chain_inf_vs_liminf [Max_f, threshold=4] expected=(0,1)
+  current        -> (0,1)
+  cached         -> (0,1)
+  masked         -> (0,1)
+  threshold_obl  -> (0,1)
+  v2             -> (0,1)
+deep_nondet_eq [Max_f, threshold=8] expected=(1,1)
+  current        -> (1,1)
+  cached         -> (1,1)
+  masked         -> (1,1)
+  threshold_obl  -> (1,1)
+  v2             -> (1,1)
+deep_nondet_gt [Max_f, threshold=9] expected=(0,0)
+  current        -> (0,0)
+  cached         -> (0,0)
+  masked         -> (0,0)
+  threshold_obl  -> (0,0)
+  v2             -> (0,0)
+nondet_child_binary_eq [Max_f, threshold=7] expected=(1,1)
+  current        -> (1,1)
+  cached         -> (1,1)
+  masked         -> (1,1)
+  threshold_obl  -> (1,1)
+  v2             -> (1,1)
+nondet_child_binary_gt [Max_f, threshold=8] expected=(0,0)
+  current        -> (0,0)
+  cached         -> (0,0)
+  masked         -> (0,0)
+  threshold_obl  -> (0,0)
+  v2             -> (0,0)
+
+=== Performance (flatten + Inf check) ===
+overlap_max_bug [Max_f, threshold=1, iterations=200]
+  current        -> avg_ms=0.177765, states=10, transitions=30, result=0
+  cached         -> avg_ms=0.269624, states=10, transitions=30, result=0
+  masked         -> avg_ms=0.22216, states=9, transitions=27, result=0
+  threshold_obl  -> avg_ms=0.103982, states=10, transitions=30, result=0
+nested_sij2 [Max_f, threshold=5, iterations=200]
+  current        -> avg_ms=0.0134829, states=2, transitions=2, result=0
+  cached         -> avg_ms=0.0234064, states=2, transitions=2, result=0
+  masked         -> avg_ms=0.111813, states=5, transitions=16, result=0
+  threshold_obl  -> avg_ms=0.011486, states=2, transitions=2, result=0
+scc_chain_binary [Max_f, threshold=1, iterations=100]
+  current        -> avg_ms=0.0318844, states=4, transitions=8, result=1
+  cached         -> avg_ms=0.0452885, states=4, transitions=8, result=1
+  masked         -> avg_ms=0.0413185, states=4, transitions=8, result=1
+  threshold_obl  -> avg_ms=0.0224044, states=4, transitions=8, result=1
+nondet_child_binary [Max_f, threshold=1, iterations=100]
+  current        -> avg_ms=0.0178058, states=3, transitions=6, result=1
+  cached         -> avg_ms=0.0288031, states=3, transitions=6, result=1
+  masked         -> avg_ms=0.0334537, states=3, transitions=9, result=1
+  threshold_obl  -> avg_ms=0.0164228, states=3, transitions=6, result=1
+deep_nondet_binary [Max_f, threshold=1, iterations=50]
+  current        -> avg_ms=0.0324119, states=5, transitions=10, result=1
+  cached         -> avg_ms=0.0481504, states=5, transitions=10, result=1
+  masked         -> avg_ms=0.0570831, states=6, transitions=12, result=1
+  threshold_obl  -> avg_ms=0.0326729, states=5, transitions=10, result=1
+baseline_det_min [Min_f, threshold=3, iterations=200]
+  current        -> avg_ms=0.0094569, states=2, transitions=2, result=1
+  cached         -> avg_ms=0.0159786, states=2, transitions=2, result=1
+  masked         -> avg_ms=0.0118546, states=2, transitions=2, result=1
+  threshold_obl  -> avg_ms=0.00866783, states=2, transitions=2, result=1

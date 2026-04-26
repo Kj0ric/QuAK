@@ -1,0 +1,23 @@
+# No-nonsilent-suffix fixture for SumPlus witness-cached Sup/LimSup.
+#
+# The single a-step can start and complete a threshold-1 witness. Afterwards
+# the parent remains final but has only silent b-transitions. After silent
+# removal there is no infinite non-silent accepting behavior.
+#
+# Expected at threshold 1:
+# - Sup x SumPlus: false
+# - LimSup x SumPlus: false
+
+@PARENT
+final: p1
+a : 1, p0 -> p1
+b : 0, p1 -> p1
+
+@CHILD 0
+
+@CHILD 1
+final: f
+a : 1, s0 -> f
+b : 0, s0 -> rej
+a : 0, rej -> rej
+b : 0, rej -> rej

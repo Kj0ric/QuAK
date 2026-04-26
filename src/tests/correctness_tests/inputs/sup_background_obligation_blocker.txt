@@ -1,0 +1,28 @@
+# Accepting parent words stay on a^omega in q1 and keep spawning Child 2
+# with return value 1. The first call to Child 1 moves to s1 on that same
+# initial a and can terminate only on b, but every b-step leaves the accepting
+# region forever. So there is no accepting nested run in which all started
+# children eventually return.
+
+@PARENT
+final: q1
+a : 1, q0 -> q1
+b : 0, q0 -> q0
+a : 2, q1 -> q1
+b : 0, q1 -> qd
+a : 0, qd -> qd
+b : 0, qd -> qd
+
+@CHILD 0
+
+@CHILD 1
+final: f
+a : 0, s0 -> s1
+b : 0, s0 -> f
+a : 0, s1 -> s1
+b : 0, s1 -> f
+
+@CHILD 2
+final: f
+a : 1, t0 -> f
+b : 0, t0 -> f

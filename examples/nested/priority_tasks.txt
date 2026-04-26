@@ -4,6 +4,7 @@
 # Child measures task completion cost with different weights for h vs l.
 
 @PARENT
+final: all
 h : 1, do_high -> do_low
 l : 0, do_high -> do_high
 d : 0, do_high -> do_high

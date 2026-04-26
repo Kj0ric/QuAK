@@ -1,0 +1,32 @@
+@PARENT
+final: all
+a : 1, q -> q
+b : 1, q -> q
+c : 1, q -> q
+d : 1, q -> q
+
+@CHILD 0
+
+@CHILD 1
+final: f
+a : 0, s0 -> s0
+b : 0, s0 -> u
+c : 1, s0 -> t
+c : 0, s0 -> f
+d : 1, s0 -> s0
+
+a : 1, u -> u
+a : 0, u -> f
+b : 0, u -> u
+b : 0, u -> f
+c : 0, u -> s0
+c : 1, u -> f
+d : 1, u -> u
+d : 0, u -> f
+
+a : 0, t -> u
+a : 1, t -> f
+b : 0, t -> t
+c : 0, t -> s0
+c : 1, t -> f
+d : 1, t -> t

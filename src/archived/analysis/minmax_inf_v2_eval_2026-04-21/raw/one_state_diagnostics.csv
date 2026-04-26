@@ -1,0 +1,17 @@
+backend,file,inf,fin,threshold,status,detail
+current,one_state_child_final_silent.txt,Inf,Max_f,1,abort,std::out_of_range map::at
+current,one_state_child_final_silent.txt,LimInf,Max_f,1,abort,std::out_of_range map::at
+current,one_state_child_nonfinal_illegal.txt,Inf,Max_f,1,parse_error,Empty final declaration rejected by parser
+current,one_state_child_nonfinal_illegal.txt,LimInf,Max_f,1,parse_error,Empty final declaration rejected by parser
+cached,one_state_child_final_silent.txt,Inf,Max_f,1,abort,std::out_of_range map::at
+cached,one_state_child_final_silent.txt,LimInf,Max_f,1,abort,std::out_of_range map::at
+cached,one_state_child_nonfinal_illegal.txt,Inf,Max_f,1,parse_error,Empty final declaration rejected by parser
+cached,one_state_child_nonfinal_illegal.txt,LimInf,Max_f,1,parse_error,Empty final declaration rejected by parser
+threshold_obl,one_state_child_final_silent.txt,Inf,Max_f,1,abort,std::out_of_range map::at
+threshold_obl,one_state_child_final_silent.txt,LimInf,Max_f,1,abort,std::out_of_range map::at
+threshold_obl,one_state_child_nonfinal_illegal.txt,Inf,Max_f,1,parse_error,Empty final declaration rejected by parser
+threshold_obl,one_state_child_nonfinal_illegal.txt,LimInf,Max_f,1,parse_error,Empty final declaration rejected by parser
+regular,one_state_child_final_silent.txt,Inf,Max_f,1,abort,std::out_of_range map::at
+regular,one_state_child_final_silent.txt,LimInf,Max_f,1,abort,std::out_of_range map::at
+regular,one_state_child_nonfinal_illegal.txt,Inf,Max_f,1,parse_error,Empty final declaration rejected by parser
+regular,one_state_child_nonfinal_illegal.txt,LimInf,Max_f,1,parse_error,Empty final declaration rejected by parser

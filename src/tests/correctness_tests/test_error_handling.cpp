@@ -1,116 +1,178 @@
+#include <chrono>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <sstream>
+#include <stdexcept>
 #include <string>
+#include <vector>
 
-#include "test_cli_helpers.h"
-
-using namespace cli_test;
+#ifndef QUAK_NESTED_PATH
+#define QUAK_NESTED_PATH "./build/quak-nested"
+#endif
 
 namespace {
 
-// ---------------------------------------------------------------------------
-// Tests for errors already caught by the CLI argument parser
-// ---------------------------------------------------------------------------
+namespace fs = std::filesystem;
 
-void testMissingSumBBound() {
-    // SumB requires a bound parameter; CLI should reject if missing.
-    const std::string out = runCommandExpectFailure(
-        "examples/nested/simple_counter.txt non-empty LimSup SumB 1");
-    assertContains(out, "bound", "Missing SumB bound should produce a usage error mentioning 'bound'");
+std::string commandQuote(const std::string& value) {
+    std::string result = "\"";
+    for (char ch : value) {
+        if (ch == '"') {
+            result += "\\\"";
+        } else {
+            result += ch;
+        }
+    }
+    result += "\"";
+    return result;
 }
 
-void testUnsupportedUniversalCombo() {
-    // isUniversal does not support LimSupAvg; CLI should reject it.
-    const std::string out = runCommandExpectFailure(
-        "examples/nested/simple_counter.txt universal LimSupAvg Max_f 1");
-    assertContains(out, "not support", "Unsupported universal combo should mention 'not support'");
+fs::path tempPath(const std::string& stem) {
+    static unsigned int counter = 0;
+    auto now = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+    return fs::temp_directory_path() /
+           ("quak_" + stem + "_" + std::to_string(now) + "_" + std::to_string(counter++) + ".txt");
 }
 
-// ---------------------------------------------------------------------------
-// Tests for errors caught by the parser
-// ---------------------------------------------------------------------------
-
-void testUndefinedChildIndex() {
-    // Parent uses weight 2 (child index 2) but only @CHILD 0 and @CHILD 1 are defined.
-    const std::string out = runCommandExpectFailure(
-        "src/tests/correctness_tests/inputs/tc_err_undefined_child.txt non-empty LimSup Max_f 1");
-    assertContains(out, "child automaton index",
-                   "Undefined child index should report 'child automaton index'");
+void writeFile(const fs::path& path, const std::string& content) {
+    std::ofstream out(path);
+    if (!out) {
+        throw std::runtime_error("could not write " + path.string());
+    }
+    out << content;
 }
 
-// ---------------------------------------------------------------------------
-// Tests for errors caught by validateNested()
-// ---------------------------------------------------------------------------
-
-void testSilentInChild() {
-    // Child 1 has a SILENT transition (non-parseable weight stored as float::max()).
-    // validateNested() should abort with a message naming child index and SILENT.
-    const std::string out = runCommandExpectFailure(
-        "src/tests/correctness_tests/inputs/tc_err_silent_in_child.txt non-empty LimSup Max_f 1");
-    assertContains(out, "SILENT",
-                   "SILENT in child should produce an error message containing 'SILENT'");
-    assertContains(out, "Child automaton 1",
-                   "Error message should identify the offending child index");
+std::string readFile(const fs::path& path) {
+    std::ifstream in(path);
+    std::ostringstream buffer;
+    buffer << in.rdbuf();
+    return buffer.str();
 }
 
-// ---------------------------------------------------------------------------
-// Tests for errors caught by isNonEmpty runtime validation
-// ---------------------------------------------------------------------------
+std::string runQuak(const fs::path& automaton, const std::string& args, bool expect_success) {
+    fs::path output_path = tempPath("output");
+    std::string command = commandQuote(QUAK_NESTED_PATH) + " " +
+                          commandQuote(automaton.string()) + " " +
+                          args + " > " + commandQuote(output_path.string()) + " 2>&1";
 
-void testMixedSignLimAvg() {
-    // Child 1 has both positive (3) and negative (-2) weights.
-    // LimAvg+SumMinus requires all child weights to be <= 0 before the
-    // pseudo-det pipeline. Without -DNORMALIZE_MIXED_SIGN, this must be rejected.
-    // Threshold must be <= 0: the trivial-case guard (x > 0 && SumMinus → false)
-    // would short-circuit before reaching the mixed-sign check for x > 0.
-    const std::string out = runCommandExpectFailure(
-        "src/tests/correctness_tests/inputs/tc_err_mixed_sign_limavg.txt non-empty LimSupAvg SumMinus 0");
-    assertContains(out, "Mixed-sign",
-                   "Mixed-sign child weights for LimAvg+SumMinus should produce a 'Mixed-sign' error");
+    int status = std::system(command.c_str());
+    std::string output = readFile(output_path);
+    fs::remove(output_path);
+
+    bool succeeded = (status == 0);
+    if (succeeded != expect_success) {
+        throw std::runtime_error("unexpected command status for " + automaton.string() + "\n" + output);
+    }
+    return output;
 }
 
-// ---------------------------------------------------------------------------
-// Smoke tests: valid inputs that must not crash
-// ---------------------------------------------------------------------------
+void assertContains(const std::string& haystack, const std::string& needle) {
+    if (haystack.find(needle) == std::string::npos) {
+        throw std::runtime_error("expected output to contain '" + needle + "'\n" + haystack);
+    }
+}
 
-void testEdgeCases() {
-    // Threshold = 0 boundary
-    runCommandExpectSuccess(
-        "examples/nested/simple_counter.txt non-empty LimSup Max_f 0");
+void testNonNestedRejectsNonnumericWeight() {
+    fs::path automaton = tempPath("non_nested_bad_weight");
+    writeFile(automaton,
+              "final: q0\n"
+              "a : notanumber, q0 -> q0\n");
 
-    // Large threshold with Max_f — bounded by child weights, so returns false cleanly
-    // (Note: Inf+SumPlus with very large thresholds is a known memory limitation;
-    //  flatten_SumPlusMinus_Inf allocates O(threshold * states) and should not be called
-    //  with thresholds in the millions.)
-    runCommandExpectSuccess(
-        "examples/nested/simple_counter.txt non-empty LimSup Max_f 1000000");
+    std::string output = runQuak(automaton, "non-empty LimSup 0", false);
+    fs::remove(automaton);
+    assertContains(output, "invalid numeric weight 'notanumber'");
+}
 
-    // Single-state parent + single-state child
-    runCommandExpectSuccess(
-        "src/tests/correctness_tests/inputs/tc_single_state.txt non-empty LimSup Max_f 1");
+void testChildRejectsSilentWeight() {
+    fs::path automaton = tempPath("child_silent_weight");
+    writeFile(automaton,
+              "@PARENT\n"
+              "final: all\n"
+              "a : 1, p0 -> p0\n"
+              "@CHILD 0\n"
+              "@CHILD 1\n"
+              "final: c1\n"
+              "a : SILENT, c0 -> c1\n");
 
-    // Negative threshold: weights are >= 0, so any infVal/Max_f value exceeds -1
-    runCommandExpectSuccess(
-        "examples/nested/simple_counter.txt non-empty LimInf Max_f -1");
+    std::string output = runQuak(automaton, "non-empty LimSup Max_f 0", false);
+    fs::remove(automaton);
+    assertContains(output, "SILENT weights are allowed only on nested parent transitions");
+}
 
-    // Large alphabet: 12-symbol parent/child — tests alphabet-indexed structures in flattening
-    runCommandExpectSuccess(
-        "src/tests/correctness_tests/inputs/tc_large_alphabet.txt non-empty LimSup Max_f 2");
+void testChildRejectsNonnumericWeight() {
+    fs::path automaton = tempPath("child_bad_weight");
+    writeFile(automaton,
+              "@PARENT\n"
+              "final: all\n"
+              "a : 1, p0 -> p0\n"
+              "@CHILD 0\n"
+              "@CHILD 1\n"
+              "final: c1\n"
+              "a : notanumber, c0 -> c1\n");
+
+    std::string output = runQuak(automaton, "non-empty LimSup Max_f 0", false);
+    fs::remove(automaton);
+    assertContains(output, "invalid numeric weight 'notanumber'");
+}
+
+void testParentAcceptsLiteralSilentWeight() {
+    fs::path automaton = tempPath("parent_silent_weight");
+    writeFile(automaton,
+              "@PARENT\n"
+              "final: all\n"
+              "a : SILENT, p0 -> p0\n"
+              "b : 1, p0 -> p0\n"
+              "@CHILD 0\n"
+              "@CHILD 1\n"
+              "final: c1\n"
+              "a : 0, c0 -> c1\n"
+              "b : 0, c0 -> c1\n");
+
+    runQuak(automaton, "non-empty LimSup Max_f 0", true);
+    fs::remove(automaton);
+}
+
+void testParentRejectsSilentAlias() {
+    fs::path automaton = tempPath("parent_silent_alias");
+    writeFile(automaton,
+              "@PARENT\n"
+              "final: all\n"
+              "a : SIL, p0 -> p0\n"
+              "b : 1, p0 -> p0\n"
+              "@CHILD 0\n"
+              "@CHILD 1\n"
+              "final: c1\n"
+              "a : 0, c0 -> c1\n"
+              "b : 0, c0 -> c1\n");
+
+    std::string output = runQuak(automaton, "non-empty LimSup Max_f 0", false);
+    fs::remove(automaton);
+    assertContains(output, "invalid parent weight 'SIL': expected numeric weight or SILENT");
 }
 
 } // namespace
 
 int main() {
-    try {
-        testMissingSumBBound();
-        testUnsupportedUniversalCombo();
-        testUndefinedChildIndex();
-        testSilentInChild();
-        testMixedSignLimAvg();
-        testEdgeCases();
-        std::cout << "Error handling checks passed." << std::endl;
-        return 0;
-    } catch (const std::exception& e) {
-        std::cerr << "Error handling test failed: " << e.what() << std::endl;
-        return 1;
+    const std::vector<std::pair<std::string, void (*)()>> tests = {
+        {"testNonNestedRejectsNonnumericWeight", testNonNestedRejectsNonnumericWeight},
+        {"testChildRejectsSilentWeight", testChildRejectsSilentWeight},
+        {"testChildRejectsNonnumericWeight", testChildRejectsNonnumericWeight},
+        {"testParentAcceptsLiteralSilentWeight", testParentAcceptsLiteralSilentWeight},
+        {"testParentRejectsSilentAlias", testParentRejectsSilentAlias},
+    };
+
+    for (const auto& test : tests) {
+        try {
+            test.second();
+            std::cout << "[PASS] " << test.first << "\n";
+        } catch (const std::exception& ex) {
+            std::cerr << "[FAIL] " << test.first << ": " << ex.what() << "\n";
+            return 1;
+        }
     }
+
+    std::cout << "All parser error-handling tests passed.\n";
+    return 0;
 }

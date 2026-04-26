@@ -11,6 +11,8 @@
  * Tests 10 negated automata x 6 infVal x 3 finVal = 180 tests
  *
  * Total: 280 + 180 = 460 tests
+ * Plus targeted regular-oracle, threshold-extremal, cached, split-final,
+ * helper, and LimAvg/SumMinus regressions.
  *
  * Excluded combinations (not valid or require dedicated test files):
  * - LimInfAvg + SumPlus (not valid)
@@ -353,58 +355,6 @@ namespace ChildPumpLoop {
     }
 }
 
-// Automaton 11: mixed_sign
-// Deterministic unary automaton. Child path: [3, -2, 4].
-// On word a^omega: constant sequence — all infVal give the same result.
-// SumMinus is tested on the ORIGINAL file (not a negated version) because
-// the automaton already has negative child weights.
-//
-// Expected values (all infVal):
-//   Max_f    = 4   Min_f    = -2   SumB  = 5
-//   SumPlus  = 9   SumMinus = -9
-namespace MixedSign {
-    constexpr weight_t MAX_F_VAL    = 4;
-    constexpr weight_t MIN_F_VAL    = -2;
-    constexpr weight_t SUMB_VAL     = 5;
-    constexpr weight_t SUMPLUS_VAL  = 9;
-    constexpr weight_t SUMMINUS_VAL = -9;
-
-    weight_t getExpected(value_function_t infVal, value_function_t finVal) {
-        (void)infVal;  // Deterministic unary: all infVal give same result
-        switch (finVal) {
-            case Max_f:    return MAX_F_VAL;
-            case Min_f:    return MIN_F_VAL;
-            case SumB:     return SUMB_VAL;
-            case SumPlus:  return SUMPLUS_VAL;
-            case SumMinus: return SUMMINUS_VAL;
-            default: return 0;
-        }
-    }
-}
-
-// Automaton 12: mixed_sign_alt
-// Regression test for the LimSupAvg+SumPlus projection bug (introduced in 66581d7b5).
-// Parent: deterministic, alternates child 1 and child 2 on alphabet {a}.
-// Child 1: weights [+6, -2], SumPlus = |6|+|-2| = 8, SumMinus = -8  (mixed-sign)
-// Child 2: weights [+3, +1], SumPlus = |3|+|1|  = 4, SumMinus = -4
-// Sequence: [8, 4, 8, 4, ...] (SumPlus) / [-8, -4, -8, -4, ...] (SumMinus)
-// LimSupAvg = LimInfAvg = 6 (SumPlus) / -6 (SumMinus)
-//
-// Before the fix: LimSupAvg+SumPlus returned FALSE at threshold 6 (wrong).
-//   The projection shortcut capped child-1's value at x, giving LimSupAvg([6,4,...])=5 < 6.
-// After the fix: correctly returns TRUE at threshold 6.
-namespace MixedSignAlt {
-    constexpr weight_t LIMAVG_SUMPLUS_VAL  = weight_t(6);
-    constexpr weight_t LIMAVG_SUMMINUS_VAL = weight_t(-6);
-
-    weight_t getExpected(value_function_t infVal, value_function_t finVal) {
-        (void)infVal;
-        if (finVal == SumPlus)  return LIMAVG_SUMPLUS_VAL;
-        if (finVal == SumMinus) return LIMAVG_SUMMINUS_VAL;
-        return 0;
-    }
-}
-
 // ============================================================================
 // Expected Values for Negated Automata (Part 2)
 // These test Max_f, Min_f, SumB on automata with negative child weights
@@ -622,19 +572,14 @@ weight_t getExpectedNonEmpty(const std::string& automaton, value_function_t infV
     if (automaton == "epsilon_boundary") return EpsilonBoundary::getExpected(infVal, finVal);
     if (automaton == "positive_only_nondet") return PositiveOnlyNondet::getExpected(infVal, finVal);
     if (automaton == "child_pump_loop") return ChildPumpLoop::getExpected(infVal, finVal);
-    if (automaton == "mixed_sign") return MixedSign::getExpected(infVal, finVal);
-    if (automaton == "mixed_sign_alt") return MixedSignAlt::getExpected(infVal, finVal);
     return 0;
 }
 
 // Get the file path for an automaton name
-// For SumMinus, use the negated automata (negative weights).
-// Exception: mixed_sign already has negative weights — use the original file.
+// For SumMinus, use the negated automata (negative weights)
 std::string getFilePath(const std::string& automaton, value_function_t finVal = Max_f) {
     if (finVal == SumMinus) {
         // Use negated automata for SumMinus tests
-        if (automaton == "mixed_sign") return CorrectnessTestFiles::MIXED_SIGN;
-        if (automaton == "mixed_sign_alt") return CorrectnessTestFiles::MIXED_SIGN_ALT;  // already has mixed-sign weights
         if (automaton == "baseline_det") return CorrectnessTestFiles::BASELINE_DET_NEG;
         if (automaton == "baseline_fractional") return CorrectnessTestFiles::BASELINE_FRACTIONAL_NEG;
         if (automaton == "nondet_child_binary") return CorrectnessTestFiles::NONDET_CHILD_BINARY_NEG;
@@ -658,8 +603,6 @@ std::string getFilePath(const std::string& automaton, value_function_t finVal = 
     if (automaton == "epsilon_boundary") return CorrectnessTestFiles::EPSILON_BOUNDARY;
     if (automaton == "positive_only_nondet") return CorrectnessTestFiles::POSITIVE_ONLY_NONDET;
     if (automaton == "child_pump_loop") return CorrectnessTestFiles::CHILD_PUMP_LOOP;
-    if (automaton == "mixed_sign") return CorrectnessTestFiles::MIXED_SIGN;
-    if (automaton == "mixed_sign_alt") return CorrectnessTestFiles::MIXED_SIGN_ALT;
     return "";
 }
 
@@ -1132,46 +1075,6 @@ DEFINE_NONEMPTY_TEST(child_pump_loop, LimSupAvg, Min_f)
 DEFINE_NONEMPTY_TEST(child_pump_loop, LimSupAvg, SumB)
 DEFINE_NONEMPTY_TEST(child_pump_loop, LimSupAvg, SumPlus)
 
-// Automaton 12: mixed_sign_alt (regression for LimSupAvg+SumPlus projection bug)
-// LimAvg+SumPlus/SumMinus with mixed-sign children are now rejected by default
-// (QUAK_FAIL unless compiled with -DNORMALIZE_MIXED_SIGN=ON).
-// These cases are covered by test_error_handling::testMixedSignLimAvg() instead.
-
-// Automaton 11: mixed_sign
-// LimInfAvg+SumMinus and LimSupAvg+SumMinus are included (not via adversarial
-// files) because the original automaton already has negative child weights.
-// LimInfAvg+SumPlus is omitted (invalid combination).
-DEFINE_NONEMPTY_TEST(mixed_sign, Inf, Max_f)
-DEFINE_NONEMPTY_TEST(mixed_sign, Inf, Min_f)
-DEFINE_NONEMPTY_TEST(mixed_sign, Inf, SumB)
-DEFINE_NONEMPTY_TEST(mixed_sign, Inf, SumPlus)
-DEFINE_NONEMPTY_TEST(mixed_sign, Inf, SumMinus)
-DEFINE_NONEMPTY_TEST(mixed_sign, Sup, Max_f)
-DEFINE_NONEMPTY_TEST(mixed_sign, Sup, Min_f)
-DEFINE_NONEMPTY_TEST(mixed_sign, Sup, SumB)
-DEFINE_NONEMPTY_TEST(mixed_sign, Sup, SumPlus)
-DEFINE_NONEMPTY_TEST(mixed_sign, Sup, SumMinus)
-DEFINE_NONEMPTY_TEST(mixed_sign, LimInf, Max_f)
-DEFINE_NONEMPTY_TEST(mixed_sign, LimInf, Min_f)
-DEFINE_NONEMPTY_TEST(mixed_sign, LimInf, SumB)
-DEFINE_NONEMPTY_TEST(mixed_sign, LimInf, SumPlus)
-DEFINE_NONEMPTY_TEST(mixed_sign, LimInf, SumMinus)
-DEFINE_NONEMPTY_TEST(mixed_sign, LimSup, Max_f)
-DEFINE_NONEMPTY_TEST(mixed_sign, LimSup, Min_f)
-DEFINE_NONEMPTY_TEST(mixed_sign, LimSup, SumB)
-DEFINE_NONEMPTY_TEST(mixed_sign, LimSup, SumPlus)
-DEFINE_NONEMPTY_TEST(mixed_sign, LimSup, SumMinus)
-DEFINE_NONEMPTY_TEST(mixed_sign, LimInfAvg, Max_f)
-DEFINE_NONEMPTY_TEST(mixed_sign, LimInfAvg, Min_f)
-DEFINE_NONEMPTY_TEST(mixed_sign, LimInfAvg, SumB)
-// LimInfAvg + SumPlus: not valid -- omitted
-// LimInfAvg + SumMinus: mixed-sign child weights rejected by default -- omitted
-DEFINE_NONEMPTY_TEST(mixed_sign, LimSupAvg, Max_f)
-DEFINE_NONEMPTY_TEST(mixed_sign, LimSupAvg, Min_f)
-DEFINE_NONEMPTY_TEST(mixed_sign, LimSupAvg, SumB)
-// LimSupAvg + SumPlus: mixed-sign child weights rejected by default -- omitted
-// LimSupAvg + SumMinus: mixed-sign child weights rejected by default -- omitted
-
 // ============================================================================
 // Part 2: Negated Automata Tests (Max_f, Min_f, SumB on negative weights)
 // 10 automata x 6 infVal x 3 finVal = 180 tests
@@ -1485,23 +1388,33 @@ void test_limavg_summinus_diamond() {
                       LimSupAvg, SumMinus, -3.0f);
 }
 
-// LimInfAvg + SumMinus tests (same inputs; sequences are constant so LimInfAvg == LimSupAvg)
-void test_limavg_inf_summinus_unary() {
-    testLimAvgBounded("SumMinus Unary (LimInfAvg)",
-                      CorrectnessTestFiles::LIMAVG_SUMMINUS_UNARY,
-                      LimInfAvg, SumMinus, 0.0f);
-}
+void test_limavg_summinus_final_continuation_signed_matches_split() {
+    NestedAutomaton original(CorrectnessTestFiles::LIMAVG_SUMMINUS_FINAL_CONTINUATION_SIGNED);
+    verifyNestedAutomatonBasics(&original, "limavg_summinus_final_continuation_signed");
 
-void test_limavg_inf_summinus_unbounded() {
-    testLimAvgBounded("SumMinus Unbounded (LimInfAvg)",
-                      CorrectnessTestFiles::LIMAVG_SUMMINUS_UNBOUNDED,
-                      LimInfAvg, SumMinus, -1.0f);
-}
+    NestedAutomaton* split = NestedAutomatonTester::split_child_finals_for_testing(&original);
+    verifyNestedAutomatonBasics(split, "limavg_summinus_final_continuation_signed_split");
 
-void test_limavg_inf_summinus_diamond() {
-    testLimAvgBounded("SumMinus Diamond (LimInfAvg)",
-                      CorrectnessTestFiles::LIMAVG_SUMMINUS_DIAMOND,
-                      LimInfAvg, SumMinus, -3.0f);
+    for (value_function_t infVal : {LimSupAvg, LimInfAvg}) {
+        const bool split_at_threshold =
+            split->isNonEmpty(infVal, SumMinus, weight_t(-1), weight_t(-1));
+        const bool original_at_threshold =
+            original.isNonEmpty(infVal, SumMinus, weight_t(-1), weight_t(-1));
+        const bool original_above_threshold =
+            original.isNonEmpty(infVal, SumMinus, weight_t(-0.5), weight_t(-1));
+
+        std::stringstream ctx;
+        ctx << "limavg_summinus_final_continuation_signed." << infValToString(infVal);
+
+        TEST_ASSERT_TRUE(split_at_threshold,
+                         ctx.str() + ": explicit stop/continue split should accept threshold -1");
+        TEST_ASSERT_EQ(original_at_threshold, split_at_threshold,
+                       ctx.str() + ": production path should match explicit stop/continue split");
+        TEST_ASSERT_FALSE(original_above_threshold,
+                          ctx.str() + ": threshold -0.5 should remain rejected");
+    }
+
+    delete split;
 }
 
 // LimAvg + Max_f/Min_f/SumB tests
@@ -1524,6 +1437,960 @@ void test_limavg_sumb() {
 }
 
 // ============================================================================
+// Targeted Sup/LimSup + Min/Max Regression Tests
+// ============================================================================
+
+void test_sup_minmax_initial_final_child_consumes_current_symbol() {
+    NestedAutomaton* nwa = new NestedAutomaton(CorrectnessTestFiles::SUP_INITIAL_FINAL_CHILD);
+    verifyNestedAutomatonBasics(nwa, "sup_initial_final_child");
+
+    for (value_function_t infVal : {Sup, LimSup}) {
+        for (value_function_t finVal : {Max_f, Min_f}) {
+            bool at_threshold = nwa->isNonEmpty(infVal, finVal, weight_t(1), weight_t(-1));
+            bool above_threshold = nwa->isNonEmpty(infVal, finVal, weight_t(2), weight_t(-1));
+
+            std::stringstream ctx;
+            ctx << "sup_initial_final_child." << infValToString(infVal) << "." << finValToString(finVal);
+
+            TEST_ASSERT_TRUE(at_threshold, ctx.str() + ": threshold 1 should be accepted");
+            TEST_ASSERT_FALSE(above_threshold, ctx.str() + ": threshold 2 should be rejected");
+        }
+    }
+
+    delete nwa;
+}
+
+void test_sup_minmax_initial_final_child_cannot_skip_bad_current_symbol() {
+    NestedAutomaton* nwa = new NestedAutomaton(
+        CorrectnessTestFiles::SUP_INITIAL_FINAL_CHILD_MIN_BAD_CURRENT_SYMBOL);
+    verifyNestedAutomatonBasics(nwa, "sup_initial_final_child_min_bad_current_symbol");
+
+    for (value_function_t infVal : {Sup, LimSup}) {
+        for (value_function_t finVal : {Max_f, Min_f}) {
+            bool at_zero = nwa->isNonEmpty(infVal, finVal, weight_t(0), weight_t(-1));
+            bool at_one = nwa->isNonEmpty(infVal, finVal, weight_t(1), weight_t(-1));
+
+            std::stringstream ctx;
+            ctx << "sup_initial_final_child_min_bad_current_symbol."
+                << infValToString(infVal) << "." << finValToString(finVal);
+
+            TEST_ASSERT_TRUE(at_zero, ctx.str() + ": threshold 0 should be accepted");
+            TEST_ASSERT_FALSE(at_one, ctx.str() + ": threshold 1 should be rejected");
+        }
+    }
+
+    delete nwa;
+}
+
+void test_sup_minmax_background_child_must_eventually_terminate() {
+    NestedAutomaton* nwa = new NestedAutomaton(CorrectnessTestFiles::SUP_BACKGROUND_OBLIGATION_BLOCKER);
+    verifyNestedAutomatonBasics(nwa, "sup_background_obligation_blocker");
+
+    for (value_function_t infVal : {Sup, LimSup}) {
+        for (value_function_t finVal : {Max_f, Min_f}) {
+            std::stringstream ctx;
+            ctx << "sup_background_obligation_blocker." << infValToString(infVal)
+                << "." << finValToString(finVal);
+
+            for (weight_t threshold : {weight_t(-1), weight_t(0), weight_t(0.5), weight_t(1)}) {
+                bool result = nwa->isNonEmpty(infVal, finVal, threshold, weight_t(-1));
+                std::stringstream threshold_ctx;
+                threshold_ctx << ctx.str() << ".threshold=" << threshold;
+                TEST_ASSERT_FALSE(result, threshold_ctx.str() + ": pending background child should block acceptance");
+            }
+        }
+    }
+
+    delete nwa;
+}
+
+static bool evaluate_regular_oracle(NestedAutomaton* nwa,
+                                    value_function_t infVal,
+                                    value_function_t finVal,
+                                    weight_t threshold) {
+    Automaton* flat = nwa->flatten_regular(finVal, threshold);
+    Automaton* non_silent = Automaton::removeSilentTransitions(flat, infVal, false);
+    bool result = non_silent->isNonEmpty_withFinal(infVal, threshold);
+    delete non_silent;
+    delete flat;
+    return result;
+}
+
+static SetStd<weight_t> flatten_regular_weights(NestedAutomaton* nwa,
+                                                value_function_t finVal,
+                                                weight_t bound = weight_t(-1)) {
+    Automaton* flat = nwa->flatten_regular(finVal, bound);
+    TEST_ASSERT_NOT_NULL(flat, "flatten_regular should produce an automaton");
+
+    SetStd<weight_t> weights;
+    for (unsigned int i = 0; i < flat->getWeights()->size(); ++i) {
+        weights.insert(flat->getWeights()->at(i)->getValue());
+    }
+
+    delete flat;
+    return weights;
+}
+
+using ThresholdFlattenFn = Automaton* (*)(NestedAutomaton*, value_function_t, weight_t);
+
+static bool evaluate_threshold_binary(NestedAutomaton* nwa,
+                                      ThresholdFlattenFn flatten,
+                                      value_function_t infVal,
+                                      value_function_t finVal,
+                                      weight_t threshold) {
+    Automaton* flat = flatten(nwa, finVal, threshold);
+    TEST_ASSERT_NOT_NULL(flat, "threshold flatten should produce an automaton");
+
+    Automaton* non_silent = Automaton::removeSilentTransitions(flat, infVal, false);
+    const bool result = non_silent->isNonEmpty_withFinal(infVal, weight_t(1));
+    delete non_silent;
+    delete flat;
+    return result;
+}
+
+static void assert_split_regular_decision_matches(const std::string& label,
+                                                  const std::string& path,
+                                                  value_function_t infVal,
+                                                  value_function_t finVal,
+                                                  weight_t threshold) {
+    NestedAutomaton original(path);
+    NestedAutomaton* split = NestedAutomatonTester::split_child_finals_for_testing(&original);
+
+    const bool original_result = evaluate_regular_oracle(&original, infVal, finVal, threshold);
+    const bool split_result = evaluate_regular_oracle(split, infVal, finVal, threshold);
+
+    std::stringstream ctx;
+    ctx << label << "." << infValToString(infVal) << "." << finValToString(finVal);
+    TEST_ASSERT_EQ(split_result, original_result,
+                   ctx.str() + ": split-final regular decision should match original");
+
+    delete split;
+}
+
+static void assert_split_threshold_decision_matches(const std::string& label,
+                                                   const std::string& path,
+                                                   ThresholdFlattenFn flatten,
+                                                   value_function_t infVal,
+                                                   value_function_t finVal,
+                                                   weight_t threshold) {
+    NestedAutomaton original(path);
+    NestedAutomaton* split = NestedAutomatonTester::split_child_finals_for_testing(&original);
+
+    const bool original_result = evaluate_threshold_binary(&original, flatten, infVal, finVal, threshold);
+    const bool split_result = evaluate_threshold_binary(split, flatten, infVal, finVal, threshold);
+
+    std::stringstream ctx;
+    ctx << label << "." << infValToString(infVal) << "." << finValToString(finVal);
+    TEST_ASSERT_EQ(split_result, original_result,
+                   ctx.str() + ": split-final threshold decision should match original");
+
+    delete split;
+}
+
+static SetStd<weight_t> flatten_initial_symbol_weights(NestedAutomaton* nwa,
+                                                       ThresholdFlattenFn flatten,
+                                                       value_function_t finVal,
+                                                       weight_t threshold,
+                                                       const std::string& symbol_name) {
+    Automaton* flat = flatten(nwa, finVal, threshold);
+    TEST_ASSERT_NOT_NULL(flat, "threshold flatten should produce an automaton");
+
+    unsigned int symbol_id = flat->getAlphabet()->size();
+    for (unsigned int i = 0; i < flat->getAlphabet()->size(); ++i) {
+        if (flat->getAlphabet()->at(i)->getName() == symbol_name) {
+            symbol_id = i;
+            break;
+        }
+    }
+    TEST_ASSERT(symbol_id < flat->getAlphabet()->size(),
+                "threshold flatten should preserve the requested symbol");
+
+    SetStd<weight_t> weights;
+    SetStd<Edge*>* succs = flat->getInitial()->getSuccessors(symbol_id);
+    TEST_ASSERT_NOT_NULL(succs, "initial state should expose successor storage for the requested symbol");
+    for (Edge* edge : *succs) {
+        weights.insert(edge->getWeight()->getValue());
+    }
+
+    delete flat;
+    return weights;
+}
+
+void test_child_return_values_non_parent_aware_max_wrong_final_can_continue() {
+    NestedAutomaton* nwa = new NestedAutomaton(CorrectnessTestFiles::REGULAR_FINAL_CONTINUATION_MAX_POSITIVE);
+    verifyNestedAutomatonBasics(nwa, "regular_final_continuation_max_positive");
+
+    const SetStd<weight_t> values =
+        NestedAutomatonTester::compute_child_return_values(nwa, 1, Max_f, weight_t(-1));
+
+    TEST_ASSERT_TRUE(values.contains(weight_t(0)),
+                     "non-parent-aware Max_f helper should include the early final return 0");
+    TEST_ASSERT_TRUE(values.contains(weight_t(1)),
+                     "non-parent-aware Max_f helper should include the continued final return 1");
+    TEST_ASSERT_EQ(values.size(), 2u,
+                   "non-parent-aware Max_f helper should return exactly the two reachable values");
+
+    delete nwa;
+}
+
+void test_child_return_values_non_parent_aware_max_wrong_final_negative_control() {
+    NestedAutomaton* nwa = new NestedAutomaton(CorrectnessTestFiles::REGULAR_FINAL_CONTINUATION_MAX_NEGATIVE);
+    verifyNestedAutomatonBasics(nwa, "regular_final_continuation_max_negative");
+
+    const SetStd<weight_t> values =
+        NestedAutomatonTester::compute_child_return_values(nwa, 1, Max_f, weight_t(-1));
+
+    TEST_ASSERT_TRUE(values.contains(weight_t(0)),
+                     "non-parent-aware Max_f negative control should include return 0");
+    TEST_ASSERT_FALSE(values.contains(weight_t(1)),
+                      "non-parent-aware Max_f negative control should not invent return 1");
+    TEST_ASSERT_EQ(values.size(), 1u,
+                   "non-parent-aware Max_f negative control should return exactly one value");
+
+    delete nwa;
+}
+
+void test_child_return_values_non_parent_aware_max_multiple_finals() {
+    NestedAutomaton* nwa = new NestedAutomaton(CorrectnessTestFiles::REGULAR_FINAL_CONTINUATION_MAX_MULTIFINAL);
+    verifyNestedAutomatonBasics(nwa, "regular_final_continuation_max_multifinal");
+
+    const SetStd<weight_t> values =
+        NestedAutomatonTester::compute_child_return_values(nwa, 1, Max_f, weight_t(-1));
+
+    TEST_ASSERT_TRUE(values.contains(weight_t(0)),
+                     "non-parent-aware Max_f multi-final helper should include early return 0");
+    TEST_ASSERT_TRUE(values.contains(weight_t(1)),
+                     "non-parent-aware Max_f multi-final helper should continue through finals to return 1");
+    TEST_ASSERT_EQ(values.size(), 2u,
+                   "non-parent-aware Max_f multi-final helper should return exactly two values");
+
+    delete nwa;
+}
+
+void test_child_return_values_non_parent_aware_min_wrong_final_can_continue() {
+    NestedAutomaton* nwa = new NestedAutomaton(CorrectnessTestFiles::REGULAR_FINAL_CONTINUATION_MIN_WEIGHTSET);
+    verifyNestedAutomatonBasics(nwa, "regular_final_continuation_min_weightset");
+
+    const SetStd<weight_t> values =
+        NestedAutomatonTester::compute_child_return_values(nwa, 1, Min_f, weight_t(-1));
+
+    TEST_ASSERT_TRUE(values.contains(weight_t(1)),
+                     "non-parent-aware Min_f helper should include the early final return 1");
+    TEST_ASSERT_TRUE(values.contains(weight_t(0)),
+                     "non-parent-aware Min_f helper should include the continued low return 0");
+    TEST_ASSERT_EQ(values.size(), 2u,
+                   "non-parent-aware Min_f helper should return exactly the two reachable values");
+
+    delete nwa;
+}
+
+void test_child_return_values_non_parent_aware_sumb_wrong_final_can_continue() {
+    NestedAutomaton* nwa = new NestedAutomaton(CorrectnessTestFiles::REGULAR_FINAL_CONTINUATION_SUMB_POSITIVE);
+    verifyNestedAutomatonBasics(nwa, "regular_final_continuation_sumb_positive");
+
+    const SetStd<weight_t> values =
+        NestedAutomatonTester::compute_child_return_values(nwa, 1, SumB, weight_t(5));
+
+    TEST_ASSERT_TRUE(values.contains(weight_t(4)),
+                     "non-parent-aware SumB helper should include the early bounded return 4");
+    TEST_ASSERT_TRUE(values.contains(weight_t(5)),
+                     "non-parent-aware SumB helper should include the continued saturated return 5");
+    TEST_ASSERT_FALSE(values.contains(weight_t(6)),
+                      "non-parent-aware SumB helper should expose saturated values, not raw overflow 6");
+    TEST_ASSERT_EQ(values.size(), 2u,
+                   "non-parent-aware SumB helper should return exactly the two reachable bounded values");
+
+    delete nwa;
+}
+
+void test_regular_oracle_max_wrong_final_can_continue() {
+    NestedAutomaton* nwa = new NestedAutomaton(CorrectnessTestFiles::REGULAR_FINAL_CONTINUATION_MAX_POSITIVE);
+    verifyNestedAutomatonBasics(nwa, "regular_final_continuation_max_positive");
+
+    const SetStd<weight_t> weights = flatten_regular_weights(nwa, Max_f);
+    TEST_ASSERT_TRUE(weights.contains(weight_t(0)),
+                     "regular_final_continuation_max_positive: flattened weights should include the early return 0");
+    TEST_ASSERT_TRUE(weights.contains(weight_t(1)),
+                     "regular_final_continuation_max_positive: flattened weights should include the continued return 1");
+
+    for (value_function_t infVal : {Sup, LimSup}) {
+        std::stringstream ctx;
+        ctx << "regular_final_continuation_max_positive." << infValToString(infVal);
+
+        TEST_ASSERT_TRUE(evaluate_regular_oracle(nwa, infVal, Max_f, weight_t(1)),
+                         ctx.str() + ": threshold 1 should be accepted");
+        TEST_ASSERT_FALSE(evaluate_regular_oracle(nwa, infVal, Max_f, weight_t(2)),
+                          ctx.str() + ": threshold 2 should be rejected");
+    }
+
+    delete nwa;
+}
+
+void test_regular_oracle_max_wrong_final_negative_control() {
+    NestedAutomaton* nwa = new NestedAutomaton(CorrectnessTestFiles::REGULAR_FINAL_CONTINUATION_MAX_NEGATIVE);
+    verifyNestedAutomatonBasics(nwa, "regular_final_continuation_max_negative");
+
+    const SetStd<weight_t> weights = flatten_regular_weights(nwa, Max_f);
+    TEST_ASSERT_TRUE(weights.contains(weight_t(0)),
+                     "regular_final_continuation_max_negative: flattened weights should include 0");
+    TEST_ASSERT_FALSE(weights.contains(weight_t(1)),
+                      "regular_final_continuation_max_negative: flattened weights should not include 1");
+
+    for (value_function_t infVal : {Sup, LimSup}) {
+        std::stringstream ctx;
+        ctx << "regular_final_continuation_max_negative." << infValToString(infVal);
+
+        TEST_ASSERT_TRUE(evaluate_regular_oracle(nwa, infVal, Max_f, weight_t(0)),
+                         ctx.str() + ": threshold 0 should be accepted");
+        TEST_ASSERT_FALSE(evaluate_regular_oracle(nwa, infVal, Max_f, weight_t(1)),
+                          ctx.str() + ": threshold 1 should be rejected");
+    }
+
+    delete nwa;
+}
+
+void test_regular_oracle_max_continues_through_multiple_finals() {
+    NestedAutomaton* nwa = new NestedAutomaton(CorrectnessTestFiles::REGULAR_FINAL_CONTINUATION_MAX_MULTIFINAL);
+    verifyNestedAutomatonBasics(nwa, "regular_final_continuation_max_multifinal");
+
+    const SetStd<weight_t> weights = flatten_regular_weights(nwa, Max_f);
+    TEST_ASSERT_TRUE(weights.contains(weight_t(0)),
+                     "regular_final_continuation_max_multifinal: flattened weights should include 0");
+    TEST_ASSERT_TRUE(weights.contains(weight_t(1)),
+                     "regular_final_continuation_max_multifinal: flattened weights should include 1");
+
+    for (value_function_t infVal : {Sup, LimSup}) {
+        std::stringstream ctx;
+        ctx << "regular_final_continuation_max_multifinal." << infValToString(infVal);
+
+        TEST_ASSERT_TRUE(evaluate_regular_oracle(nwa, infVal, Max_f, weight_t(1)),
+                         ctx.str() + ": threshold 1 should be accepted");
+        TEST_ASSERT_FALSE(evaluate_regular_oracle(nwa, infVal, Max_f, weight_t(2)),
+                          ctx.str() + ": threshold 2 should be rejected");
+    }
+
+    delete nwa;
+}
+
+void test_regular_flatten_min_tracks_continued_low_return() {
+    NestedAutomaton* nwa = new NestedAutomaton(CorrectnessTestFiles::REGULAR_FINAL_CONTINUATION_MIN_WEIGHTSET);
+    verifyNestedAutomatonBasics(nwa, "regular_final_continuation_min_weightset");
+
+    const SetStd<weight_t> weights = flatten_regular_weights(nwa, Min_f);
+    TEST_ASSERT_TRUE(weights.contains(weight_t(0)),
+                     "regular_final_continuation_min_weightset: flattened weights should include the continued low return 0");
+    TEST_ASSERT_TRUE(weights.contains(weight_t(1)),
+                     "regular_final_continuation_min_weightset: flattened weights should include the early return 1");
+
+    for (value_function_t infVal : {Sup, LimSup}) {
+        std::stringstream ctx;
+        ctx << "regular_final_continuation_min_weightset." << infValToString(infVal);
+
+        TEST_ASSERT_TRUE(evaluate_regular_oracle(nwa, infVal, Min_f, weight_t(1)),
+                         ctx.str() + ": threshold 1 should be accepted");
+        TEST_ASSERT_FALSE(evaluate_regular_oracle(nwa, infVal, Min_f, weight_t(2)),
+                          ctx.str() + ": threshold 2 should be rejected");
+    }
+
+    delete nwa;
+}
+
+void test_regular_oracle_sumb_wrong_final_can_continue() {
+    NestedAutomaton* nwa = new NestedAutomaton(CorrectnessTestFiles::REGULAR_FINAL_CONTINUATION_SUMB_POSITIVE);
+    verifyNestedAutomatonBasics(nwa, "regular_final_continuation_sumb_positive");
+
+    const weight_t bound = weight_t(5);
+    const SetStd<weight_t> weights = flatten_regular_weights(nwa, SumB, bound);
+    TEST_ASSERT_TRUE(weights.contains(weight_t(4)),
+                     "regular_final_continuation_sumb_positive: flattened weights should include the early bounded return 4");
+    TEST_ASSERT_TRUE(weights.contains(weight_t(5)),
+                     "regular_final_continuation_sumb_positive: flattened weights should include the continued bounded return 5");
+    TEST_ASSERT_FALSE(weights.contains(weight_t(6)),
+                      "regular_final_continuation_sumb_positive: flattened weights should not include 6 when the bound is 5");
+
+    for (value_function_t infVal : {Sup, LimSup}) {
+        std::stringstream ctx;
+        ctx << "regular_final_continuation_sumb_positive." << infValToString(infVal);
+
+        TEST_ASSERT_TRUE(evaluate_regular_oracle(nwa, infVal, SumB, bound),
+                         ctx.str() + ": threshold 5 should be accepted");
+    }
+
+    delete nwa;
+}
+
+void test_threshold_extremal_max_wrong_final_can_continue() {
+    NestedAutomaton* nwa = new NestedAutomaton(CorrectnessTestFiles::THRESHOLD_EXTREMAL_MAX_WRONG_FINAL_POSITIVE);
+    verifyNestedAutomatonBasics(nwa, "threshold_extremal_max_wrong_final_positive");
+
+    for (ThresholdFlattenFn flatten : {&NestedAutomatonTester::flatten_MinMax_Sup,
+                                       &NestedAutomatonTester::flatten_MinMax_Inf}) {
+        const SetStd<weight_t> weights =
+            flatten_initial_symbol_weights(nwa, flatten, Max_f, weight_t(1), "a");
+        TEST_ASSERT_TRUE(weights.contains(weight_t(0)),
+                         "threshold_extremal_max_wrong_final_positive: `a` should keep the early low guess 0");
+        TEST_ASSERT_TRUE(weights.contains(weight_t(1)),
+                         "threshold_extremal_max_wrong_final_positive: `a` should also keep the continued high guess 1");
+    }
+
+    for (value_function_t infVal : {Sup, LimSup}) {
+        std::stringstream ctx;
+        ctx << "threshold_extremal_max_wrong_final_positive.MinMaxSup." << infValToString(infVal);
+        TEST_ASSERT_TRUE(
+            evaluate_threshold_binary(nwa, &NestedAutomatonTester::flatten_MinMax_Sup, infVal, Max_f, weight_t(1)),
+            ctx.str() + ": threshold 1 should be accepted");
+    }
+
+    for (value_function_t infVal : {Inf, LimInf}) {
+        std::stringstream ctx;
+        ctx << "threshold_extremal_max_wrong_final_positive.MinMaxInf." << infValToString(infVal);
+        TEST_ASSERT_TRUE(
+            evaluate_threshold_binary(nwa, &NestedAutomatonTester::flatten_MinMax_Inf, infVal, Max_f, weight_t(1)),
+            ctx.str() + ": threshold 1 should be accepted");
+    }
+
+    delete nwa;
+}
+
+void test_threshold_extremal_min_wrong_final_low_guess_is_spawnable() {
+    NestedAutomaton* nwa = new NestedAutomaton(CorrectnessTestFiles::THRESHOLD_EXTREMAL_MIN_WRONG_FINAL_LOW_GUESS);
+    verifyNestedAutomatonBasics(nwa, "threshold_extremal_min_wrong_final_low_guess");
+
+    for (ThresholdFlattenFn flatten : {&NestedAutomatonTester::flatten_MinMax_Sup,
+                                       &NestedAutomatonTester::flatten_MinMax_Inf}) {
+        const SetStd<weight_t> weights =
+            flatten_initial_symbol_weights(nwa, flatten, Min_f, weight_t(1), "a");
+        TEST_ASSERT_TRUE(weights.contains(weight_t(0)),
+                         "threshold_extremal_min_wrong_final_low_guess: `a` should keep the continued low guess 0");
+        TEST_ASSERT_TRUE(weights.contains(weight_t(1)),
+                         "threshold_extremal_min_wrong_final_low_guess: `a` should keep the immediate high guess 1");
+    }
+
+    for (value_function_t infVal : {Sup, LimSup}) {
+        std::stringstream ctx;
+        ctx << "threshold_extremal_min_wrong_final_low_guess.MinMaxSup." << infValToString(infVal);
+        TEST_ASSERT_TRUE(
+            evaluate_threshold_binary(nwa, &NestedAutomatonTester::flatten_MinMax_Sup, infVal, Min_f, weight_t(1)),
+            ctx.str() + ": threshold 1 should remain accepted");
+    }
+
+    for (value_function_t infVal : {Inf, LimInf}) {
+        std::stringstream ctx;
+        ctx << "threshold_extremal_min_wrong_final_low_guess.MinMaxInf." << infValToString(infVal);
+        TEST_ASSERT_TRUE(
+            evaluate_threshold_binary(nwa, &NestedAutomatonTester::flatten_MinMax_Inf, infVal, Min_f, weight_t(1)),
+            ctx.str() + ": threshold 1 should remain accepted");
+    }
+
+    delete nwa;
+}
+
+void test_threshold_extremal_sumplus_wrong_final_can_continue() {
+    NestedAutomaton* nwa = new NestedAutomaton(CorrectnessTestFiles::THRESHOLD_EXTREMAL_SUMPLUS_WRONG_FINAL_POSITIVE);
+    verifyNestedAutomatonBasics(nwa, "threshold_extremal_sumplus_wrong_final_positive");
+
+    for (ThresholdFlattenFn flatten : {&NestedAutomatonTester::flatten_SumPlusMinus_Sup,
+                                       &NestedAutomatonTester::flatten_SumPlusMinus_Inf}) {
+        const SetStd<weight_t> weights =
+            flatten_initial_symbol_weights(nwa, flatten, SumPlus, weight_t(5), "a");
+        TEST_ASSERT_TRUE(weights.contains(weight_t(0)),
+                         "threshold_extremal_sumplus_wrong_final_positive: `a` should keep the early low guess 0");
+        TEST_ASSERT_TRUE(weights.contains(weight_t(1)),
+                         "threshold_extremal_sumplus_wrong_final_positive: `a` should also keep the continued high guess 1");
+    }
+
+    for (value_function_t infVal : {Sup, LimSup}) {
+        std::stringstream ctx;
+        ctx << "threshold_extremal_sumplus_wrong_final_positive.SumSup." << infValToString(infVal);
+        TEST_ASSERT_TRUE(
+            evaluate_threshold_binary(nwa, &NestedAutomatonTester::flatten_SumPlusMinus_Sup, infVal, SumPlus, weight_t(5)),
+            ctx.str() + ": threshold 5 should be accepted");
+    }
+
+    for (value_function_t infVal : {Inf, LimInf}) {
+        std::stringstream ctx;
+        ctx << "threshold_extremal_sumplus_wrong_final_positive.SumInf." << infValToString(infVal);
+        TEST_ASSERT_TRUE(
+            evaluate_threshold_binary(nwa, &NestedAutomatonTester::flatten_SumPlusMinus_Inf, infVal, SumPlus, weight_t(5)),
+            ctx.str() + ": threshold 5 should be accepted");
+    }
+
+    delete nwa;
+}
+
+void test_threshold_extremal_summinus_wrong_final_low_guess_is_spawnable() {
+    NestedAutomaton* nwa = new NestedAutomaton(CorrectnessTestFiles::THRESHOLD_EXTREMAL_SUMMINUS_WRONG_FINAL_LOW_GUESS);
+    verifyNestedAutomatonBasics(nwa, "threshold_extremal_summinus_wrong_final_low_guess");
+
+    for (ThresholdFlattenFn flatten : {&NestedAutomatonTester::flatten_SumPlusMinus_Sup,
+                                       &NestedAutomatonTester::flatten_SumPlusMinus_Inf}) {
+        const SetStd<weight_t> weights =
+            flatten_initial_symbol_weights(nwa, flatten, SumMinus, weight_t(-3), "a");
+        TEST_ASSERT_TRUE(weights.contains(weight_t(0)),
+                         "threshold_extremal_summinus_wrong_final_low_guess: `a` should keep the continued low guess 0");
+        TEST_ASSERT_TRUE(weights.contains(weight_t(1)),
+                         "threshold_extremal_summinus_wrong_final_low_guess: `a` should keep the immediate high guess 1");
+    }
+
+    for (value_function_t infVal : {Sup, LimSup}) {
+        std::stringstream ctx;
+        ctx << "threshold_extremal_summinus_wrong_final_low_guess.SumSup." << infValToString(infVal);
+        TEST_ASSERT_TRUE(
+            evaluate_threshold_binary(nwa, &NestedAutomatonTester::flatten_SumPlusMinus_Sup, infVal, SumMinus, weight_t(-3)),
+            ctx.str() + ": threshold -3 should remain accepted");
+    }
+
+    for (value_function_t infVal : {Inf, LimInf}) {
+        std::stringstream ctx;
+        ctx << "threshold_extremal_summinus_wrong_final_low_guess.SumInf." << infValToString(infVal);
+        TEST_ASSERT_TRUE(
+            evaluate_threshold_binary(nwa, &NestedAutomatonTester::flatten_SumPlusMinus_Inf, infVal, SumMinus, weight_t(-3)),
+            ctx.str() + ": threshold -3 should remain accepted");
+    }
+
+    delete nwa;
+}
+
+void test_sum_inf_cached_sumplus_wrong_final_can_continue() {
+    NestedAutomaton* nwa = new NestedAutomaton(CorrectnessTestFiles::THRESHOLD_EXTREMAL_SUMPLUS_WRONG_FINAL_POSITIVE);
+    verifyNestedAutomatonBasics(nwa, "threshold_extremal_sumplus_wrong_final_positive");
+
+    for (value_function_t infVal : {Inf, LimInf}) {
+        const bool cached = evaluate_threshold_binary(
+            nwa, &NestedAutomatonTester::flatten_SumPlusMinus_Inf_cached, infVal, SumPlus, weight_t(5));
+
+        std::stringstream ctx;
+        ctx << "sum_inf_cached_sumplus_wrong_final_positive." << infValToString(infVal);
+        TEST_ASSERT_TRUE(cached, ctx.str() + ": threshold 5 should be accepted");
+    }
+
+    delete nwa;
+}
+
+void test_sum_inf_cached_summinus_wrong_final_low_guess_is_spawnable() {
+    NestedAutomaton* nwa = new NestedAutomaton(CorrectnessTestFiles::THRESHOLD_EXTREMAL_SUMMINUS_WRONG_FINAL_LOW_GUESS);
+    verifyNestedAutomatonBasics(nwa, "threshold_extremal_summinus_wrong_final_low_guess");
+
+    for (value_function_t infVal : {Inf, LimInf}) {
+        const bool cached = evaluate_threshold_binary(
+            nwa, &NestedAutomatonTester::flatten_SumPlusMinus_Inf_cached, infVal, SumMinus, weight_t(-3));
+
+        std::stringstream ctx;
+        ctx << "sum_inf_cached_summinus_wrong_final_low_guess." << infValToString(infVal);
+        TEST_ASSERT_TRUE(cached, ctx.str() + ": threshold -3 should remain accepted");
+    }
+
+    delete nwa;
+}
+
+void test_minmax_sup_cached_max_wrong_final_can_continue() {
+    NestedAutomaton* nwa = new NestedAutomaton(CorrectnessTestFiles::THRESHOLD_EXTREMAL_MAX_WRONG_FINAL_POSITIVE);
+    verifyNestedAutomatonBasics(nwa, "threshold_extremal_max_wrong_final_positive");
+
+    const SetStd<weight_t> weights = flatten_initial_symbol_weights(
+        nwa, &NestedAutomatonTester::flatten_MinMax_Sup_cached, Max_f, weight_t(1), "a");
+    TEST_ASSERT_TRUE(weights.contains(weight_t(0)),
+                     "minmax_sup_cached_max_wrong_final_positive: `a` should keep the early low guess 0");
+    TEST_ASSERT_TRUE(weights.contains(weight_t(1)),
+                     "minmax_sup_cached_max_wrong_final_positive: `a` should keep the continued high guess 1");
+
+    for (value_function_t infVal : {Sup, LimSup}) {
+        const bool cached = evaluate_threshold_binary(
+            nwa, &NestedAutomatonTester::flatten_MinMax_Sup_cached, infVal, Max_f, weight_t(1));
+        const bool regular = evaluate_regular_oracle(nwa, infVal, Max_f, weight_t(1));
+
+        std::stringstream ctx;
+        ctx << "minmax_sup_cached_max_wrong_final_positive." << infValToString(infVal);
+        TEST_ASSERT_EQ(cached, regular, ctx.str() + ": cached MMThr backend should match regular oracle");
+        TEST_ASSERT_TRUE(cached, ctx.str() + ": threshold 1 should be accepted");
+    }
+
+    delete nwa;
+}
+
+void test_minmax_sup_cached_max_wrong_final_negative_control() {
+    NestedAutomaton* nwa = new NestedAutomaton(CorrectnessTestFiles::REGULAR_FINAL_CONTINUATION_MAX_NEGATIVE);
+    verifyNestedAutomatonBasics(nwa, "regular_final_continuation_max_negative");
+
+    const SetStd<weight_t> weights = flatten_initial_symbol_weights(
+        nwa, &NestedAutomatonTester::flatten_MinMax_Sup_cached, Max_f, weight_t(1), "a");
+    TEST_ASSERT_TRUE(weights.contains(weight_t(0)),
+                     "minmax_sup_cached_max_negative: `a` should keep the low guess 0");
+    TEST_ASSERT_FALSE(weights.contains(weight_t(1)),
+                      "minmax_sup_cached_max_negative: `a` should not keep the high guess 1");
+
+    for (value_function_t infVal : {Sup, LimSup}) {
+        const bool cached = evaluate_threshold_binary(
+            nwa, &NestedAutomatonTester::flatten_MinMax_Sup_cached, infVal, Max_f, weight_t(1));
+        const bool regular = evaluate_regular_oracle(nwa, infVal, Max_f, weight_t(1));
+
+        std::stringstream ctx;
+        ctx << "minmax_sup_cached_max_negative." << infValToString(infVal);
+        TEST_ASSERT_EQ(cached, regular, ctx.str() + ": cached MMThr backend should match regular oracle");
+        TEST_ASSERT_FALSE(cached, ctx.str() + ": threshold 1 should be rejected");
+    }
+
+    delete nwa;
+}
+
+void test_minmax_sup_witness_cached_max_wrong_final_can_continue() {
+    NestedAutomaton* nwa = new NestedAutomaton(CorrectnessTestFiles::THRESHOLD_EXTREMAL_MAX_WRONG_FINAL_POSITIVE);
+    verifyNestedAutomatonBasics(nwa, "threshold_extremal_max_wrong_final_positive");
+
+    for (value_function_t infVal : {Sup, LimSup}) {
+        const bool witness = evaluate_threshold_binary(
+            nwa, &NestedAutomatonTester::flatten_MinMax_Sup_witness_cached, infVal, Max_f, weight_t(1));
+        const bool regular = evaluate_regular_oracle(nwa, infVal, Max_f, weight_t(1));
+
+        std::stringstream ctx;
+        ctx << "minmax_sup_witness_cached_max_wrong_final_positive." << infValToString(infVal);
+        TEST_ASSERT_EQ(witness, regular, ctx.str() + ": witness backend should match regular oracle");
+        TEST_ASSERT_TRUE(witness, ctx.str() + ": threshold 1 should be accepted");
+    }
+
+    delete nwa;
+}
+
+void test_minmax_sup_witness_cached_max_wrong_final_negative_control() {
+    NestedAutomaton* nwa = new NestedAutomaton(CorrectnessTestFiles::REGULAR_FINAL_CONTINUATION_MAX_NEGATIVE);
+    verifyNestedAutomatonBasics(nwa, "regular_final_continuation_max_negative");
+
+    for (value_function_t infVal : {Sup, LimSup}) {
+        const bool witness = evaluate_threshold_binary(
+            nwa, &NestedAutomatonTester::flatten_MinMax_Sup_witness_cached, infVal, Max_f, weight_t(1));
+        const bool regular = evaluate_regular_oracle(nwa, infVal, Max_f, weight_t(1));
+
+        std::stringstream ctx;
+        ctx << "minmax_sup_witness_cached_max_negative." << infValToString(infVal);
+        TEST_ASSERT_EQ(witness, regular, ctx.str() + ": witness backend should match regular oracle");
+        TEST_ASSERT_FALSE(witness, ctx.str() + ": threshold 1 should be rejected");
+    }
+
+    delete nwa;
+}
+
+void test_minmax_sup_witness_cached_max_continues_through_multiple_finals() {
+    NestedAutomaton* nwa = new NestedAutomaton(CorrectnessTestFiles::REGULAR_FINAL_CONTINUATION_MAX_MULTIFINAL);
+    verifyNestedAutomatonBasics(nwa, "regular_final_continuation_max_multifinal");
+
+    for (value_function_t infVal : {Sup, LimSup}) {
+        const bool witness = evaluate_threshold_binary(
+            nwa, &NestedAutomatonTester::flatten_MinMax_Sup_witness_cached, infVal, Max_f, weight_t(1));
+        const bool regular = evaluate_regular_oracle(nwa, infVal, Max_f, weight_t(1));
+
+        std::stringstream ctx;
+        ctx << "minmax_sup_witness_cached_max_multifinal." << infValToString(infVal);
+        TEST_ASSERT_EQ(witness, regular, ctx.str() + ": witness backend should match regular oracle");
+        TEST_ASSERT_TRUE(witness, ctx.str() + ": threshold 1 should be accepted");
+    }
+
+    delete nwa;
+}
+
+void test_minmax_inf_cached_max_wrong_final_can_continue() {
+    NestedAutomaton* nwa = new NestedAutomaton(CorrectnessTestFiles::THRESHOLD_EXTREMAL_MAX_WRONG_FINAL_POSITIVE);
+    verifyNestedAutomatonBasics(nwa, "threshold_extremal_max_wrong_final_positive");
+
+    const SetStd<weight_t> weights = flatten_initial_symbol_weights(
+        nwa, &NestedAutomatonTester::flatten_MinMax_Inf_cached, Max_f, weight_t(1), "a");
+    TEST_ASSERT_TRUE(weights.contains(weight_t(0)),
+                     "minmax_inf_cached_max_wrong_final_positive: `a` should keep the early low guess 0");
+    TEST_ASSERT_TRUE(weights.contains(weight_t(1)),
+                     "minmax_inf_cached_max_wrong_final_positive: `a` should keep the continued high guess 1");
+
+    for (value_function_t infVal : {Inf, LimInf}) {
+        const bool cached = evaluate_threshold_binary(
+            nwa, &NestedAutomatonTester::flatten_MinMax_Inf_cached, infVal, Max_f, weight_t(1));
+        const bool regular = evaluate_regular_oracle(nwa, infVal, Max_f, weight_t(1));
+
+        std::stringstream ctx;
+        ctx << "minmax_inf_cached_max_wrong_final_positive." << infValToString(infVal);
+        TEST_ASSERT_EQ(cached, regular, ctx.str() + ": cached Inf backend should match regular oracle");
+        TEST_ASSERT_TRUE(cached, ctx.str() + ": threshold 1 should be accepted");
+    }
+
+    delete nwa;
+}
+
+void test_minmax_inf_cached_min_wrong_final_low_guess_is_spawnable() {
+    NestedAutomaton* nwa = new NestedAutomaton(CorrectnessTestFiles::THRESHOLD_EXTREMAL_MIN_WRONG_FINAL_LOW_GUESS);
+    verifyNestedAutomatonBasics(nwa, "threshold_extremal_min_wrong_final_low_guess");
+
+    const SetStd<weight_t> cached_weights = flatten_initial_symbol_weights(
+        nwa, &NestedAutomatonTester::flatten_MinMax_Inf_cached, Min_f, weight_t(1), "a");
+
+    TEST_ASSERT_TRUE(cached_weights.contains(weight_t(0)),
+                     "minmax_inf_cached_min_wrong_final_low_guess: cached Inf backend should keep the continued low guess 0");
+    TEST_ASSERT_TRUE(cached_weights.contains(weight_t(1)),
+                     "minmax_inf_cached_min_wrong_final_low_guess: cached Inf backend should keep the immediate high guess 1");
+
+    for (value_function_t infVal : {Inf, LimInf}) {
+        const bool cached = evaluate_threshold_binary(
+            nwa, &NestedAutomatonTester::flatten_MinMax_Inf_cached, infVal, Min_f, weight_t(1));
+
+        std::stringstream ctx;
+        ctx << "minmax_inf_cached_min_wrong_final_low_guess." << infValToString(infVal);
+        TEST_ASSERT_TRUE(cached, ctx.str() + ": threshold 1 should remain accepted");
+    }
+
+    delete nwa;
+}
+
+void test_split_final_regular_decisions_match_explicit_stop_continue() {
+    for (value_function_t infVal : {Sup, LimSup}) {
+        assert_split_regular_decision_matches(
+            "split_final_regular_max_positive",
+            CorrectnessTestFiles::REGULAR_FINAL_CONTINUATION_MAX_POSITIVE,
+            infVal,
+            Max_f,
+            weight_t(1));
+        assert_split_regular_decision_matches(
+            "split_final_regular_max_multifinal",
+            CorrectnessTestFiles::REGULAR_FINAL_CONTINUATION_MAX_MULTIFINAL,
+            infVal,
+            Max_f,
+            weight_t(1));
+        assert_split_regular_decision_matches(
+            "split_final_regular_min_weightset",
+            CorrectnessTestFiles::REGULAR_FINAL_CONTINUATION_MIN_WEIGHTSET,
+            infVal,
+            Min_f,
+            weight_t(1));
+        assert_split_regular_decision_matches(
+            "split_final_regular_sumb_positive",
+            CorrectnessTestFiles::REGULAR_FINAL_CONTINUATION_SUMB_POSITIVE,
+            infVal,
+            SumB,
+            weight_t(5));
+    }
+}
+
+void test_split_final_threshold_decisions_match_explicit_stop_continue() {
+    for (value_function_t infVal : {Sup, LimSup}) {
+        assert_split_threshold_decision_matches(
+            "split_final_threshold_minmax_sup_max_positive",
+            CorrectnessTestFiles::THRESHOLD_EXTREMAL_MAX_WRONG_FINAL_POSITIVE,
+            &NestedAutomatonTester::flatten_MinMax_Sup,
+            infVal,
+            Max_f,
+            weight_t(1));
+        assert_split_threshold_decision_matches(
+            "split_final_threshold_minmax_sup_min_low_guess",
+            CorrectnessTestFiles::THRESHOLD_EXTREMAL_MIN_WRONG_FINAL_LOW_GUESS,
+            &NestedAutomatonTester::flatten_MinMax_Sup,
+            infVal,
+            Min_f,
+            weight_t(1));
+        assert_split_threshold_decision_matches(
+            "split_final_threshold_sum_sup_sumplus_positive",
+            CorrectnessTestFiles::THRESHOLD_EXTREMAL_SUMPLUS_WRONG_FINAL_POSITIVE,
+            &NestedAutomatonTester::flatten_SumPlusMinus_Sup,
+            infVal,
+            SumPlus,
+            weight_t(5));
+        assert_split_threshold_decision_matches(
+            "split_final_threshold_sum_sup_summinus_low_guess",
+            CorrectnessTestFiles::THRESHOLD_EXTREMAL_SUMMINUS_WRONG_FINAL_LOW_GUESS,
+            &NestedAutomatonTester::flatten_SumPlusMinus_Sup,
+            infVal,
+            SumMinus,
+            weight_t(-3));
+    }
+
+    for (value_function_t infVal : {Inf, LimInf}) {
+        assert_split_threshold_decision_matches(
+            "split_final_threshold_minmax_inf_max_positive",
+            CorrectnessTestFiles::THRESHOLD_EXTREMAL_MAX_WRONG_FINAL_POSITIVE,
+            &NestedAutomatonTester::flatten_MinMax_Inf,
+            infVal,
+            Max_f,
+            weight_t(1));
+        assert_split_threshold_decision_matches(
+            "split_final_threshold_minmax_inf_min_low_guess",
+            CorrectnessTestFiles::THRESHOLD_EXTREMAL_MIN_WRONG_FINAL_LOW_GUESS,
+            &NestedAutomatonTester::flatten_MinMax_Inf,
+            infVal,
+            Min_f,
+            weight_t(1));
+        assert_split_threshold_decision_matches(
+            "split_final_threshold_sum_inf_sumplus_positive",
+            CorrectnessTestFiles::THRESHOLD_EXTREMAL_SUMPLUS_WRONG_FINAL_POSITIVE,
+            &NestedAutomatonTester::flatten_SumPlusMinus_Inf,
+            infVal,
+            SumPlus,
+            weight_t(5));
+        assert_split_threshold_decision_matches(
+            "split_final_threshold_sum_inf_summinus_low_guess",
+            CorrectnessTestFiles::THRESHOLD_EXTREMAL_SUMMINUS_WRONG_FINAL_LOW_GUESS,
+            &NestedAutomatonTester::flatten_SumPlusMinus_Inf,
+            infVal,
+            SumMinus,
+            weight_t(-3));
+    }
+}
+
+void test_split_final_cached_decisions_match_explicit_stop_continue() {
+    for (value_function_t infVal : {Sup, LimSup}) {
+        assert_split_threshold_decision_matches(
+            "split_final_cached_minmax_sup_max_positive",
+            CorrectnessTestFiles::THRESHOLD_EXTREMAL_MAX_WRONG_FINAL_POSITIVE,
+            &NestedAutomatonTester::flatten_MinMax_Sup_cached,
+            infVal,
+            Max_f,
+            weight_t(1));
+        assert_split_threshold_decision_matches(
+            "split_final_cached_minmax_witness_max_positive",
+            CorrectnessTestFiles::THRESHOLD_EXTREMAL_MAX_WRONG_FINAL_POSITIVE,
+            &NestedAutomatonTester::flatten_MinMax_Sup_witness_cached,
+            infVal,
+            Max_f,
+            weight_t(1));
+        assert_split_threshold_decision_matches(
+            "split_final_cached_minmax_witness_multifinal",
+            CorrectnessTestFiles::REGULAR_FINAL_CONTINUATION_MAX_MULTIFINAL,
+            &NestedAutomatonTester::flatten_MinMax_Sup_witness_cached,
+            infVal,
+            Max_f,
+            weight_t(1));
+    }
+
+    for (value_function_t infVal : {Inf, LimInf}) {
+        assert_split_threshold_decision_matches(
+            "split_final_cached_minmax_inf_max_positive",
+            CorrectnessTestFiles::THRESHOLD_EXTREMAL_MAX_WRONG_FINAL_POSITIVE,
+            &NestedAutomatonTester::flatten_MinMax_Inf_cached,
+            infVal,
+            Max_f,
+            weight_t(1));
+        assert_split_threshold_decision_matches(
+            "split_final_cached_minmax_inf_min_low_guess",
+            CorrectnessTestFiles::THRESHOLD_EXTREMAL_MIN_WRONG_FINAL_LOW_GUESS,
+            &NestedAutomatonTester::flatten_MinMax_Inf_cached,
+            infVal,
+            Min_f,
+            weight_t(1));
+        assert_split_threshold_decision_matches(
+            "split_final_cached_sum_inf_sumplus_positive",
+            CorrectnessTestFiles::THRESHOLD_EXTREMAL_SUMPLUS_WRONG_FINAL_POSITIVE,
+            &NestedAutomatonTester::flatten_SumPlusMinus_Inf_cached,
+            infVal,
+            SumPlus,
+            weight_t(5));
+        assert_split_threshold_decision_matches(
+            "split_final_cached_sum_inf_summinus_low_guess",
+            CorrectnessTestFiles::THRESHOLD_EXTREMAL_SUMMINUS_WRONG_FINAL_LOW_GUESS,
+            &NestedAutomatonTester::flatten_SumPlusMinus_Inf_cached,
+            infVal,
+            SumMinus,
+            weight_t(-3));
+    }
+}
+
+void test_regular_oracle_sup_minmax_background_blocker() {
+    NestedAutomaton* nwa = new NestedAutomaton(CorrectnessTestFiles::SUP_BACKGROUND_OBLIGATION_BLOCKER);
+    verifyNestedAutomatonBasics(nwa, "sup_background_obligation_blocker");
+
+    for (value_function_t infVal : {Sup, LimSup}) {
+        for (value_function_t finVal : {Max_f, Min_f}) {
+            std::stringstream ctx;
+            ctx << "regular_oracle.sup_background_obligation_blocker."
+                << infValToString(infVal) << "." << finValToString(finVal);
+
+            for (weight_t threshold : {weight_t(-1), weight_t(0), weight_t(0.5), weight_t(1)}) {
+                bool result = evaluate_regular_oracle(nwa, infVal, finVal, threshold);
+                std::stringstream threshold_ctx;
+                threshold_ctx << ctx.str() << ".threshold=" << threshold;
+                TEST_ASSERT_FALSE(result, threshold_ctx.str() + ": regular oracle path should reject blocked background child");
+            }
+        }
+    }
+
+    delete nwa;
+}
+
+void test_regular_oracle_sup_minmax_background_collision_fresh_nomove() {
+    NestedAutomaton* nwa = new NestedAutomaton(CorrectnessTestFiles::SUP_BACKGROUND_COLLISION_FRESH_NOMOVE);
+    verifyNestedAutomatonBasics(nwa, "sup_background_collision_fresh_nomove");
+
+    for (value_function_t infVal : {Sup, LimSup}) {
+        for (value_function_t finVal : {Max_f, Min_f}) {
+            std::stringstream ctx;
+            ctx << "regular_oracle.sup_background_collision_fresh_nomove."
+                << infValToString(infVal) << "." << finValToString(finVal);
+
+            for (weight_t threshold : {weight_t(-1), weight_t(0), weight_t(0.5), weight_t(1)}) {
+                bool result = evaluate_regular_oracle(nwa, infVal, finVal, threshold);
+                std::stringstream threshold_ctx;
+                threshold_ctx << ctx.str() << ".threshold=" << threshold;
+                TEST_ASSERT_FALSE(result, threshold_ctx.str() + ": regular oracle path should reject unresolved fresh background collision");
+            }
+        }
+    }
+
+    delete nwa;
+}
+
+void test_removeSilentTransitions_extremal_sentinel_domains() {
+    NestedAutomaton* nwa = new NestedAutomaton(CorrectnessTestFiles::SUP_BACKGROUND_OBLIGATION_BLOCKER);
+    verifyNestedAutomatonBasics(nwa, "sup_background_obligation_blocker");
+
+    Automaton* flat = nwa->flatten_regular(Max_f, weight_t(1));
+    weight_t expected_bottom = flat->getMinDomain() - weight_t(1);
+    weight_t expected_top = flat->getMaxDomain() + weight_t(1);
+
+    Automaton* sup_non_silent = Automaton::removeSilentTransitions(flat, Sup, false);
+    TEST_ASSERT(weightsEqual(sup_non_silent->getMinDomain(), expected_bottom),
+                "Sup silent removal should expose a strict bottom domain sentinel");
+    TEST_ASSERT(weightsEqual(sup_non_silent->getMaxDomain(), flat->getMaxDomain()),
+                "Sup silent removal should preserve the original maximum domain");
+
+    Automaton* limsup_non_silent = Automaton::removeSilentTransitions(flat, LimSup, false);
+    TEST_ASSERT(weightsEqual(limsup_non_silent->getMinDomain(), expected_bottom),
+                "LimSup silent removal should expose a strict bottom domain sentinel");
+    TEST_ASSERT(weightsEqual(limsup_non_silent->getMaxDomain(), flat->getMaxDomain()),
+                "LimSup silent removal should preserve the original maximum domain");
+
+    Automaton* inf_non_silent = Automaton::removeSilentTransitions(flat, Inf, false);
+    TEST_ASSERT(weightsEqual(inf_non_silent->getMinDomain(), flat->getMinDomain()),
+                "Inf silent removal should preserve the original minimum domain");
+    TEST_ASSERT(weightsEqual(inf_non_silent->getMaxDomain(), expected_top),
+                "Inf silent removal should expose a strict top domain sentinel");
+
+    Automaton* liminf_non_silent = Automaton::removeSilentTransitions(flat, LimInf, false);
+    TEST_ASSERT(weightsEqual(liminf_non_silent->getMinDomain(), flat->getMinDomain()),
+                "LimInf silent removal should preserve the original minimum domain");
+    TEST_ASSERT(weightsEqual(liminf_non_silent->getMaxDomain(), expected_top),
+                "LimInf silent removal should expose a strict top domain sentinel");
+
+    delete liminf_non_silent;
+    delete inf_non_silent;
+    delete limsup_non_silent;
+    delete sup_non_silent;
+    delete flat;
+    delete nwa;
+}
+
+void test_sup_minmax_overlap_witness_does_not_erase_background() {
+    NestedAutomaton* nwa = new NestedAutomaton(CorrectnessTestFiles::MAX_MERGE_BUG_COMPLETE);
+    verifyNestedAutomatonBasics(nwa, "max_merge_bug_complete");
+
+    for (value_function_t infVal : {Sup, LimSup}) {
+        bool max_result = nwa->isNonEmpty(infVal, Max_f, weight_t(3), weight_t(-1));
+        bool min_result = nwa->isNonEmpty(infVal, Min_f, weight_t(0.5), weight_t(-1));
+
+        std::stringstream max_ctx;
+        max_ctx << "max_merge_bug_complete." << infValToString(infVal) << ".Max_f";
+        TEST_ASSERT_FALSE(max_result, max_ctx.str() + ": overlapping calls must not merge into a fake high witness");
+
+        std::stringstream min_ctx;
+        min_ctx << "max_merge_bug_complete." << infValToString(infVal) << ".Min_f";
+        TEST_ASSERT_FALSE(min_result, min_ctx.str() + ": overlapping calls must not erase the low background run");
+    }
+
+    delete nwa;
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
@@ -1538,9 +2405,9 @@ void test_limavg_sumb() {
 int main() {
     std::cout << "========================================" << std::endl;
     std::cout << "CORRECTNESS TESTS: isNonEmpty()" << std::endl;
-    std::cout << "Part 1: standard automata, mixed_sign regression, and LimAvg cases = 306 tests" << std::endl;
+    std::cout << "Part 1: standard automata and LimAvg adversarial tests" << std::endl;
     std::cout << "Part 2: 10 negated automata x 6 infVal x 3 finVal = 180 tests" << std::endl;
-    std::cout << "Total: 492 tests" << std::endl;
+    std::cout << "Plus targeted regular-oracle, threshold-extremal, cached, split-final, helper, and LimAvg/SumMinus regressions" << std::endl;
     std::cout << "========================================" << std::endl;
 
     // Automaton 1: baseline_det
@@ -1844,44 +2711,6 @@ int main() {
     RUN_NONEMPTY_TEST(child_pump_loop, LimSupAvg, SumPlus);
 
     // ============================================================
-    // Automaton 11: mixed_sign
-    // ============================================================
-    std::cout << "\n--- Automaton 11: mixed_sign ---" << std::endl;
-    RUN_NONEMPTY_TEST(mixed_sign, Inf, Max_f);
-    RUN_NONEMPTY_TEST(mixed_sign, Inf, Min_f);
-    RUN_NONEMPTY_TEST(mixed_sign, Inf, SumB);
-    RUN_NONEMPTY_TEST(mixed_sign, Inf, SumPlus);
-    RUN_NONEMPTY_TEST(mixed_sign, Inf, SumMinus);
-    RUN_NONEMPTY_TEST(mixed_sign, Sup, Max_f);
-    RUN_NONEMPTY_TEST(mixed_sign, Sup, Min_f);
-    RUN_NONEMPTY_TEST(mixed_sign, Sup, SumB);
-    RUN_NONEMPTY_TEST(mixed_sign, Sup, SumPlus);
-    RUN_NONEMPTY_TEST(mixed_sign, Sup, SumMinus);
-    RUN_NONEMPTY_TEST(mixed_sign, LimInf, Max_f);
-    RUN_NONEMPTY_TEST(mixed_sign, LimInf, Min_f);
-    RUN_NONEMPTY_TEST(mixed_sign, LimInf, SumB);
-    RUN_NONEMPTY_TEST(mixed_sign, LimInf, SumPlus);
-    RUN_NONEMPTY_TEST(mixed_sign, LimInf, SumMinus);
-    RUN_NONEMPTY_TEST(mixed_sign, LimSup, Max_f);
-    RUN_NONEMPTY_TEST(mixed_sign, LimSup, Min_f);
-    RUN_NONEMPTY_TEST(mixed_sign, LimSup, SumB);
-    RUN_NONEMPTY_TEST(mixed_sign, LimSup, SumPlus);
-    RUN_NONEMPTY_TEST(mixed_sign, LimSup, SumMinus);
-    RUN_NONEMPTY_TEST(mixed_sign, LimInfAvg, Max_f);
-    RUN_NONEMPTY_TEST(mixed_sign, LimInfAvg, Min_f);
-    RUN_NONEMPTY_TEST(mixed_sign, LimInfAvg, SumB);
-    // LimInfAvg + SumPlus: not valid -- omitted
-    // LimInfAvg + SumMinus: mixed-sign child weights rejected by default -- omitted
-    RUN_NONEMPTY_TEST(mixed_sign, LimSupAvg, Max_f);
-    RUN_NONEMPTY_TEST(mixed_sign, LimSupAvg, Min_f);
-    RUN_NONEMPTY_TEST(mixed_sign, LimSupAvg, SumB);
-    // LimSupAvg + SumPlus: mixed-sign child weights rejected by default -- omitted
-    // LimSupAvg + SumMinus: mixed-sign child weights rejected by default -- omitted
-
-    // mixed_sign_alt LimAvg+SumPlus/SumMinus: rejected by default (mixed-sign children)
-    // Error path covered by test_error_handling::testMixedSignLimAvg()
-
-    // ============================================================
     // LimAvg Adversarial Tests
     // ============================================================
     std::cout << "\n--- LimAvg Adversarial: SumPlus ---" << std::endl;
@@ -1890,20 +2719,51 @@ int main() {
     RUN_TEST(test_limavg_sumplus_unary);
     RUN_TEST(test_limavg_sumplus_unbounded);
 
-    std::cout << "\n--- LimAvg Adversarial: SumMinus (LimSupAvg) ---" << std::endl;
+    std::cout << "\n--- LimAvg Adversarial: SumMinus ---" << std::endl;
     RUN_TEST(test_limavg_summinus_unary);
     RUN_TEST(test_limavg_summinus_unbounded);
     RUN_TEST(test_limavg_summinus_diamond);
-
-    std::cout << "\n--- LimAvg Adversarial: SumMinus (LimInfAvg smoke) ---" << std::endl;
-    RUN_TEST(test_limavg_inf_summinus_unary);
-    RUN_TEST(test_limavg_inf_summinus_unbounded);
-    RUN_TEST(test_limavg_inf_summinus_diamond);
+    RUN_TEST(test_limavg_summinus_final_continuation_signed_matches_split);
 
     std::cout << "\n--- LimAvg Adversarial: Max_f/Min_f/SumB ---" << std::endl;
     RUN_TEST(test_limavg_max);
     RUN_TEST(test_limavg_min);
     RUN_TEST(test_limavg_sumb);
+
+    std::cout << "\n--- Targeted Sup/LimSup + Min/Max ---" << std::endl;
+    RUN_TEST(test_sup_minmax_initial_final_child_consumes_current_symbol);
+    RUN_TEST(test_sup_minmax_initial_final_child_cannot_skip_bad_current_symbol);
+    RUN_TEST(test_sup_minmax_background_child_must_eventually_terminate);
+    RUN_TEST(test_child_return_values_non_parent_aware_max_wrong_final_can_continue);
+    RUN_TEST(test_child_return_values_non_parent_aware_max_wrong_final_negative_control);
+    RUN_TEST(test_child_return_values_non_parent_aware_max_multiple_finals);
+    RUN_TEST(test_child_return_values_non_parent_aware_min_wrong_final_can_continue);
+    RUN_TEST(test_child_return_values_non_parent_aware_sumb_wrong_final_can_continue);
+    RUN_TEST(test_regular_oracle_max_wrong_final_can_continue);
+    RUN_TEST(test_regular_oracle_max_wrong_final_negative_control);
+    RUN_TEST(test_regular_oracle_max_continues_through_multiple_finals);
+    RUN_TEST(test_regular_flatten_min_tracks_continued_low_return);
+    RUN_TEST(test_regular_oracle_sumb_wrong_final_can_continue);
+    RUN_TEST(test_threshold_extremal_max_wrong_final_can_continue);
+    RUN_TEST(test_threshold_extremal_min_wrong_final_low_guess_is_spawnable);
+    RUN_TEST(test_threshold_extremal_sumplus_wrong_final_can_continue);
+    RUN_TEST(test_threshold_extremal_summinus_wrong_final_low_guess_is_spawnable);
+    RUN_TEST(test_sum_inf_cached_sumplus_wrong_final_can_continue);
+    RUN_TEST(test_sum_inf_cached_summinus_wrong_final_low_guess_is_spawnable);
+    RUN_TEST(test_minmax_sup_cached_max_wrong_final_can_continue);
+    RUN_TEST(test_minmax_sup_cached_max_wrong_final_negative_control);
+    RUN_TEST(test_minmax_sup_witness_cached_max_wrong_final_can_continue);
+    RUN_TEST(test_minmax_sup_witness_cached_max_wrong_final_negative_control);
+    RUN_TEST(test_minmax_sup_witness_cached_max_continues_through_multiple_finals);
+    RUN_TEST(test_minmax_inf_cached_max_wrong_final_can_continue);
+    RUN_TEST(test_minmax_inf_cached_min_wrong_final_low_guess_is_spawnable);
+    RUN_TEST(test_split_final_regular_decisions_match_explicit_stop_continue);
+    RUN_TEST(test_split_final_threshold_decisions_match_explicit_stop_continue);
+    RUN_TEST(test_split_final_cached_decisions_match_explicit_stop_continue);
+    RUN_TEST(test_regular_oracle_sup_minmax_background_blocker);
+    RUN_TEST(test_regular_oracle_sup_minmax_background_collision_fresh_nomove);
+    RUN_TEST(test_removeSilentTransitions_extremal_sentinel_domains);
+    RUN_TEST(test_sup_minmax_overlap_witness_does_not_erase_background);
 
     // ============================================================
     // Part 2: Negated Automata Tests (Max_f, Min_f, SumB)

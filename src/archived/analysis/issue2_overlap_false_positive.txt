@@ -1,0 +1,30 @@
+# Complete deterministic one-child candidate for Issue 2.
+# Word shape to keep in mind: b a d^omega
+#
+# Intended semantics:
+# - the first b-spawn becomes an old blocker in s2 after the next a
+# - every d-step spawns a fresh child that terminates immediately with weight 1
+# - if the old s2 blocker is preserved, the nested run should be invalid
+# - if the split-witness traversal drops s2 on the overlap step, it may accept
+
+@PARENT
+final: all
+a : 1, q -> q
+b : 1, q -> q
+d : 1, q -> q
+
+@CHILD 0
+
+@CHILD 1
+final: f
+a : 0, s0 -> s0
+b : 0, s0 -> s1
+d : 1, s0 -> f
+
+a : 0, s1 -> s2
+b : 0, s1 -> s1
+d : 0, s1 -> s1
+
+a : 0, s2 -> s2
+b : 0, s2 -> s2
+d : 0, s2 -> s2

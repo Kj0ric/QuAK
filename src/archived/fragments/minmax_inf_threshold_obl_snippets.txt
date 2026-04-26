@@ -1,0 +1,660 @@
+PASTE 1 — insert this block before the current "SIMPLIFIED VERSION: flatten_MinMax_Inf" section
+
+// ============================================================================
+// THRESHOLD-OBLIGATION VERSION: Min_f/Max_f + Inf/LimInf
+//
+// Engineering replacement for the old active simplified backend.
+//
+// Design:
+//   - Reuse the regular OblBag phase machine (P1 = pending next epoch,
+//     P2 = tracked current epoch).
+//   - Track one obligation per child invocation, but guess only the boolean
+//     threshold outcome (0 = return < threshold, 1 = return >= threshold).
+//   - Represent each obligation by two bitset frontiers over local child
+//     states, one for y=0 and one for y=1, where:
+//         Max_f: y = "have seen an edge >= threshold"
+//         Min_f: y = "all edges seen so far are >= threshold"
+//   - Step obligations independently (no Cartesian product over active child
+//     states). This removes the unsound merge in the simplified backend and
+//     avoids the exponential per-step blow-up.
+// ============================================================================
+
+struct MMThrFrontier {
+    std::vector<uint64_t> y0;
+    std::vector<uint64_t> y1;
+
+    bool operator==(const MMThrFrontier& o) const {
+        return y0 == o.y0 && y1 == o.y1;
+    }
+    bool operator<(const MMThrFrontier& o) const {
+        if (y0 != o.y0) return y0 < o.y0;
+        return y1 < o.y1;
+    }
+};
+
+struct MMThrOblKey {
+    uint32_t child = 0;
+    uint8_t guess = 0;   // 0 => return < threshold, 1 => return >= threshold
+    MMThrFrontier fr;
+
+    bool operator==(const MMThrOblKey& o) const {
+        return child == o.child && guess == o.guess && fr == o.fr;
+    }
+    bool operator<(const MMThrOblKey& o) const {
+        if (child != o.child) return child < o.child;
+        if (guess != o.guess) return guess < o.guess;
+        return fr < o.fr;
+    }
+};
+
+struct MMThrOblEntry {
+    MMThrOblKey key;
+
+    bool operator==(const MMThrOblEntry& o) const { return key == o.key; }
+    bool operator<(const MMThrOblEntry& o)  const { return key <  o.key; }
+};
+
+using MMThrOblBag = std::vector<MMThrOblEntry>;
+
+static inline size_t mmthr_word_count(uint32_t n_states) {
+    return (static_cast<size_t>(n_states) + 63u) >> 6u;
+}
+
+static inline void mmthr_bits_zero(std::vector<uint64_t>& bits, size_t words) {
+    bits.assign(words, 0ull);
+}
+
+static inline bool mmthr_bits_empty(const std::vector<uint64_t>& bits) {
+    for (uint64_t w : bits) {
+        if (w != 0ull) return false;
+    }
+    return true;
+}
+
+static inline void mmthr_bits_set(std::vector<uint64_t>& bits, uint32_t idx) {
+    bits[idx >> 6u] |= (1ull << (idx & 63u));
+}
+
+static inline bool mmthr_bits_test(const std::vector<uint64_t>& bits, uint32_t idx) {
+    return ((bits[idx >> 6u] >> (idx & 63u)) & 1ull) != 0ull;
+}
+
+template <typename Fn>
+static inline void mmthr_for_each_set_bit(const std::vector<uint64_t>& bits, Fn&& fn) {
+    for (size_t wi = 0; wi < bits.size(); ++wi) {
+        uint64_t word = bits[wi];
+        while (word != 0ull) {
+            const unsigned bit = static_cast<unsigned>(__builtin_ctzll(word));
+            fn(static_cast<uint32_t>((wi << 6u) + bit));
+            word &= (word - 1ull);
+        }
+    }
+}
+
+static inline void mmthr_frontier_zero(MMThrFrontier& fr, size_t words) {
+    mmthr_bits_zero(fr.y0, words);
+    mmthr_bits_zero(fr.y1, words);
+}
+
+static inline bool mmthr_frontier_empty(const MMThrFrontier& fr) {
+    return mmthr_bits_empty(fr.y0) && mmthr_bits_empty(fr.y1);
+}
+
+static inline void mmthr_frontier_canonicalize(MMThrFrontier& fr,
+                                               bool finite_is_max,
+                                               uint8_t guess) {
+    // Dominance:
+    //   Max_f + guess 1 : y=1 dominates y=0 at the same local state
+    //   Min_f + guess 0 : y=0 dominates y=1 at the same local state
+    if (finite_is_max && guess == 1u) {
+        const size_t words = std::min(fr.y0.size(), fr.y1.size());
+        for (size_t i = 0; i < words; ++i) {
+            fr.y0[i] &= ~fr.y1[i];
+        }
+    } else if (!finite_is_max && guess == 0u) {
+        const size_t words = std::min(fr.y0.size(), fr.y1.size());
+        for (size_t i = 0; i < words; ++i) {
+            fr.y1[i] &= ~fr.y0[i];
+        }
+    }
+}
+
+static inline void mmthr_bag_add(MMThrOblBag& bag, MMThrOblEntry&& e) {
+    auto it = std::lower_bound(bag.begin(), bag.end(), e);
+    if (it == bag.end() || !(it->key == e.key)) {
+        bag.insert(it, std::move(e));
+    }
+}
+
+static inline void mmthr_bag_finalize(MMThrOblBag& bag) {
+    (void)bag; // bag is kept sorted+unique incrementally
+}
+
+static inline uint8_t mmthr_y_update(bool finite_is_max,
+                                     uint8_t y,
+                                     const weight_t& edge_w,
+                                     const weight_t& threshold) {
+    const bool high = !(edge_w < threshold); // edge_w >= threshold
+    if (finite_is_max) {
+        // Max_f : y = "seen high"
+        return static_cast<uint8_t>((y != 0u || high) ? 1u : 0u);
+    }
+    // Min_f : y = "all seen edges are high"
+    return static_cast<uint8_t>((y != 0u && high) ? 1u : 0u);
+}
+
+struct MMThrLivePerChild {
+    uint32_t n_states = 0;
+    uint32_t n_words = 0;
+    // live[guess][y] = bitset of local states from which the obligation
+    // can still terminate with the guessed threshold outcome.
+    std::vector<uint64_t> live[2][2];
+};
+
+struct MMThrLive {
+    std::vector<MMThrLivePerChild> per_child;
+
+    bool is_live(uint32_t child, uint8_t guess, uint32_t st, uint8_t y) const {
+        if (child >= per_child.size()) return false;
+        if (guess > 1u || y > 1u) return false;
+        const MMThrLivePerChild& C = per_child[child];
+        if (st >= C.n_states) return false;
+        if (C.live[guess][y].empty()) return false;
+        return mmthr_bits_test(C.live[guess][y], st);
+    }
+};
+
+static MMThrLive build_mmthr_live(const std::vector<ChildTables>& child_tab,
+                                  bool finite_is_max,
+                                  const weight_t& threshold) {
+    MMThrLive out;
+    out.per_child.resize(child_tab.size());
+
+    for (uint32_t cid = 0; cid < static_cast<uint32_t>(child_tab.size()); ++cid) {
+        const ChildTables& T = child_tab[cid];
+        if (!T.child || T.n_states == 0 || T.alph == 0) continue;
+
+        MMThrLivePerChild& C = out.per_child[cid];
+        C.n_states = T.n_states;
+        C.n_words = static_cast<uint32_t>(mmthr_word_count(T.n_states));
+
+        for (unsigned int guess = 0; guess < 2; ++guess) {
+            for (unsigned int y = 0; y < 2; ++y) {
+                C.live[guess][y].assign(C.n_words, 0ull);
+            }
+        }
+
+        const uint32_t prod_sz = T.n_states * 2u;
+        std::vector<std::vector<uint32_t>> rev(prod_sz);
+
+        auto node_id = [](uint32_t st, uint8_t y) -> uint32_t {
+            return (st << 1u) | static_cast<uint32_t>(y);
+        };
+
+        // Reverse edges of the product graph on (local_state, y).
+        for (uint32_t st = 0; st < T.n_states; ++st) {
+            if (T.is_final[st]) continue;
+
+            for (uint8_t y = 0; y <= 1u; ++y) {
+                for (uint32_t sym = 0; sym < T.alph; ++sym) {
+                    const uint32_t cell = T.idx(st, sym);
+                    const uint32_t b = T.off[static_cast<size_t>(cell)];
+                    const uint32_t e = T.off[static_cast<size_t>(cell) + 1u];
+
+                    for (uint32_t p = b; p < e; ++p) {
+                        const auto& tr = T.edges[static_cast<size_t>(p)];
+                        if (tr.to >= T.n_states) continue;
+
+                        const uint8_t y2 = mmthr_y_update(finite_is_max, y, tr.w, threshold);
+                        if (T.is_final[tr.to]) continue;
+
+                        rev[node_id(tr.to, y2)].push_back(node_id(st, y));
+                    }
+                }
+            }
+        }
+
+        // For each guess, seed nodes that can discharge in one step to a matching final,
+        // then close backwards.
+        for (uint8_t guess = 0; guess <= 1u; ++guess) {
+            std::vector<uint8_t> seen(prod_sz, 0u);
+            std::deque<uint32_t> q;
+
+            for (uint32_t st = 0; st < T.n_states; ++st) {
+                if (T.is_final[st]) continue;
+
+                for (uint8_t y = 0; y <= 1u; ++y) {
+                    bool seed = false;
+
+                    for (uint32_t sym = 0; sym < T.alph && !seed; ++sym) {
+                        const uint32_t cell = T.idx(st, sym);
+                        const uint32_t b = T.off[static_cast<size_t>(cell)];
+                        const uint32_t e = T.off[static_cast<size_t>(cell) + 1u];
+
+                        for (uint32_t p = b; p < e; ++p) {
+                            const auto& tr = T.edges[static_cast<size_t>(p)];
+                            if (tr.to >= T.n_states) continue;
+                            if (!T.is_final[tr.to]) continue;
+
+                            const uint8_t y2 = mmthr_y_update(finite_is_max, y, tr.w, threshold);
+                            if (y2 == guess) {
+                                seed = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (seed) {
+                        const uint32_t u = node_id(st, y);
+                        if (!seen[u]) {
+                            seen[u] = 1u;
+                            q.push_back(u);
+                        }
+                    }
+                }
+            }
+
+            while (!q.empty()) {
+                const uint32_t v = q.front();
+                q.pop_front();
+
+                for (uint32_t u : rev[v]) {
+                    if (!seen[u]) {
+                        seen[u] = 1u;
+                        q.push_back(u);
+                    }
+                }
+            }
+
+            for (uint32_t st = 0; st < T.n_states; ++st) {
+                if (T.is_final[st]) continue;
+
+                for (uint8_t y = 0; y <= 1u; ++y) {
+                    if (seen[node_id(st, y)]) {
+                        mmthr_bits_set(C.live[guess][y], st);
+                    }
+                }
+            }
+        }
+    }
+
+    return out;
+}
+
+enum class MMThrSpawnStatus : uint8_t { REJECT = 0, EMPTY = 1, NONEMPTY = 2 };
+
+static bool step_mmthr_obl_bag(const MMThrOblBag& in,
+                               uint32_t symbol_id,
+                               MMThrOblBag& out,
+                               const std::vector<ChildTables>& child_tab,
+                               const MMThrLive& live,
+                               bool finite_is_max,
+                               const weight_t& threshold) {
+    out.clear();
+    if (in.empty()) return true;
+
+    for (const MMThrOblEntry& ent : in) {
+        const uint32_t cid = ent.key.child;
+        if (cid >= child_tab.size()) return false;
+
+        const ChildTables& T = child_tab[cid];
+        if (!T.child) return false;
+        if (symbol_id >= T.alph) return false;
+
+        MMThrFrontier next;
+        mmthr_frontier_zero(next, mmthr_word_count(T.n_states));
+
+        bool discharged = false;
+
+        auto step_one_class = [&](const std::vector<uint64_t>& bits, uint8_t y) {
+            mmthr_for_each_set_bit(bits, [&](uint32_t st) {
+                if (discharged) return;
+                if (st >= T.n_states) return;
+                if (!live.is_live(cid, ent.key.guess, st, y)) return;
+
+                const uint32_t cell = T.idx(st, symbol_id);
+                const uint32_t b = T.off[static_cast<size_t>(cell)];
+                const uint32_t e = T.off[static_cast<size_t>(cell) + 1u];
+
+                for (uint32_t p = b; p < e; ++p) {
+                    const auto& tr = T.edges[static_cast<size_t>(p)];
+                    if (tr.to >= T.n_states) continue;
+
+                    const uint8_t y2 = mmthr_y_update(finite_is_max, y, tr.w, threshold);
+
+                    if (T.is_final[tr.to]) {
+                        if (y2 == ent.key.guess) {
+                            discharged = true;  // existential: terminate immediately
+                            return;
+                        }
+                        continue;             // wrong threshold outcome: drop branch
+                    }
+
+                    if (!live.is_live(cid, ent.key.guess, tr.to, y2)) continue;
+
+                    if (y2 == 0u) mmthr_bits_set(next.y0, tr.to);
+                    else          mmthr_bits_set(next.y1, tr.to);
+                }
+            });
+        };
+
+        step_one_class(ent.key.fr.y0, 0u);
+        if (!discharged) {
+            step_one_class(ent.key.fr.y1, 1u);
+        }
+
+        if (discharged) continue; // obligation discharged successfully
+
+        mmthr_frontier_canonicalize(next, finite_is_max, ent.key.guess);
+        if (mmthr_frontier_empty(next)) {
+            return false; // guessed threshold outcome became impossible
+        }
+
+        mmthr_bag_add(out, MMThrOblEntry{MMThrOblKey{cid, ent.key.guess, std::move(next)}});
+    }
+
+    mmthr_bag_finalize(out);
+    return true;
+}
+
+static MMThrSpawnStatus spawn_mmthr_obligation(uint32_t child_idx,
+                                               uint32_t symbol_id,
+                                               uint8_t guess,
+                                               MMThrOblEntry& spawned,
+                                               const std::vector<ChildTables>& child_tab,
+                                               const MMThrLive& live,
+                                               bool finite_is_max,
+                                               const weight_t& threshold) {
+    if (child_idx >= child_tab.size()) return MMThrSpawnStatus::REJECT;
+
+    const ChildTables& T = child_tab[child_idx];
+    if (!T.child) return MMThrSpawnStatus::REJECT;
+    if (symbol_id >= T.alph) return MMThrSpawnStatus::REJECT;
+    if (T.init >= T.n_states) return MMThrSpawnStatus::REJECT;
+
+    const uint8_t init_y = finite_is_max ? 0u : 1u;
+
+    MMThrFrontier fr;
+    mmthr_frontier_zero(fr, mmthr_word_count(T.n_states));
+
+    const uint32_t cell = T.idx(T.init, symbol_id);
+    const uint32_t b = T.off[static_cast<size_t>(cell)];
+    const uint32_t e = T.off[static_cast<size_t>(cell) + 1u];
+
+    for (uint32_t p = b; p < e; ++p) {
+        const auto& tr = T.edges[static_cast<size_t>(p)];
+        if (tr.to >= T.n_states) continue;
+
+        const uint8_t y2 = mmthr_y_update(finite_is_max, init_y, tr.w, threshold);
+
+        if (T.is_final[tr.to]) {
+            if (y2 == guess) {
+                return MMThrSpawnStatus::EMPTY; // can terminate immediately
+            }
+            continue;
+        }
+
+        if (!live.is_live(child_idx, guess, tr.to, y2)) continue;
+
+        if (y2 == 0u) mmthr_bits_set(fr.y0, tr.to);
+        else          mmthr_bits_set(fr.y1, tr.to);
+    }
+
+    mmthr_frontier_canonicalize(fr, finite_is_max, guess);
+    if (mmthr_frontier_empty(fr)) {
+        return MMThrSpawnStatus::REJECT;
+    }
+
+    spawned = MMThrOblEntry{MMThrOblKey{child_idx, guess, std::move(fr)}};
+    return MMThrSpawnStatus::NONEMPTY;
+}
+
+struct BuchiState_mmthr {
+    State* parent_state = nullptr;
+    MMThrOblBag P1;   // pending obligations for the next epoch
+    MMThrOblBag P2;   // tracked obligations of the current epoch
+    acc_phase_t phase = ACC_WAIT_parent;
+
+    bool operator==(const BuchiState_mmthr& o) const {
+        return parent_state == o.parent_state
+            && P1 == o.P1
+            && P2 == o.P2
+            && phase == o.phase;
+    }
+
+    bool operator<(const BuchiState_mmthr& o) const {
+        if (parent_state != o.parent_state) return parent_state < o.parent_state;
+        if (P1 != o.P1) return P1 < o.P1;
+        if (P2 != o.P2) return P2 < o.P2;
+        return phase < o.phase;
+    }
+};
+
+static inline acc_phase_t advance_phase_mmthr(const BuchiState_mmthr& s) {
+    if (s.phase == ACC_WAIT_parent) {
+        return (s.parent_state->getFinal()) ? ACC_WAIT_P2EMPTY : ACC_WAIT_parent;
+    }
+    return (s.P2.empty()) ? ACC_WAIT_parent : ACC_WAIT_P2EMPTY;
+}
+
+
+
+PASTE 2 — replace the current flatten_MinMax_Inf(...) function with this version
+
+Automaton* NestedAutomaton::flatten_MinMax_Inf(value_function_t finite_aggregator,
+                                               weight_t threshold) {
+    const bool finite_is_max = (finite_aggregator == Max_f);
+    if (!finite_is_max && finite_aggregator != Min_f) {
+        QUAK_FAIL("flatten_MinMax_Inf requires Max_f or Min_f");
+    }
+
+    State::RESET();
+    Symbol::RESET();
+    Weight::RESET();
+
+    MapArray<Symbol*>* new_alphabet = nullptr;
+    MapArray<Weight*>* new_weights  = nullptr;
+
+    // Child tables for non-dummy children
+    const size_t k = this->getChildrenSize();
+    std::vector<ChildTables> child_tab(k);
+    for (size_t i = 0; i < k; ++i) {
+        ChildAutomaton* c = this->getChild(i);
+        if (!c) continue;
+        if (c->getStates()->size() < 2) continue; // child 0 / dummy children
+        build_child_tables(c, child_tab[i]);
+    }
+
+    // Target-aware liveness over (local_state, y) with threshold guesses {0,1}
+    const MMThrLive live = build_mmthr_live(child_tab, finite_is_max, threshold);
+
+    // Copy alphabet
+    {
+        const size_t alph_size = this->getAlphabetSize();
+        new_alphabet = new MapArray<Symbol*>(alph_size);
+        for (size_t i = 0; i < alph_size; ++i) {
+            Symbol* original = this->getAlphabet()->at(i);
+            Symbol* copy = new Symbol(original->getName());
+            new_alphabet->insert(i, copy);
+        }
+    }
+
+    // Weights: SILENT, 0, 1
+    MapStd<weight_t, Weight*> weight_register;
+    new_weights = new MapArray<Weight*>(3);
+
+    auto add_weight = [&](const weight_t& value) {
+        if (!weight_register.contains(value)) {
+            Weight* w = new Weight(value);
+            new_weights->insert(w->getId(), w);
+            weight_register.insert(value, w);
+        }
+    };
+
+    add_weight(weight_t(SILENT));
+    add_weight(weight_t(0));
+    add_weight(weight_t(1));
+
+    const weight_t global_min = weight_t(0);
+    const weight_t global_max = weight_t(1);
+
+    MapStd<BuchiState_mmthr, State*> state_map;
+    std::deque<BuchiState_mmthr> worklist;
+    unsigned int state_counter = 0;
+
+    // Initial Büchi state
+    BuchiState_mmthr init;
+    init.parent_state = this->getInitial();
+    init.P1.clear();
+    init.P2.clear();
+    init.phase = ACC_WAIT_parent;
+
+    std::ostringstream ss;
+    ss << "b_" << state_counter++;
+    State* init_state = new State(ss.str(), new_alphabet->size(), global_min, global_max);
+
+    state_map[init] = init_state;
+    worklist.push_back(init);
+
+    MMThrOblBag P1_step, P2_step;
+    MMThrOblBag P1_next, P2_next;
+
+    while (!worklist.empty()) {
+        BuchiState_mmthr current = std::move(worklist.front());
+        worklist.pop_front();
+
+        State* current_state = state_map[current];
+        const acc_phase_t phase_after_current = advance_phase_mmthr(current);
+
+        for (unsigned int symbol_id = 0; symbol_id < new_alphabet->size(); ++symbol_id) {
+            if (!step_mmthr_obl_bag(current.P1, symbol_id, P1_step, child_tab, live,
+                                    finite_is_max, threshold)) {
+                continue;
+            }
+
+            if (!current.P2.empty()) {
+                if (!step_mmthr_obl_bag(current.P2, symbol_id, P2_step, child_tab, live,
+                                        finite_is_max, threshold)) {
+                    continue;
+                }
+            } else {
+                P2_step.clear();
+            }
+
+            SetStd<Edge*>* succs = current.parent_state->getSuccessors(symbol_id);
+            if (!succs) continue;
+
+            for (Edge* parent_edge : *succs) {
+                State* q_prime = parent_edge->getTo();
+                const size_t child_index = edgeWeightToChildIndex(parent_edge->getWeight()->getValue());
+                const bool is_silent =
+                    (child_index >= k) ||
+                    (this->getChild(child_index) == nullptr) ||
+                    (this->getChild(child_index)->getStates()->size() < 2);
+
+                if (is_silent) {
+                    if (current.P2.empty()) {
+                        P1_next.clear();
+                        P2_next = P1_step;
+                    } else {
+                        P1_next = P1_step;
+                        P2_next = P2_step;
+                    }
+
+                    BuchiState_mmthr nxt;
+                    nxt.parent_state = q_prime;
+                    nxt.P1 = P1_next;
+                    nxt.P2 = P2_next;
+                    nxt.phase = phase_after_current;
+
+                    if (!state_map.contains(nxt)) {
+                        std::ostringstream s2;
+                        s2 << "b_" << state_counter++;
+                        State* ns = new State(s2.str(), new_alphabet->size(), global_min, global_max);
+                        state_map[nxt] = ns;
+                        worklist.push_back(nxt);
+                    }
+
+                    Weight* w = weight_register.at(weight_t(SILENT));
+                    Edge* ne = new Edge(new_alphabet->at(symbol_id), w, current_state, state_map[nxt]);
+                    current_state->addSuccessor(ne);
+                    state_map[nxt]->addPredecessor(ne);
+                    continue;
+                }
+
+                const bool boundary = current.P2.empty();
+
+                for (uint8_t guess = 0u; guess <= 1u; ++guess) {
+                    MMThrOblEntry spawned;
+                    const MMThrSpawnStatus st = spawn_mmthr_obligation(
+                        static_cast<uint32_t>(child_index),
+                        static_cast<uint32_t>(symbol_id),
+                        guess,
+                        spawned,
+                        child_tab,
+                        live,
+                        finite_is_max,
+                        threshold
+                    );
+                    if (st == MMThrSpawnStatus::REJECT) continue;
+
+                    if (boundary) {
+                        P2_next = P1_step;
+                        P1_next.clear();
+                        if (st == MMThrSpawnStatus::NONEMPTY) {
+                            mmthr_bag_add(P1_next, std::move(spawned));
+                        }
+                    } else {
+                        P2_next = P2_step;
+                        P1_next = P1_step;
+                        if (st == MMThrSpawnStatus::NONEMPTY) {
+                            mmthr_bag_add(P1_next, std::move(spawned));
+                        }
+                    }
+                    mmthr_bag_finalize(P1_next);
+
+                    BuchiState_mmthr nxt;
+                    nxt.parent_state = q_prime;
+                    nxt.P1 = P1_next;
+                    nxt.P2 = P2_next;
+                    nxt.phase = phase_after_current;
+
+                    if (!state_map.contains(nxt)) {
+                        std::ostringstream s2;
+                        s2 << "b_" << state_counter++;
+                        State* ns = new State(s2.str(), new_alphabet->size(), global_min, global_max);
+                        state_map[nxt] = ns;
+                        worklist.push_back(nxt);
+                    }
+
+                    Weight* w = weight_register.at(weight_t(static_cast<unsigned int>(guess)));
+                    Edge* ne = new Edge(new_alphabet->at(symbol_id), w, current_state, state_map[nxt]);
+                    current_state->addSuccessor(ne);
+                    state_map[nxt]->addPredecessor(ne);
+                }
+            }
+        }
+    }
+
+    MapArray<State*>* new_states = new MapArray<State*>(state_map.size());
+    for (const auto& [gs, st] : state_map) {
+        new_states->insert(st->getId(), st);
+        if (gs.phase == ACC_WAIT_P2EMPTY && gs.P2.empty()) {
+            st->setFinal(true);
+        }
+    }
+
+    std::string name = "BuchiMinMaxThr(" + this->getName() + ")";
+    return new Automaton(name, new_alphabet, new_states, new_weights,
+                         global_min, global_max, init_state);
+}
+
+
+
+PASTE 3 — replace the needsSilentRemoval assignment in isNonEmpty(...) with this
+
+    bool needsSilentRemoval = (finVal == SumPlus && infVal == LimSupAvg) ||
+                              (finVal == SumMinus && (infVal == LimInfAvg || infVal == LimSupAvg)) ||
+                              ((finVal == Max_f || finVal == Min_f) &&
+                               (infVal == Inf || infVal == LimInf || infVal == LimInfAvg || infVal == LimSupAvg)) ||
+                              (finVal == SumB);

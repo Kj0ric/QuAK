@@ -1,0 +1,41 @@
+# Issue 5 async baseline: the child terminates on `a`, then the parent becomes
+# final later on `b` while no real child is active.
+# Regular oracle:
+# - Sup x Max_f at threshold 1: true
+# - LimSup x Max_f at threshold 1: true
+#
+# Archived split-witness backend:
+# - Sup x Max_f at threshold 1: true
+# - LimSup x Max_f at threshold 1: true
+
+@PARENT
+final: p0
+c : 1, p0 -> p1
+a : 0, p1 -> p2
+b : 0, p2 -> p0
+
+a : 0, p0 -> pd
+b : 0, p0 -> pd
+b : 0, p1 -> pd
+c : 0, p1 -> pd
+a : 0, p2 -> pd
+c : 0, p2 -> pd
+a : 0, pd -> pd
+b : 0, pd -> pd
+c : 0, pd -> pd
+
+@CHILD 0
+
+@CHILD 1
+final: f
+c : 0, s0 -> s1
+a : 0, s0 -> rej
+b : 0, s0 -> rej
+
+a : 1, s1 -> f
+b : 0, s1 -> s1
+c : 0, s1 -> s1
+
+a : 0, rej -> rej
+b : 0, rej -> rej
+c : 0, rej -> rej

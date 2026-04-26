@@ -7,14 +7,8 @@ This directory contains example programs demonstrating nested weighted automata 
 From the project root directory:
 
 ```bash
-cmake . -DCMAKE_BUILD_TYPE=Release
-make example1_basic example2_value_functions example3_response_time
-```
-
-Or build all examples:
-
-```bash
-make -j4
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --target examples -j
 ```
 
 ## Running the Examples
@@ -22,9 +16,9 @@ make -j4
 Run from the project root directory (required for sample file paths):
 
 ```bash
-./example1_basic
-./example2_value_functions
-./example3_response_time
+./build/example1_basic
+./build/example2_value_functions
+./build/example3_response_time
 ```
 
 ## Example Descriptions
@@ -38,7 +32,6 @@ Compares four finite value functions (`Max_f`, `Min_f`, `SumPlus`, `SumB`) at tw
 Uses a priority-task system where the parent alternates high- and low-priority tasks:
 
 - **Varying finVal**: Shows how `Max_f`, `SumPlus`, and `SumB` differ when accumulating child weights
-- **Non-emptiness vs Universality**: Contrasts "can we achieve this?" with "is it guaranteed?"
 
 ### Example 3: Comparing Infinite Value Functions (`example3_response_time.cpp`)
 
@@ -57,6 +50,7 @@ Compares four infinite value functions (Sup, LimSup, LimInf, Inf) on two automat
 
 ```
 @PARENT
+final: all
 <symbol> : <weight>, <source> -> <target>
 ...
 
@@ -66,7 +60,10 @@ final: <final_states>
 ...
 ```
 
-The parent automaton triggers child automata based on transitions. Each child runs until it reaches a final state, producing a value that contributes to the overall automaton value.
+The parent automaton triggers child automata based on transitions. The parent
+and every non-dummy child declare final states; use `final: all` when every
+state should be accepting. Each child runs until it reaches a final state,
+producing a value that contributes to the overall automaton value.
 
 ## API Reference
 
@@ -74,10 +71,10 @@ The parent automaton triggers child automata based on transitions. Each child ru
 // Load nested automaton
 NestedAutomaton* nwa = new NestedAutomaton("path/to/file.txt");
 
-// Non-emptiness: exists word w with value >= threshold?
+// Non-emptiness: exists accepted word w with value >= threshold?
 bool result = nwa->isNonEmpty(infVal, finVal, threshold, bound);
 
-// Universality: all words w have value >= threshold?
+// Universality: all accepted words w have value >= threshold?
 bool result = nwa->isUniversal(infVal, finVal, threshold, bound);
 
 // Clean up

@@ -1,6 +1,5 @@
 @PARENT
-# q0  : no pending requests
-# q_i : some (pending_count, age_of_oldest) for i >= 1
+final: all
 # s   : violation (too many pending or some request waited >= k steps)
 final: q0
 o : 0, q0 -> q0

@@ -1,4 +1,5 @@
 @PARENT
+final: all
 a : 1, p0 -> p0
 b : 1, p0 -> p0
 

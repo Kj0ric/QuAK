@@ -1,9 +1,10 @@
-Test Case Inputs for NestedAutomaton Correctness Tests
-=======================================================
+Test Case Inputs for NestedAutomaton Sanity Tests
+=================================================
 
 These input files are designed with known expected behaviors documented
-in comments. They can be used to build correctness tests that verify
-actual outputs against expected values.
+in comments. They are sanity-test fixtures and can also seed future
+semantic regression tests after the expected behavior is made explicit in
+registered test code.
 
 Test Cases:
 -----------
@@ -70,6 +71,7 @@ Usage:
 ------
 These files use the standard nested automaton format:
   @PARENT
+  final: all
   symbol : weight, source -> target
 
   @CHILD n
@@ -77,15 +79,19 @@ These files use the standard nested automaton format:
   symbol : weight, source -> target
 
 Expected behaviors are documented in comments at the top of each file.
-To create correctness tests, parse these comments and assert the
-documented expected values.
+To promote one into a correctness test, assert the documented expected
+values in C++ test code instead of relying on comments.
 
 
 Format Notes:
 -------------
 - Lines starting with # are comments (ignored by parser)
 - @PARENT marks the parent automaton section
-- @CHILD n marks child automaton n (0-indexed)
-- "final: state" marks a state as final/accepting
+- @CHILD n marks child automaton n
+- Every parent automaton and every child automaton except `@CHILD 0` must
+  contain a nonempty `final:` declaration
+- `final: all` marks all states as final/accepting
+- `final: s1 s2 ...` marks exactly that explicit list of states as final/accepting
+- `@CHILD 0` is reserved by the current parser as the implicit dummy/silent child
 - Transitions: "symbol : weight, source -> target"
 - First transition's source is the initial state

@@ -1,3 +1,0 @@
-experiment,n,k,file,problem,infval,finval,threshold,rep,timeout_s,warmup,status,mean_s,result01
-resource_limsupavg_max_emptiness,2,4,samples/generated_resource_consumption_2/resource_n2_k4.txt,emptiness,LimSupAvg,Max,4.0,1,600.0,0,OK,110.472099791,1
-resource_limsupavg_max_emptiness,3,2,samples/generated_resource_consumption_2/resource_n3_k2.txt,emptiness,LimSupAvg,Max,2.0,1,600.0,0,OK,76.035454959,1

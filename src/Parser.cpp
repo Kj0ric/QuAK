@@ -58,17 +58,47 @@ static void parseFinalStatesLine(const std::string& final_line, Parser* target) 
     }
 
     std::istringstream ss(final_line.substr(6)); // after "final:"
+    std::vector<std::string> tokens;
     std::string st;
 
     target->final_states.clear();
+    target->final_states_specified = true;
+    target->final_states_all = false;
     while (ss >> st) {
-        target->final_states.insert(st);
-        target->states.insert(st); // IMPORTANT: treat final: as declaring the state
+        tokens.push_back(st);
     }
 
-    if (target->final_states.size() == 0) {
+    if (tokens.empty()) {
         abort("Empty 'final:' declaration");
     }
+
+    if (tokens.size() == 1 && tokens[0] == "all") {
+        target->final_states_all = true;
+        return;
+    }
+
+    for (const std::string& token : tokens) {
+        if (token == "all") {
+            abort("Keyword 'all' must be the only token in a 'final:' declaration");
+        }
+        target->final_states.insert(token);
+        target->states.insert(token); // IMPORTANT: treat final: as declaring the state
+    }
+}
+
+static std::string stripCommentsAndTrim(std::string line) {
+    size_t comment_pos = line.find('#');
+    if (comment_pos != std::string::npos) {
+        line = line.substr(0, comment_pos);
+    }
+
+    size_t first = line.find_first_not_of(" \t");
+    if (first == std::string::npos) {
+        return "";
+    }
+
+    size_t last = line.find_last_not_of(" \t");
+    return line.substr(first, last - first + 1);
 }
 
 /* ------------ Main parsing functions ----------- */
@@ -112,25 +142,38 @@ void readNonNestedFile(std::ifstream& file, Parser* parser) {
 	}
 	std::string line;
 	
-	// Read the first transition (edge line) to get the initial state
+	// Read until the first transition to get the initial state.
 	while (parser->initial == "" && getline(file, line)) {
 		line_counter++;
+		line = stripCommentsAndTrim(line);
+		if (line.empty()) continue;
+
+		if (line.rfind("final:", 0) == 0) {
+			parseFinalStatesLine(line, parser);
+			continue;
+		}
+
 		parser->initial = readLine(line, parser);
 	}
 
 	// Read the rest and update the Parser object
 	while (getline(file, line)) { 
 		line_counter++;
+		line = stripCommentsAndTrim(line);
+		if (line.empty()) continue;
 
 		if (line.rfind("final:", 0) == 0) {
-            parseFinalStatesLine(line, parser);
-            continue;
-        }
+			parseFinalStatesLine(line, parser);
+			continue;
+		}
 		
 		readLine(line, parser);
 	}
 
 	if (parser->initial == "") abort("automaton without transitions");	// Means no edge line parsed
+	if (!parser->final_states_specified) {
+		abort("Automaton must contain a nonempty 'final:' declaration");
+	}
 	
 	// Compare domain declarations and actual weights used in transitions to decide on domain ranges
 	if (parser->domain_defined == true) {
@@ -228,6 +271,8 @@ void readNestedFile(std::ifstream& file, Parser* parser) {
 				dummy_parser->initial = dummy_state;
 				dummy_parser->final_states.clear();
 				dummy_parser->final_states.insert(dummy_state);
+				dummy_parser->final_states_specified = true;
+				dummy_parser->final_states_all = true;
 
 				// No transitions
 				dummy_parser->edges.clear();
@@ -248,20 +293,20 @@ void readNestedFile(std::ifstream& file, Parser* parser) {
 		if (parser->inParent()) {
 			if (expect_first_parent_edge) {
 				// Parse initial state
-				std::string from_state = readEdge(line,parser);
+				std::string from_state = readEdge(line, parser, true);
 				parser->getCurrentParser()->initial = from_state;
 				expect_first_parent_edge = false;
 			} else {
-				readEdge(line, parser);
+				readEdge(line, parser, true);
 			}
 		} else {
 			if (expect_first_child_edge) {
 				// Parse initial state
-				std::string from_state = readEdge(line,parser);
+				std::string from_state = readEdge(line, parser, false);
 				parser->getCurrentParser()->initial = from_state;
 				expect_first_child_edge = false;
 			} else {
-				readEdge(line, parser);
+				readEdge(line, parser, false);
 			}
 		}
 	}
@@ -334,20 +379,33 @@ void readNestedFile(std::ifstream& file, Parser* parser) {
     for (size_t i = 0; i < parser->child_parsers.size(); ++i) {
         Parser* child = parser->child_parsers[i];
         if (!child) continue;
+        if (i != 0 && !child->final_states_specified) {
+			QUAK_FAIL("A child automaton is missing a nonempty 'final:' declaration.\n");
+        }
+        if (i != 0 && child->initial.empty()) {
+            QUAK_FAIL("A child automaton has no transitions (initial state cannot be determined). Check the automaton description .txt file.\n");
+        }
+        if (child->final_states_all) {
+            continue;
+        }
         for (const std::string& fname : child->final_states) {
             if (!child->states.contains(fname)) {
 				QUAK_FAIL("A child automaton has a final state that is not declared as a state. Check the automaton description .txt file.\n");
             }
         }
-        if (child->final_states.size() == 0) {
+        if (i != 0 && child->final_states.size() == 0) {
 			QUAK_FAIL("No final states detected in a child automaton. Check the automaton description .txt file.\n");
-        }
-        if (child->initial.empty()) {
-            QUAK_FAIL("A child automaton has no transitions (initial state cannot be determined). Check the automaton description .txt file.\n");
         }
     }
 
-	// Check final states for the PARENT automaton (if provided)
+	if (!parser->final_states_specified) {
+		QUAK_FAIL("Parent automaton is missing a nonempty 'final:' declaration.\n");
+	}
+	if (parser->final_states_all) {
+		return;
+	}
+
+	// Check final states for the PARENT automaton
 	for (const std::string& fname : parser->final_states) {
 		if (!parser->states.contains(fname)) {
 			QUAK_FAIL("Parent automaton has a final state that is not declared as a state. Check the automaton description .txt file.\n");
@@ -355,13 +413,13 @@ void readNestedFile(std::ifstream& file, Parser* parser) {
 	}
 }
 
-std::string readLine (std::string line, Parser* parser) {
+std::string readLine (std::string line, Parser* parser, bool allow_silent_weight) {
 	if (line.empty()) return "";
 
 	size_t index = line.find("--");
 	// If there is no "--" then it's a edge representation
 	if (index == std::string::npos){
-		return readEdge(line, parser);
+		return readEdge(line, parser, allow_silent_weight);
 	}
 	// Else it's a domain range representation
 	else {
@@ -424,7 +482,7 @@ void readFinalStates(std::ifstream& file, Parser* parser, int line_counter) {
 // Parses a single line from the automata representation
 // Does syntactic check on the automata representation
 // Updates the Parser object
-std::string readEdge (std::string line, Parser* parser) {
+std::string readEdge (std::string line, Parser* parser, bool allow_silent_weight) {
 	// -- expected shape: symbol : weight, from -> to #comment
 	size_t index;
 
@@ -463,25 +521,34 @@ std::string readEdge (std::string line, Parser* parser) {
 	std::string weightname;
 	buffer >> weightname;
 	if (weightname.empty()) abort("transition without weight");
-	std::istringstream string_to_weight(weightname);
 	weight_t weight;
-    if (weightname.size() > 2 && weightname[1] == 'x' && weightname[0] == '0') {
-        // the weight is given as a bitvector (unsigned number in hex)
-	    if (weightname.size() > 10) abort("wrong 32-bit hex number");
-        uint32_t tmp;
-	    string_to_weight >> std::hex >> tmp;
-        weight = weight_t::from_bv(tmp);
-    } else {
-	    string_to_weight >> weight;
-    }
-	
-	// If weight cannot be read as weight_t object, then it is interpreted with a SILENT value
-	if (string_to_weight.eof() == false) {
-		// i.e. means weightname string couldn't be read as a weight_t object
+
+	if (weightname == "SILENT") {
+		if (!allow_silent_weight) {
+			abort("SILENT weights are allowed only on nested parent transitions");
+		}
 		weight = SILENT;
-		parser_verbose("Parser: WARNING -- invalid weight, interpreting as silent transition");
-	}
-	else {
+		parser_verbose("Parser: Weight = 'SILENT'\n");
+	} else {
+		std::istringstream string_to_weight(weightname);
+		if (weightname.size() > 2 && weightname[1] == 'x' && weightname[0] == '0') {
+			// the weight is given as a bitvector (unsigned number in hex)
+			if (weightname.size() > 10) abort("wrong 32-bit hex number");
+			uint32_t tmp;
+			string_to_weight >> std::hex >> tmp;
+			if (string_to_weight.fail() || string_to_weight.eof() == false) {
+				abort("invalid numeric weight '" + weightname + "'");
+			}
+			weight = weight_t::from_bv(tmp);
+		} else {
+			string_to_weight >> weight;
+			if (string_to_weight.fail() || string_to_weight.eof() == false) {
+				if (allow_silent_weight) {
+					abort("invalid parent weight '" + weightname + "': expected numeric weight or SILENT");
+				}
+				abort("invalid numeric weight '" + weightname + "'");
+			}
+		}
 		parser_verbose("Parser: Weight = '%s'\n", std::to_string(weight).c_str());
 	}
 	parser->getCurrentParser()->weights.insert(weight);

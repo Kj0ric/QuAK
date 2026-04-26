@@ -13,6 +13,7 @@
 # Expected LimSupAvg with SumPlus = 12
 
 @PARENT
+final: all
 a : 1, p0 -> p0
 
 @CHILD 0

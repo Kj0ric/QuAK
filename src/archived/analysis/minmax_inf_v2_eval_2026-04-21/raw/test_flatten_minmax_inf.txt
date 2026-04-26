@@ -1,0 +1,80 @@
+========================================
+TEST: flatten_MinMax_Inf()
+========================================
+
+--- Max Tests ---
+Running: test_flatten_MinMax_Inf_Max_basic...   flatten_MinMax_Inf(Max_f, 5): 2 states, 2 transitions, weights [0, 1]
+PASSED (0.430872 ms)
+Running: test_flatten_MinMax_Inf_Max_threshold_0...   flatten_MinMax_Inf(Max_f, 0): 2 states, 2 transitions, weights [0, 1]
+PASSED (0.134287 ms)
+Running: test_flatten_MinMax_Inf_Max_threshold_1...   flatten_MinMax_Inf(Max_f, 1): 2 states, 2 transitions, weights [0, 1]
+PASSED (0.117437 ms)
+Running: test_flatten_MinMax_Inf_Max_threshold_10...   flatten_MinMax_Inf(Max_f, 10): 2 states, 2 transitions, weights [0, 1]
+PASSED (0.122338 ms)
+Running: test_flatten_MinMax_Inf_Max_varying_thresholds... 
+    threshold=0: 2 states, 2 transitions
+    threshold=1: 2 states, 2 transitions
+    threshold=2: 2 states, 2 transitions
+    threshold=3: 2 states, 2 transitions
+    threshold=4: 2 states, 2 transitions
+    threshold=5: 2 states, 2 transitions
+PASSED (0.211497 ms)
+Running: test_flatten_MinMax_Inf_Max_test_empt_2...   flatten_MinMax_Inf on test_empt_2: 4 states, 8 transitions, weights [0, 1]
+PASSED (0.227307 ms)
+Running: test_flatten_MinMax_Inf_Max_test_empt_3...   flatten_MinMax_Inf on test_empt_3: 3 states, 3 transitions, weights [0, 1]
+PASSED (0.17307 ms)
+Running: test_flatten_MinMax_Inf_Max_compute_return...   flatten_MinMax_Inf on compute_return_max: 2 states, 1 transitions, weights [0, 1]
+PASSED (0.272151 ms)
+
+--- Min Tests ---
+Running: test_flatten_MinMax_Inf_Min_basic...   flatten_MinMax_Inf(Min_f, 5): 2 states, 2 transitions, weights [0, 1]
+PASSED (0.13796 ms)
+Running: test_flatten_MinMax_Inf_Min_threshold_0...   flatten_MinMax_Inf(Min_f, 0): 2 states, 2 transitions, weights [0, 1]
+PASSED (0.105506 ms)
+Running: test_flatten_MinMax_Inf_Min_threshold_5...   flatten_MinMax_Inf(Min_f, 5): 2 states, 2 transitions, weights [0, 1]
+PASSED (0.122481 ms)
+Running: test_flatten_MinMax_Inf_Min_varying_thresholds... 
+    threshold=0: 2 states, 2 transitions
+    threshold=1: 2 states, 2 transitions
+    threshold=2: 2 states, 2 transitions
+    threshold=3: 2 states, 2 transitions
+    threshold=4: 2 states, 2 transitions
+    threshold=5: 2 states, 2 transitions
+PASSED (0.195725 ms)
+Running: test_flatten_MinMax_Inf_Min_compute_return...   flatten_MinMax_Inf on compute_return_min: 2 states, 1 transitions, weights [0, 1]
+PASSED (0.256065 ms)
+
+--- Comparison Tests ---
+Running: test_flatten_MinMax_Inf_Max_vs_Min... 
+  Max_f: 2 states, 2 transitions, weights [0, 1]
+  Min_f: 2 states, 2 transitions, weights [0, 1]
+PASSED (0.161242 ms)
+Running: test_flatten_MinMax_Inf_vs_Sup... 
+  Max_f + Inf: 2 states, 2 transitions, weights [0, 1]
+  Max_f + Sup: 2 states, 2 transitions, weights [0, 1]
+PASSED (0.136571 ms)
+Running: test_flatten_MinMax_Inf_consistency... PASSED (0.108538 ms)
+
+--- Edge Cases ---
+Running: test_flatten_MinMax_Inf_nested_Sij... 
+    Input: 2 parent states, 2 children
+  flatten_MinMax_Inf on nested_Sij: 3 states, 6 transitions, weights [0, 1]
+PASSED (0.20439 ms)
+Running: test_flatten_MinMax_Inf_nested_Sij2...   flatten_MinMax_Inf on nested_Sij2: 2 states, 2 transitions, weights [0, 1]
+PASSED (0.122211 ms)
+Running: test_flatten_MinMax_Inf_output_properties... 
+    Initial state: bxt_0
+    Weight range: [0, 1]
+    Is complete: 1
+    Has only 0/1/SILENT weights: 1
+PASSED (0.125355 ms)
+Running: test_flatten_MinMax_Inf_masked_overlap_max_matches_regular... PASSED (2.28435 ms)
+Running: test_flatten_MinMax_Inf_threshold_obl_overlap_max_matches_regular... PASSED (2.1795 ms)
+
+========================================
+TEST SUMMARY
+========================================
+Passed: 21/21
+Failed: 0/21
+Total time: 7.82885 ms
+========================================
