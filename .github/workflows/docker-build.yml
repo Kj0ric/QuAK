@@ -1,0 +1,21 @@
+name: CI (Docker Build and Smoke Test)
+
+on:
+  push:
+    branches: ["playground"]
+  pull_request:
+    branches: ["playground"]
+
+jobs:
+  docker:
+    name: Build and smoke-test Docker image
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image (includes ctest inside builder stage)
+        run: docker build -t quak-nqa .
+
+      - name: Run smoke test inside container
+        run: docker run --rm quak-nqa /quak/scripts/smoke-test.sh --quick

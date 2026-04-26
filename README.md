@@ -80,6 +80,7 @@ cmake --build build --target experiments
 | `-DCMAKE_BUILD_TYPE=Release` | Release | Build type (Release / Debug) |
 | `-DENABLE_SCC_SEARCH_OPT=ON` | ON | SCC-based optimization in FORKLIFT |
 | `-DENABLE_IPO=ON` | ON | Link-time (inter-procedural) optimizations |
+| `-DNORMALIZE_MIXED_SIGN=OFF` | OFF | When ON: auto-normalize mixed-sign child weights for LimAvg+SumPlus/SumMinus (emits a warning). When OFF (default): reject with a hard error. |
 
 ---
 
@@ -535,6 +536,7 @@ QuAK/
 ├── examples/
 │   └── nested/                 # Example programs + sample automata
 ├── samples/                    # Sample automata files
+├── scripts/                    # Utility scripts
 ├── results/                    # Generated experiment output
 ├── experiment.py               # Python experiment orchestrator
 ├── experiment_response_max.py  # Max-based experiment orchestrator
