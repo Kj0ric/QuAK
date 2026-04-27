@@ -48,8 +48,8 @@ __pycache__/
 venv/
 
 # Experiment results (regenerable)
-/results/*.csv
-/results/**/*.csv
+# /results/*.csv
+# /results/**/*.csv
 
 # Standalone analysis binaries (keep sources/notes, not compiled outputs)
 /analysis/*_compare
