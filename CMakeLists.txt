@@ -130,6 +130,17 @@ add_custom_target(tests
 )
 
 # =============================================================================
+# SMOKE TEST (built+run with: make smoke-test)
+# Runs the representative smoke test + backward-compat test only (~1 s).
+# =============================================================================
+add_custom_target(smoke-test
+    COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/smoke-test.sh
+    DEPENDS quak-nested quak-experiment-single
+    COMMENT "Running smoke test (quick mode)"
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+# =============================================================================
 # EXPERIMENTS (built with: make experiments)
 # =============================================================================
 # Single automaton experiment runner (detailed analysis)

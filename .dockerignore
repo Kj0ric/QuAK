@@ -1,0 +1,23 @@
+# Build artifacts — never copy into the image
+build/
+build_asan/
+build_debug/
+
+# Git history — not needed inside the container
+.git/
+
+# Generated results and archives
+results/
+*.tar.gz
+*.zip
+
+# Local working files (untracked, never commit)
+TODO.md
+PLAN.md
+CLAUDE.md
+TEST_COVERAGE.md
+ae-progress/
+
+# Claude / Codex agent files
+.claude/
+.codex/
