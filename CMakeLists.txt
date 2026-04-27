@@ -136,7 +136,7 @@ add_custom_target(tests
 add_custom_target(smoke-test
     COMMAND bash ${CMAKE_SOURCE_DIR}/scripts/smoke-test.sh
     DEPENDS quak-nested quak-experiment-single
-    COMMENT "Running smoke test (quick mode)"
+    COMMENT "Running smoke test"
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 

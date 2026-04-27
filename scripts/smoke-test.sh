@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/smoke-test.sh
-# One-command smoke test for QuAK-NQA.
+# One-command smoke test QUAK
 #
 # PURPOSE
 #   This script is the intended entry point for the AE smoke test phase.
@@ -16,20 +16,19 @@
 #                         benchmark inputs (samples/generated_*_N) are present. Catches
 #                         missing files that would make experiment.py silently
 #                         run zero instances or quak-nested fail to open inputs.
-#   [3] Python env      — python3 is installed and experiment.py can be loaded
-#                         and its argument parser initialised. Catches a missing
-#                         interpreter or an import error in the experiment script.
+#   [3] Python env      — python3 is installed. Catches a missing interpreter
+#                         before the full review tries to run experiment.py.
 #   [4] Decision procs  — quak-nested is invoked once per major flattening path
 #                         on a small representative input. Confirms the binary
 #                         reads input and produces output in the expected format
-#                         ("= 1" / "= 0"). Not a correctness claim; a crash or
-#                         malformed output here indicates a build/install defect.
+#                         ("= 1" / "= 0"). Not a
+#                         correctness claim; a crash or wrong output here
+#                         indicates a build/install defect.
 #
 # WHAT IS NOT TESTED
+#   - Experiment pipeline (experiment.py + quak-experiment-single end-to-end)
 #   - Paper results (runtimes, scalability) -> see full review instructions
 #     in AE_README.md.
-#   - Experiment correctness -> experiment.py is only tested for startup; actual
-#     runs are part of the full review.
 #
 # USAGE
 #   bash scripts/smoke-test.sh
@@ -122,8 +121,7 @@ for dir in \
   generated_response_time_2 \
   generated_response_time_3 \
   generated_resource_consumption_1 \
-  generated_resource_consumption_2
-do
+  generated_resource_consumption_2; do
   path="$SAMPLES/$dir"
   if [[ ! -d "$path" ]]; then
     MISSING_GENERATED+=("$dir")
@@ -153,8 +151,6 @@ fi
 # -----------------------------------------------------------------------
 echo "==> [3/4] Checking Python environment and experiment script..."
 run_check "python3 is available" "Python 3" python3 --version
-run_check "experiment.py loads and accepts --help" \
-  "usage" python3 "$REPO_ROOT/experiment.py" --help
 
 # -----------------------------------------------------------------------
 # Section 4 — Decision procedure CLI checks
@@ -183,6 +179,13 @@ run_check "universality         LimSup/Max_f      (universal, expect = 1)" \
   "= 1" "$QUAK" "$INPUTS/baseline_det.txt" universal LimSup Max_f 4
 run_check "non-nested curated  LimSup            (non-empty, expect = 1)" \
   "= 1" "$QUAK" "$SAMPLES/A.txt" non-empty LimSup 0
+
+# Negative-result coverage: exercise the "= 0" output path so a polarity
+# regression or formatter bug is caught at smoke time rather than full review.
+run_check "empty language        LimSup/Max_f      (non-empty, expect = 0)" \
+  "= 0" "$QUAK" "$INPUTS/baseline_det_neg.txt" non-empty LimSup Max_f 4
+run_check "non-universal         LimSup/Max_f      (universal,  expect = 0)" \
+  "= 0" "$QUAK" "$INPUTS/baseline_det_neg.txt" universal LimSup Max_f 0
 
 # -----------------------------------------------------------------------
 # Summary

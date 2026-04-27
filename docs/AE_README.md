@@ -40,7 +40,7 @@ docker run --rm quak-nqa /quak/scripts/smoke-test.sh
 
 Expected output ends with:
 ```
-SMOKE PASSED -- 16/16 checks, 0s wall
+SMOKE PASSED -- 17/17 checks, 0s wall
 ```
 
 If the smoke test fails, please flag it in the HotCRP smoke-test review so we
@@ -75,7 +75,7 @@ bash scripts/smoke-test.sh
 Expected output ends with:
 
 ```
-SMOKE PASSED -- 16/16 checks, 0s wall
+SMOKE PASSED -- 17/17 checks, 0s wall
 ```
 
 ---
