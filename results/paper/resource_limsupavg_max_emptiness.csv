@@ -9,9 +9,9 @@ resource_limsupavg_max_emptiness,2,3,samples/generated_resource_consumption_2/re
 resource_limsupavg_max_emptiness,2,4,samples/generated_resource_consumption_2/resource_n2_k4.txt,emptiness,LimSupAvg,Max,4.0,3,300.0,1,OK,62.350442812,1
 resource_limsupavg_max_emptiness,3,1,samples/generated_resource_consumption_2/resource_n3_k1.txt,emptiness,LimSupAvg,Max,1.0,3,300.0,1,OK,0.122868076,1
 resource_limsupavg_max_emptiness,3,2,samples/generated_resource_consumption_2/resource_n3_k2.txt,emptiness,LimSupAvg,Max,2.0,3,300.0,1,OK,47.532383001,1
-resource_limsupavg_max_emptiness,3,3,samples/generated_resource_consumption_2/resource_n3_k3.txt,emptiness,LimSupAvg,Max,3.0,3,300.0,1,TIMEOUT,,
-resource_limsupavg_max_emptiness,3,4,samples/generated_resource_consumption_2/resource_n3_k4.txt,emptiness,LimSupAvg,Max,4.0,3,300.0,1,TIMEOUT,,
+resource_limsupavg_max_emptiness,3,3,samples/generated_resource_consumption_2/resource_n3_k3.txt,emptiness,LimSupAvg,Max,3.0,3,300.0,1,OOT,,
+resource_limsupavg_max_emptiness,3,4,samples/generated_resource_consumption_2/resource_n3_k4.txt,emptiness,LimSupAvg,Max,4.0,3,300.0,1,OOT,,
 resource_limsupavg_max_emptiness,4,1,samples/generated_resource_consumption_2/resource_n4_k1.txt,emptiness,LimSupAvg,Max,1.0,3,300.0,1,OK,20.435561025,1
-resource_limsupavg_max_emptiness,4,2,samples/generated_resource_consumption_2/resource_n4_k2.txt,emptiness,LimSupAvg,Max,2.0,3,300.0,1,TIMEOUT,,
-resource_limsupavg_max_emptiness,4,3,samples/generated_resource_consumption_2/resource_n4_k3.txt,emptiness,LimSupAvg,Max,3.0,3,300.0,1,TIMEOUT,,
+resource_limsupavg_max_emptiness,4,2,samples/generated_resource_consumption_2/resource_n4_k2.txt,emptiness,LimSupAvg,Max,2.0,3,300.0,1,OOT,,
+resource_limsupavg_max_emptiness,4,3,samples/generated_resource_consumption_2/resource_n4_k3.txt,emptiness,LimSupAvg,Max,3.0,3,300.0,1,OOT,,
 resource_limsupavg_max_emptiness,4,4,samples/generated_resource_consumption_2/resource_n4_k4.txt,emptiness,LimSupAvg,Max,4.0,3,300.0,1,OOM,,

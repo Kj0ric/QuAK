@@ -33,3 +33,5 @@ response_sup_sumplus_emptiness,128,128,samples/generated_response_time_1/respons
 response_sup_sumplus_emptiness,128,256,samples/generated_response_time_1/response_n128_k256.txt,emptiness,Sup,SumPlus,256.0,3,300.0,1,OK,71.384593347,1
 response_sup_sumplus_emptiness,128,512,samples/generated_response_time_1/response_n128_k512.txt,emptiness,Sup,SumPlus,512.0,3,300.0,1,OOM,,
 response_sup_sumplus_emptiness,256,256,samples/generated_response_time_1/response_n256_k256.txt,emptiness,Sup,SumPlus,256.0,3,300.0,1,OOM,,
+response_sup_sumplus_emptiness,256,512,samples/generated_response_time_1/response_n256_k512.txt,emptiness,Sup,SumPlus,512.0,3,300.0,1,OOM,,
+response_sup_sumplus_emptiness,512,512,samples/generated_response_time_1/response_n512_k512.txt,emptiness,Sup,SumPlus,512.0,3,300.0,1,OOM,,

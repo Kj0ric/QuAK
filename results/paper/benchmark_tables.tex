@@ -1,0 +1,128 @@
+\documentclass[10pt]{article}
+\usepackage[margin=0.55in]{geometry}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{adjustbox}
+\usepackage{xspace}
+\pagestyle{empty}
+
+\newcommand{\ValFunction}[1]{{\textsf{#1}}\xspace}
+\newcommand{\Val}{\ValFunction{Val}}
+\newcommand{\Min}{\ValFunction{Min}}
+\newcommand{\Max}{\ValFunction{Max}}
+\newcommand{\Sum}{\ValFunction{Sum}}
+\newcommand{\Avg}{\ValFunction{Avg}}
+\newcommand{\Inf}{\ValFunction{Inf}}
+\newcommand{\Sup}{\ValFunction{Sup}}
+\newcommand{\LimInf}{\ValFunction{LimInf}}
+\newcommand{\LimSup}{\ValFunction{LimSup}}
+\newcommand{\LimInfAvg}{\ValFunction{LimInfAvg}}
+\newcommand{\LimSupAvg}{\ValFunction{LimSupAvg}}
+\newcommand{\SumPlus}{\ValFunction{Sum$^+$}}
+\newcommand{\SumMinus}{\ValFunction{Sum$^-$}}
+\newcommand{\SumBound}{\ValFunction{Sum$^B$}}
+\newcommand{\oom}{\texttt{m}}
+\newcommand{\oot}{\texttt{t}}
+
+\begin{document}
+\begin{table}[t]
+	\centering
+	\begin{adjustbox}{max width=\linewidth}
+		\scriptsize
+		\setlength{\tabcolsep}{2pt}
+		\renewcommand{\arraystretch}{1.05}
+		\begin{tabular}{@{}c@{\qquad}c@{\qquad}c@{}}
+			\begin{tabular}[t]{@{}r*{8}{c}@{}}
+				\multicolumn{9}{c}{\makebox[0pt]{(a) (\Sup,\SumPlus) emptiness}}\\[2pt]
+				\toprule
+				$n\backslash k$ & 4 & 8 & 16 & 32 & 64 & 128 & 256 & 512 \\
+				\midrule
+				4 & .00 & .00 & .01 & .01 & .06 & .32 & 1.5 & 6.3 \\
+				8 & -- & .00 & .01 & .03 & .16 & .76 & 3.3 & 14 \\
+				16 & -- & -- & .01 & .07 & .39 & 1.7 & 7.3 & 32 \\
+				32 & -- & -- & -- & .13 & .85 & 3.8 & 17 & 72 \\
+				64 & -- & -- & -- & -- & 1.3 & 7.8 & 35 & \oom \\
+				128 & -- & -- & -- & -- & -- & 12 & 71 & \oom \\
+				256 & -- & -- & -- & -- & -- & -- & \oom & \oom \\
+				512 & -- & -- & -- & -- & -- & -- & -- & \oom \\
+				\bottomrule
+			\end{tabular}
+			&
+			\begin{tabular}[t]{@{}r*{8}{c}@{}}
+				\multicolumn{9}{c}{\makebox[0pt]{(b) (\LimSupAvg,\SumPlus) emptiness}}\\[2pt]
+				\toprule
+				$n\backslash k$ & 3 & 4 & 5 & 6 & 7 & 8 & 9 & 10 \\
+				\midrule
+				3 & .00 & .00 & .00 & .01 & .02 & .05 & .13 & .31 \\
+				4 & -- & .00 & .00 & .01 & .07 & .28 & 1.1 & 3.2 \\
+				5 & -- & -- & .00 & .03 & .21 & 1.3 & 5.5 & 20 \\
+				6 & -- & -- & -- & .03 & .29 & 2.8 & 18 & 93 \\
+				7 & -- & -- & -- & -- & .33 & 4.3 & 39 & 284 \\
+				8 & -- & -- & -- & -- & -- & 4.7 & 58 & \oom \\
+				9 & -- & -- & -- & -- & -- & -- & 63 & \oom \\
+				10 & -- & -- & -- & -- & -- & -- & -- & \oom \\
+				\bottomrule
+			\end{tabular}
+			&
+			\begin{tabular}[t]{@{}r*{8}{c}@{}}
+				\multicolumn{9}{c}{\makebox[0pt]{(c) (\Sup,\SumBound) universality}}\\[2pt]
+				\toprule
+				$n\backslash k$ & 2 & 3 & 4 & 5 & 6 & 7 & 8 & 9 \\
+				\midrule
+				2 & .00 & .00 & .01 & .04 & .14 & .42 & 1.2 & 3.6 \\
+				3 & -- & .00 & .02 & .08 & .40 & 2.3 & 12 & 44 \\
+				4 & -- & -- & .02 & .12 & 1.1 & 12 & 159 & \oot \\
+				5 & -- & -- & -- & .14 & 2.0 & 51 & \oot & \oot \\
+				6 & -- & -- & -- & -- & 2.4 & 136 & \oot & \oom \\
+				7 & -- & -- & -- & -- & -- & 177 & \oot & \oom \\
+				8 & -- & -- & -- & -- & -- & -- & \oot & \oom \\
+				9 & -- & -- & -- & -- & -- & -- & -- & \oom \\
+				\bottomrule
+			\end{tabular}
+		\end{tabular}
+	\end{adjustbox}
+	\vspace{0.25em}
+	\caption{Response time benchmarks: runtime in seconds, \oom~= out of memory (30\,GB), \oot~= out of time (300\,s). \vspace{-2.5em}}
+	\label{fig:response_time_benchmarks}
+\end{table}
+
+\begin{table}[t]
+	\centering
+	\begin{adjustbox}{max width=\linewidth}
+		\scriptsize
+		\setlength{\tabcolsep}{2pt}
+		\renewcommand{\arraystretch}{1.05}
+		\begin{tabular}{@{}c@{\qquad}c@{}}
+			\begin{tabular}[t]{@{}r*{6}{c}@{}}
+				\multicolumn{7}{c}{\makebox[0pt]{(a) (\Sup,\Max) emptiness}}\\[2pt]
+				\toprule
+				$n\backslash k$ & 1 & 2 & 3 & 4 & 5 & 6 \\
+				\midrule
+				1 & .00 & .00 & .00 & .00 & .00 & .00 \\
+				2 & .00 & .00 & .01 & .06 & .37 & 1.9 \\
+				3 & .01 & .10 & 1.1 & 11 & 103 & \oom \\
+				4 & .12 & 2.4 & 43 & \oom & \oom & \oom \\
+				5 & 1.3 & 38 & \oom & \oom & \oom & \oom \\
+				6 & 9.9 & \oom & \oom & \oom & \oom & \oom \\
+				\bottomrule
+			\end{tabular}
+			&\hspace{4em}
+			\begin{tabular}[t]{@{}r*{4}{c}@{}}
+				\multicolumn{5}{c}{\makebox[0pt]{(b) (\LimSupAvg,\Max) emptiness}}\\[2pt]
+				\toprule
+				$n\backslash k$ & 1 & 2 & 3 & 4 \\
+				\midrule
+				1 & .00 & .00 & .00 & .00 \\
+				2 & .00 & .03 & 1.1 & 62 \\
+				3 & .12 & 48 & \oot & \oot \\
+				4 & 20 & \oot & \oot & \oom \\
+				\bottomrule
+			\end{tabular}
+		\end{tabular}
+	\end{adjustbox}
+	\vspace{0.25em}
+	\caption{Resource consumption benchmarks: runtime in seconds, \oom~= out of memory (30\,GB), \oot~= out of time (300\,s). \vspace{-2.5em}}
+	\label{fig:resource_consumption_benchmarks}
+\end{table}
+
+\end{document}

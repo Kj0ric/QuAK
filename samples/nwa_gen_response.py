@@ -144,8 +144,8 @@ def generate_bounded_pending_automaton(n: int, k: int, q0_is_final: bool) -> str
 def main() -> None:
     # N_LIST = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     # K_LIST = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-    N_LIST = [4, 8, 16, 32, 64, 128, 256, 512]
-    K_LIST = [4, 8, 16, 32, 64, 128, 256, 512]
+    N_LIST = [2, 4, 8, 16, 32, 64, 128, 256, 512]
+    K_LIST = [2, 4, 8, 16, 32, 64, 128, 256, 512]
     Q0_IS_FINAL = True
 
     out_dir = Path("generated_response_time")

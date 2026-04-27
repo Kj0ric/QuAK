@@ -1,5 +1,7 @@
 @PARENT
-final: all
+# Bounded-pending NWA: n=4 max pending, k=64 max wait time
+# q0  : no pending requests
+# q_i : reachable (pending_count, oldest_age) with oldest_age >= pending_count-1
 # s   : violation (too many pending or some request waited >= k steps)
 final: q0
 
