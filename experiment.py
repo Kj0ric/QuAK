@@ -256,7 +256,7 @@ def main() -> int:
     )
     ap.add_argument(
         "--outdir",
-        default="results",
+        default="results/full",
         help="Directory to write CSVs. Existing CSVs are overwritten unless --append is set.",
     )
     ap.add_argument(

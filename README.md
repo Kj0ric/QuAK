@@ -486,7 +486,7 @@ Runs all configured experiments in batch, with resume support (skips already-com
 
 ```bash
 python3 experiment.py --exe ./build/quak-experiment-single \
-    [--rep R] [--timeout T] [--warmup W] [--memory-limit 30G] [--outdir results]
+    [--rep R] [--timeout T] [--warmup W] [--memory-limit 30G] [--outdir results/full]
 ```
 
 | Argument | Default | Description |
@@ -496,7 +496,7 @@ python3 experiment.py --exe ./build/quak-experiment-single \
 | `--timeout` | 300 | Per-repetition timeout (seconds) |
 | `--warmup` | 1 | Warmup (0 or 1) |
 | `--memory-limit` | none | Memory limit per process (e.g. `30G`, `8192M`) |
-| `--outdir` | `results` | Output directory for CSV files |
+| `--outdir` | `results/full` | Output directory for CSV files |
 
 **Configured experiments:**
 
