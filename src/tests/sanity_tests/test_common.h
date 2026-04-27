@@ -273,9 +273,9 @@ namespace TestFiles {
     const std::string COMPUTE_RETURN_SUMB = "samples/nested/compute_return_sumB.txt";
     const std::string COMPLEX_SUMB = "samples/nested/complex_sumB.txt";
     const std::string NONDET_SUMB = "samples/nested/nondet_sumB.txt";
-    const std::string SUP_MAX_CYCLE_TRUE = "src/tests/sanity_tests/inputs/tc11_sup_max_cycle_true.txt";
-    const std::string SUP_MAX_DOOMED_FALSE = "src/tests/sanity_tests/inputs/tc12_sup_max_doomed_false.txt";
-    const std::string MAX_MERGE_BUG_COMPLETE = "src/tests/correctness_tests/inputs/max_merge_bug_complete.txt";
+    const std::string SUP_MAX_CYCLE_TRUE = "samples/tests/sanity/tc11_sup_max_cycle_true.txt";
+    const std::string SUP_MAX_DOOMED_FALSE = "samples/tests/sanity/tc12_sup_max_doomed_false.txt";
+    const std::string MAX_MERGE_BUG_COMPLETE = "samples/tests/correctness/max_merge_bug_complete.txt";
 }
 
 #endif // TEST_COMMON_H_

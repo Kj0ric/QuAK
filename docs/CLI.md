@@ -72,13 +72,13 @@ ignored.
 
 ```bash
 # Non-nested
-./build/quak-nested A.txt non-empty LimInf 0
-./build/quak-nested A.txt universal LimSup 4
+./build/quak-nested samples/A.txt non-empty LimInf 0
+./build/quak-nested samples/A.txt universal LimSup 4
 
 # Nested
-./build/quak-nested examples/nested/simple_counter.txt non-empty LimInf SumPlus 1
-./build/quak-nested examples/nested/priority_tasks.txt universal LimInf Max_f 1
-./build/quak-nested examples/nested/request_response.txt non-empty LimSupAvg SumB 2 10
+./build/quak-nested examples/simple_counter.txt non-empty LimInf SumPlus 1
+./build/quak-nested examples/priority_tasks.txt universal LimInf Max_f 1
+./build/quak-nested examples/request_response.txt non-empty LimSupAvg SumB 2 10
 ```
 
 ## Output

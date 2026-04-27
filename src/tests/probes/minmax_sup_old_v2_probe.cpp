@@ -18,7 +18,7 @@ static const char* as_text(bool value) {
 }
 
 int main() {
-    const std::string base = "src/tests/correctness_tests/inputs/";
+    const std::string base = "samples/tests/correctness/";
     const std::vector<Scenario> scenarios = {
         {"sup.max.initial_final_child", base + "sup_initial_final_child.txt", Sup, Max_f, weight_t(1), true},
         {"limsup.max.initial_final_child", base + "sup_initial_final_child.txt", LimSup, Max_f, weight_t(1), true},

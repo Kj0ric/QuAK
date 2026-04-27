@@ -424,7 +424,7 @@ Non-determinism is resolved by the **Supremum** function: among all possible run
 
 ## Example Programs
 
-Three example programs are provided in `examples/nested/`:
+Three example programs are provided in `examples/`:
 
 ```bash
 cmake --build build --target examples
@@ -433,7 +433,7 @@ cmake --build build --target examples
 ./build/example3_response_time     # Comparing infVals (Sup, LimSup, LimSupAvg, LimInf, Inf)
 ```
 
-See `examples/nested/README.md` for details.
+See `examples/README.md` for details.
 
 ---
 
@@ -476,8 +476,8 @@ MEAN_S=<double> RESULT=<0|1> STATUS=<OK|TIMEOUT|ERR|INCONSISTENT>
 Example:
 
 ```bash
-./build/quak-experiment-single samples/generated_response_time_1/response_n2_k2.txt \
-    emptiness Sup SumPlus 2 --rep 1 --timeout-s 30 --warmup 1
+./build/quak-experiment-single samples/generated_response_time_1/response_n4_k4.txt \
+    emptiness Sup SumPlus 4 --rep 1 --timeout-s 30 --warmup 1
 ```
 
 ### Python Orchestrator (`experiment.py`)
@@ -532,21 +532,23 @@ QuAK/
 │       ├── correctness_tests/  # Registered semantic regressions
 │       ├── probes/             # Optional backend comparison tools
 │       └── benchmarks/         # Optional benchmark harnesses
-├── analysis/                   # Research notes, plans, reports, and tools
 ├── examples/
-│   └── nested/                 # Example programs + sample automata
-├── samples/                    # Sample automata files
+│   ├── example*.cpp            # Example programs
+│   └── *.txt                   # Example nested automata
+├── samples/                    # Curated samples, test fixtures, generated inputs
+│   └── tests/                  # Registered test automata fixtures
 ├── scripts/                    # Utility scripts
 ├── results/                    # Generated experiment output
 ├── experiment.py               # Python experiment orchestrator
-├── experiment_response_max.py  # Max-based experiment orchestrator
-├── csv_to_latex_figures.py     # Benchmark CSV to LaTeX tables
+├── experiment_small.py         # Small representative experiment subset
+├── results/csv_to_latex_figures.py  # Benchmark CSV to LaTeX tables
 ├── CMakeLists.txt
 └── README.md
 ```
 
-Registered tests live only under `src/tests/sanity_tests/` and
-`src/tests/correctness_tests/`. Optional probes may still build through the
+Registered test code lives under `src/tests/sanity_tests/` and
+`src/tests/correctness_tests/`; their input automata live under
+`samples/tests/`. Optional probes may still build through the
 `experiments` target, but they are not CTest tests. Historical implementation
 snapshots and source fragments under `src/archived/` are intentionally not
 built.

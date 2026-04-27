@@ -106,23 +106,23 @@ static void require_match(const StressCase& c,
 
 static std::vector<StressCase> build_cases(const std::string& profile) {
     std::vector<StressCase> cases = {
-        {"baseline_det_sumplus_eq", "src/tests/correctness_tests/inputs/baseline_det.txt", SumPlus, weight_t(5)},
-        {"baseline_det_sumplus_gt", "src/tests/correctness_tests/inputs/baseline_det.txt", SumPlus, weight_t(6)},
-        {"baseline_fractional_sumplus", "src/tests/correctness_tests/inputs/baseline_fractional.txt", SumPlus, weight_t(2.5)},
-        {"baseline_fractional_summinus", "src/tests/correctness_tests/inputs/baseline_fractional.txt", SumMinus, weight_t(-2.5)},
-        {"deep_nondet_sumplus_eq", "src/tests/correctness_tests/inputs/deep_nondet_binary.txt", SumPlus, weight_t(8)},
-        {"deep_nondet_sumplus_gt", "src/tests/correctness_tests/inputs/deep_nondet_binary.txt", SumPlus, weight_t(9)},
-        {"positive_only_sumplus", "src/tests/correctness_tests/inputs/positive_only_nondet.txt", SumPlus, weight_t(4)},
-        {"child_pump_loop_summinus_eq", "src/tests/correctness_tests/inputs/child_pump_loop.txt", SumMinus, weight_t(-1)},
-        {"child_pump_loop_summinus_heavy", "src/tests/correctness_tests/inputs/child_pump_loop.txt", SumMinus, weight_t(-20)},
-        {"epsilon_boundary_sumplus", "src/tests/correctness_tests/inputs/epsilon_boundary.txt", SumPlus, weight_t(0.5)},
-        {"epsilon_boundary_summinus", "src/tests/correctness_tests/inputs/epsilon_boundary.txt", SumMinus, weight_t(-0.5)},
-        {"response_negative_n5_k5", "samples/generated_response_time_negative/response_n5_k5.txt", SumMinus, weight_t(-5)},
+        {"baseline_det_sumplus_eq", "samples/tests/correctness/baseline_det.txt", SumPlus, weight_t(5)},
+        {"baseline_det_sumplus_gt", "samples/tests/correctness/baseline_det.txt", SumPlus, weight_t(6)},
+        {"baseline_fractional_sumplus", "samples/tests/correctness/baseline_fractional.txt", SumPlus, weight_t(2.5)},
+        {"baseline_fractional_summinus", "samples/tests/correctness/baseline_fractional.txt", SumMinus, weight_t(-2.5)},
+        {"deep_nondet_sumplus_eq", "samples/tests/correctness/deep_nondet_binary.txt", SumPlus, weight_t(8)},
+        {"deep_nondet_sumplus_gt", "samples/tests/correctness/deep_nondet_binary.txt", SumPlus, weight_t(9)},
+        {"positive_only_sumplus", "samples/tests/correctness/positive_only_nondet.txt", SumPlus, weight_t(4)},
+        {"child_pump_loop_summinus_eq", "samples/tests/correctness/child_pump_loop.txt", SumMinus, weight_t(-1)},
+        {"child_pump_loop_summinus_heavy", "samples/tests/correctness/child_pump_loop.txt", SumMinus, weight_t(-20)},
+        {"epsilon_boundary_sumplus", "samples/tests/correctness/epsilon_boundary.txt", SumPlus, weight_t(0.5)},
+        {"epsilon_boundary_summinus", "samples/tests/correctness/epsilon_boundary.txt", SumMinus, weight_t(-0.5)},
+        {"response_time_2_n5_k5", "samples/generated_response_time_2/response_n5_k5.txt", SumPlus, weight_t(5)},
     };
 
     if (profile == "extended") {
-        cases.push_back({"response_negative_large_n6_k8", "samples/generated_response_time_negative_large/response_n6_k8.txt", SumMinus, weight_t(-8)});
-        cases.push_back({"response_negative_large_n8_k8", "samples/generated_response_time_negative_large/response_n8_k8.txt", SumMinus, weight_t(-8)});
+        cases.push_back({"response_time_1_n8_k8", "samples/generated_response_time_1/response_n8_k8.txt", SumPlus, weight_t(8)});
+        cases.push_back({"response_time_3_n8_k8", "samples/generated_response_time_3/response_n8_k8.txt", SumPlus, weight_t(8)});
     } else if (profile != "core") {
         throw std::invalid_argument("Unsupported profile: " + profile + " (expected core or extended)");
     }

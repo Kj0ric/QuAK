@@ -346,7 +346,7 @@ inline void verifyNestedAutomatonBasics(const NestedAutomaton* NA, const std::st
 
 // Input file paths for correctness tests
 namespace CorrectnessTestFiles {
-    const std::string BASE_PATH = "src/tests/correctness_tests/inputs/";
+    const std::string BASE_PATH = "samples/tests/correctness/";
 
     const std::string BASELINE_DET = BASE_PATH + "baseline_det.txt";
     const std::string BASELINE_FRACTIONAL = BASE_PATH + "baseline_fractional.txt";

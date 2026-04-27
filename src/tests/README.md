@@ -10,8 +10,9 @@ investigation tools.
 - `correctness_tests/`: semantic regression tests for emptiness,
   universality, final-aware accepted-domain behavior, specialized
   extremal/monotone flattening, and known bug fixtures.
-- `correctness_tests/inputs/`: fixtures used by registered correctness tests
+- `samples/tests/correctness/`: fixtures used by registered correctness tests
   and selected probes.
+- `samples/tests/sanity/`: fixtures used by registered sanity tests.
 
 Registered tests are listed in the top-level `CMakeLists.txt`, build with:
 

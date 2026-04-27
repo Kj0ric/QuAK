@@ -73,20 +73,20 @@ int main() {
     const BackendSpec cached_backend{"cached", flatten_cached, true};
 
     const std::vector<CorrectnessCase> cases = {
-        {"baseline_det_sumplus_eq", "src/tests/correctness_tests/inputs/baseline_det.txt", SumPlus, weight_t(5)},
-        {"baseline_det_sumplus_gt", "src/tests/correctness_tests/inputs/baseline_det.txt", SumPlus, weight_t(6)},
-        {"baseline_fractional_sumplus", "src/tests/correctness_tests/inputs/baseline_fractional.txt", SumPlus, weight_t(2.5)},
-        {"baseline_fractional_summinus", "src/tests/correctness_tests/inputs/baseline_fractional.txt", SumMinus, weight_t(-2.5)},
-        {"deep_nondet_sumplus_eq", "src/tests/correctness_tests/inputs/deep_nondet_binary.txt", SumPlus, weight_t(8)},
-        {"deep_nondet_sumplus_gt", "src/tests/correctness_tests/inputs/deep_nondet_binary.txt", SumPlus, weight_t(9)},
-        {"positive_only_sumplus", "src/tests/correctness_tests/inputs/positive_only_nondet.txt", SumPlus, weight_t(4)},
-        {"child_pump_loop_summinus", "src/tests/correctness_tests/inputs/child_pump_loop.txt", SumMinus, weight_t(-1)},
+        {"baseline_det_sumplus_eq", "samples/tests/correctness/baseline_det.txt", SumPlus, weight_t(5)},
+        {"baseline_det_sumplus_gt", "samples/tests/correctness/baseline_det.txt", SumPlus, weight_t(6)},
+        {"baseline_fractional_sumplus", "samples/tests/correctness/baseline_fractional.txt", SumPlus, weight_t(2.5)},
+        {"baseline_fractional_summinus", "samples/tests/correctness/baseline_fractional.txt", SumMinus, weight_t(-2.5)},
+        {"deep_nondet_sumplus_eq", "samples/tests/correctness/deep_nondet_binary.txt", SumPlus, weight_t(8)},
+        {"deep_nondet_sumplus_gt", "samples/tests/correctness/deep_nondet_binary.txt", SumPlus, weight_t(9)},
+        {"positive_only_sumplus", "samples/tests/correctness/positive_only_nondet.txt", SumPlus, weight_t(4)},
+        {"child_pump_loop_summinus", "samples/tests/correctness/child_pump_loop.txt", SumMinus, weight_t(-1)},
         {"phase_parent_final_then_empty_sumplus",
-         "src/tests/correctness_tests/inputs/phase_parent_final_then_empty.txt", SumPlus, weight_t(1)},
+         "samples/tests/correctness/phase_parent_final_then_empty.txt", SumPlus, weight_t(1)},
         {"phase_parent_final_then_empty_summinus",
-         "src/tests/correctness_tests/inputs/phase_parent_final_then_empty_summinus.txt", SumMinus, weight_t(-3)},
-        {"epsilon_boundary_sumplus", "src/tests/correctness_tests/inputs/epsilon_boundary.txt", SumPlus, weight_t(0.5)},
-        {"epsilon_boundary_summinus", "src/tests/correctness_tests/inputs/epsilon_boundary.txt", SumMinus, weight_t(-0.5)},
+         "samples/tests/correctness/phase_parent_final_then_empty_summinus.txt", SumMinus, weight_t(-3)},
+        {"epsilon_boundary_sumplus", "samples/tests/correctness/epsilon_boundary.txt", SumPlus, weight_t(0.5)},
+        {"epsilon_boundary_summinus", "samples/tests/correctness/epsilon_boundary.txt", SumMinus, weight_t(-0.5)},
     };
 
     const value_function_t inf_modes[] = {Inf, LimInf};

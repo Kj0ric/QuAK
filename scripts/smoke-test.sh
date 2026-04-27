@@ -11,9 +11,9 @@
 #   [1] Binaries        — quak-nested and quak-experiment-single are present
 #                         and executable. Catches wrong-architecture images or
 #                         a broken Dockerfile COPY step.
-#   [2] Input files     — test fixtures (test-inputs/), sample automata
-#                         (samples/A.txt), and pre-generated benchmark inputs
-#                         (samples/generated_*/) are all present. Catches
+#   [2] Input files     — sample automata (samples/A.txt), correctness fixtures
+#                         (samples/tests/correctness/), and pre-generated
+#                         benchmark inputs (samples/generated_*_N) are present. Catches
 #                         missing files that would make experiment.py silently
 #                         run zero instances or quak-nested fail to open inputs.
 #   [3] Python env      — python3 is installed and experiment.py can be loaded
@@ -33,6 +33,7 @@
 #
 # USAGE
 #   bash scripts/smoke-test.sh
+#   QUAK=./build/quak-nested QUAK_EXP=./build/quak-experiment-single bash scripts/smoke-test.sh
 #
 # Exit code: 0 = all checks passed, 1 = any check failed.
 
@@ -48,10 +49,10 @@ fi
 
 START=$SECONDS
 
-QUAK="$REPO_ROOT/quak-nested"
-QUAK_EXP="$REPO_ROOT/quak-experiment-single"
-INPUTS="$REPO_ROOT/test-inputs"
+QUAK="${QUAK:-$REPO_ROOT/quak-nested}"
+QUAK_EXP="${QUAK_EXP:-$REPO_ROOT/quak-experiment-single}"
 SAMPLES="$REPO_ROOT/samples"
+INPUTS="$SAMPLES/tests/correctness"
 
 PASS=0
 FAIL=0
@@ -108,19 +109,39 @@ check_path "quak-experiment-single exists and is executable" -x "$QUAK_EXP"
 # or the files were missing from the build context.
 # -----------------------------------------------------------------------
 echo "==> [2/4] Checking input files..."
-check_path "test-inputs/ directory present" -d "$INPUTS"
+check_path "samples/tests/correctness/ directory present" -d "$INPUTS"
 check_path "samples/ directory present" -d "$SAMPLES"
 check_path "samples/A.txt present (non-nested fixture)" -f "$SAMPLES/A.txt"
 
-# Verify at least one generated benchmark directory is non-empty so
-# experiment.py will find inputs rather than silently running 0 instances.
-GENERATED_COUNT=$(find "$SAMPLES" -name "*.txt" -path "*/generated_*" 2>/dev/null | wc -l)
-if [[ "$GENERATED_COUNT" -gt 0 ]]; then
+# Verify the exact generated benchmark directories used by experiment.py
+# are non-empty so it cannot silently run zero instances.
+GENERATED_COUNT=0
+MISSING_GENERATED=()
+for dir in \
+  generated_response_time_1 \
+  generated_response_time_2 \
+  generated_response_time_3 \
+  generated_resource_consumption_1 \
+  generated_resource_consumption_2
+do
+  path="$SAMPLES/$dir"
+  if [[ ! -d "$path" ]]; then
+    MISSING_GENERATED+=("$dir")
+    continue
+  fi
+  count=$(find "$path" -maxdepth 1 -type f -name "*.txt" 2>/dev/null | wc -l)
+  if [[ "$count" -eq 0 ]]; then
+    MISSING_GENERATED+=("$dir (empty)")
+    continue
+  fi
+  GENERATED_COUNT=$((GENERATED_COUNT + count))
+done
+
+if [[ "${#MISSING_GENERATED[@]}" -eq 0 ]]; then
   echo "  PASS [generated benchmark inputs present ($GENERATED_COUNT files)]"
   PASS=$((PASS + 1))
 else
-  echo "  FAIL [generated benchmark inputs] — no *.txt files found under samples/generated_*/"
-  echo "       Run: python3 samples/nwa_gen_response.py && python3 samples/nwa_gen_resource.py"
+  echo "  FAIL [generated benchmark inputs] -- missing: ${MISSING_GENERATED[*]}"
   FAIL=$((FAIL + 1))
 fi
 
@@ -160,7 +181,7 @@ run_check "flatten_minmax_inf   Inf/Min_f         (non-empty, expect = 1)" \
   "= 1" "$QUAK" "$INPUTS/baseline_det.txt" non-empty Inf Min_f 2
 run_check "universality         LimSup/Max_f      (universal, expect = 1)" \
   "= 1" "$QUAK" "$INPUTS/baseline_det.txt" universal LimSup Max_f 4
-run_check "non-nested (legacy)  LimSup            (non-empty, expect = 1)" \
+run_check "non-nested curated  LimSup            (non-empty, expect = 1)" \
   "= 1" "$QUAK" "$SAMPLES/A.txt" non-empty LimSup 0
 
 # -----------------------------------------------------------------------

@@ -47,7 +47,6 @@ WORKDIR /quak
 COPY --from=builder /opt/quak-build/build/quak-nested                    ./quak-nested
 COPY --from=builder /opt/quak-build/build/quak-experiment-single          ./quak-experiment-single
 COPY --from=builder /opt/quak-build/samples/                              ./samples/
-COPY --from=builder /opt/quak-build/src/tests/correctness_tests/inputs/  ./test-inputs/
 COPY --from=builder /opt/quak-build/docs/AE_README.md                     ./AE_README.md
 COPY --from=builder /opt/quak-build/docs/CLI.md                           ./docs/CLI.md
 COPY --from=builder /opt/quak-build/docs/assumptions.md                   ./docs/assumptions.md

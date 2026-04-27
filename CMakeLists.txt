@@ -188,9 +188,9 @@ add_custom_target(experiments
 # EXAMPLES (built with: make examples)
 # =============================================================================
 set(EXAMPLE_SOURCES
-    examples/nested/example1_basic.cpp
-    examples/nested/example2_value_functions.cpp
-    examples/nested/example3_response_time.cpp
+    examples/example1_basic.cpp
+    examples/example2_value_functions.cpp
+    examples/example3_response_time.cpp
 )
 
 foreach(EXAMPLE_SOURCE ${EXAMPLE_SOURCES})

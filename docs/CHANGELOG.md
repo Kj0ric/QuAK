@@ -58,12 +58,12 @@ The AE README was plain text following the chairs' template format. It has been
 converted to Markdown so it renders properly on GitHub and is easier to read
 and edit.
 
-**Input directory documentation (`src/tests/correctness_tests/inputs/README.txt`)**
+**Input directory documentation (`samples/tests/correctness/README.md`)**
 
 The correctness test input directory had 37 files with no explanation of what
 they are or why they exist. A README was added that documents the naming
 convention and describes each file. It also explains why `baseline_det.txt`
-looks similar to `tc01_simple_det.txt` in the sanity test directory -- they
+looks similar to `tc01_simple_det.txt` in `samples/tests/sanity/` -- they
 serve different test families and are not accidental duplicates.
 
 ### What was not changed

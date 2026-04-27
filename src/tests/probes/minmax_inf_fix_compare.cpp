@@ -81,19 +81,19 @@ static void run_correctness() {
     const std::vector<CorrectnessCase> cases = {
         {"overlap_max_bug", TestFiles::MAX_MERGE_BUG_COMPLETE.c_str(), Max_f, weight_t(1), false, false},
         {"test_empt_2_impossible", TestFiles::TEST_EMPT_2.c_str(), Max_f, weight_t(3), false, false},
-        {"baseline_det_max_eq", "src/tests/correctness_tests/inputs/baseline_det.txt", Max_f, weight_t(5), true, true},
-        {"baseline_det_max_gt", "src/tests/correctness_tests/inputs/baseline_det.txt", Max_f, weight_t(6), false, false},
-        {"baseline_det_min_eq", "src/tests/correctness_tests/inputs/baseline_det.txt", Min_f, weight_t(3), true, true},
-        {"baseline_det_min_gt", "src/tests/correctness_tests/inputs/baseline_det.txt", Min_f, weight_t(4), false, false},
-        {"scc_chain_inf_vs_liminf", "src/tests/correctness_tests/inputs/scc_chain_binary.txt", Max_f, weight_t(4), false, true},
-        {"deep_nondet_eq", "src/tests/correctness_tests/inputs/deep_nondet_binary.txt", Max_f, weight_t(8), true, true},
-        {"deep_nondet_gt", "src/tests/correctness_tests/inputs/deep_nondet_binary.txt", Max_f, weight_t(9), false, false},
-        {"nondet_child_binary_eq", "src/tests/correctness_tests/inputs/nondet_child_binary.txt", Max_f, weight_t(7), true, true},
-        {"nondet_child_binary_gt", "src/tests/correctness_tests/inputs/nondet_child_binary.txt", Max_f, weight_t(8), false, false},
+        {"baseline_det_max_eq", "samples/tests/correctness/baseline_det.txt", Max_f, weight_t(5), true, true},
+        {"baseline_det_max_gt", "samples/tests/correctness/baseline_det.txt", Max_f, weight_t(6), false, false},
+        {"baseline_det_min_eq", "samples/tests/correctness/baseline_det.txt", Min_f, weight_t(3), true, true},
+        {"baseline_det_min_gt", "samples/tests/correctness/baseline_det.txt", Min_f, weight_t(4), false, false},
+        {"scc_chain_inf_vs_liminf", "samples/tests/correctness/scc_chain_binary.txt", Max_f, weight_t(4), false, true},
+        {"deep_nondet_eq", "samples/tests/correctness/deep_nondet_binary.txt", Max_f, weight_t(8), true, true},
+        {"deep_nondet_gt", "samples/tests/correctness/deep_nondet_binary.txt", Max_f, weight_t(9), false, false},
+        {"nondet_child_binary_eq", "samples/tests/correctness/nondet_child_binary.txt", Max_f, weight_t(7), true, true},
+        {"nondet_child_binary_gt", "samples/tests/correctness/nondet_child_binary.txt", Max_f, weight_t(8), false, false},
         {"phase_parent_final_then_empty_max",
-         "src/tests/correctness_tests/inputs/phase_parent_final_then_empty.txt", Max_f, weight_t(1), true, true},
+         "samples/tests/correctness/phase_parent_final_then_empty.txt", Max_f, weight_t(1), true, true},
         {"phase_parent_final_then_empty_min",
-         "src/tests/correctness_tests/inputs/phase_parent_final_then_empty.txt", Min_f, weight_t(1), true, true},
+         "samples/tests/correctness/phase_parent_final_then_empty.txt", Min_f, weight_t(1), true, true},
     };
 
     std::cout << "=== Correctness ===\n";
@@ -123,10 +123,10 @@ static void run_performance() {
     const std::vector<PerfCase> cases = {
         {"overlap_max_bug", TestFiles::MAX_MERGE_BUG_COMPLETE.c_str(), Max_f, weight_t(1), 200},
         {"nested_sij2", TestFiles::NESTED_SIJ2.c_str(), Max_f, weight_t(5), 200},
-        {"scc_chain_binary", "src/tests/correctness_tests/inputs/scc_chain_binary.txt", Max_f, weight_t(1), 100},
-        {"nondet_child_binary", "src/tests/correctness_tests/inputs/nondet_child_binary.txt", Max_f, weight_t(1), 100},
-        {"deep_nondet_binary", "src/tests/correctness_tests/inputs/deep_nondet_binary.txt", Max_f, weight_t(1), 50},
-        {"baseline_det_min", "src/tests/correctness_tests/inputs/baseline_det.txt", Min_f, weight_t(3), 200},
+        {"scc_chain_binary", "samples/tests/correctness/scc_chain_binary.txt", Max_f, weight_t(1), 100},
+        {"nondet_child_binary", "samples/tests/correctness/nondet_child_binary.txt", Max_f, weight_t(1), 100},
+        {"deep_nondet_binary", "samples/tests/correctness/deep_nondet_binary.txt", Max_f, weight_t(1), 50},
+        {"baseline_det_min", "samples/tests/correctness/baseline_det.txt", Min_f, weight_t(3), 200},
     };
 
     std::cout << "\n=== Performance (flatten + Inf check) ===\n";
